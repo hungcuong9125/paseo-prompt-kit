@@ -9,6 +9,8 @@ export const rewriteErrorCodeSchema = z.enum([
   "unknown_action",
   "timeout",
   "empty_output",
+  "unsupported_provider",
+  "spawn_failed",
   "protected_literal_loss",
   "generation_failed",
 ]);

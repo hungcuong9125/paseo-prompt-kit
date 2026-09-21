@@ -13,9 +13,20 @@ describe("prompt kit settings", () => {
       dedicatedProvider: null,
       dedicatedModel: null,
       dedicatedThinkingOptionId: null,
+      providerCli: {},
       timeoutMs: 90_000,
       actionEnabled: {},
     });
+  });
+
+  it("maps a provider id to a CLI family, defaulting to none", async () => {
+    const values = await promptKitSettingsSchema.parseAsync({});
+    // No mapping is invented: an id that names no supported CLI fails closed.
+    expect(values.providerCli).toEqual({});
+    const mapped = await promptKitSettingsSchema.parseAsync({
+      providerCli: { "compat-peer": "opencode" },
+    });
+    expect(mapped.providerCli).toEqual({ "compat-peer": "opencode" });
   });
 
   it("treats an absent action toggle as the pack default and an explicit one as the user's choice", async () => {
@@ -51,5 +62,17 @@ describe("prompt kit settings", () => {
       dedicatedModel: "claude-opus-5",
     });
     expect(isDedicatedSelectionComplete(complete)).toBe(true);
+  });
+});
+
+describe("provider CLI mapping", () => {
+  it("accepts a supported family id and rejects an unknown one", async () => {
+    const values = await promptKitSettingsSchema.parseAsync({
+      providerCli: { "compat-peer": "opencode", "pi-peer": "pi" },
+    });
+    expect(values.providerCli).toEqual({ "compat-peer": "opencode", "pi-peer": "pi" });
+    await expect(
+      promptKitSettingsSchema.parseAsync({ providerCli: { "grok-peer": "gemini" } }),
+    ).rejects.toThrow();
   });
 });

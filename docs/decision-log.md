@@ -10,6 +10,8 @@ Lead-only and never combined with code commits.
 
 ## Current index
 
+- `DLF-013` — HUMAN_DIRECTIVE: live probes and smoke tests use cheap models; a probe never spends a frontier call — ACTIVE
+- `DLF-012` — Rewrite transport replaced: temporary Paseo agent → headless CLI of the agent's own provider; `server/generation.ts` deleted; new `unsupported_provider`/`spawn_failed` errors; settings gain `providerCli` — ACTIVE
 - `DLF-011` — Release 0.1.0 prep ACCEPTED: RC 94e9a9a (tree 94cfc8f3…), local tag v0.1.0, host loads plugin, browser rows PASS with MultiZen; push/tag left to Human — CLOSED
 - `DLF-010` — Client entry never loaded in the host (default export undefined at snapshot); fix + host-load regression test + re-QA bound into release batch; RC moves off e15d0a6 — ACTIVE
 - `DLF-009` — Human decisions after closeout: license MIT (DEF-004 TAKEN_UP), tag v0.1.0 + npm deferred (DEF-005 TAKEN_UP), MultiZen now reachable from the Lead runtime (DEF-003 stays OPEN until a QA batch) — RECORDED, not yet executed
@@ -192,3 +194,43 @@ Lead-only and never combined with code commits.
 **Reversal condition.** Human reports the pushed tag/branch differ from 94e9a9a, or a host release changes the interop loader → new DLF.
 
 **Supersedes / superseded by.** Closes DLF-010; amends DLF-007 (client acceptance now host-proven).
+
+### DLF-012 — Rewrite transport: temporary Paseo agent replaced by the provider's own headless CLI
+
+- Decided at: 2026-09-21
+- Decision owner: Lead, on a Human product directive ("gửi và nhận kết quả > rewrite lại là xong"; "CLI chạy Headless chỉ nhận kết quả")
+- Packet ID / AIT issue ID: none yet — implemented on the main checkout at Human instruction; a packet is owed before any release
+- Commit SHA at decision: working tree `c033eaf6e44d306ead1a22b260026ae1c424e7a0` on `main`, parent 1889333; not committed, not pushed
+
+**Production behavior.** A rewrite no longer creates a Paseo agent. `server/generation.ts` (workspace `agents.create` → `waitForFinish` → `archive`) is deleted, so no tab opens, no agent appears in the daemon, and no agent is archived. `server/rewrite.ts` resolves the provider to a CLI family and `server/cli/runner.ts` spawns that CLI headlessly in an empty temporary directory, reads the answer from stdout, and deletes the directory in `finally`. `Current agent model` keeps its meaning: the provider id and model id come from the same agent snapshot, and the CLI that runs them is the CLI Paseo already runs that provider with. `Dedicated model` is unchanged too: the selected provider/model is validated against the daemon catalog and then run through that provider's CLI.
+
+**CLI families.** `server/cli/family.ts` owns four: `pi`, `claude`, `codex`, `opencode`. A family owns its argv, its output parser, and how the prompt reaches the process. The prompt never appears in `argv` — `pi` receives an `@file` path, the other three receive stdin — so it is not readable from another user's `ps`. Every invocation disables ambient context and tool use: `pi --no-tools --no-context-files --no-skills --no-extensions --no-prompt-templates --no-session`, `claude -p --system-prompt ... --disallowedTools '*'`, `codex exec --sandbox read-only --skip-git-repo-check`, `opencode run --format json`.
+
+**Provider resolution.** `resolveFamily` maps a provider id to its family: the id itself (`pi`, `codex`) or a segment (`pi-peer` → `pi`, `codex-lead` → `codex`, `claude-review` → `claude`, `opencode-peer` → `opencode`), longest family id first. Settings gain `providerCli: Record<string, CliFamilyId>`, editable in the settings screen under `Provider CLI`, for a profile whose id does not name its CLI (for example `compat-peer`, which runs `opencode` through a wrapper). Resolution never guesses: an unmapped, unresolvable provider returns the new `unsupported_provider` error and no process is started.
+
+**New failure modes.** Two error codes join the rewrite RPC: `unsupported_provider` (no CLI family resolves for the provider) and `spawn_failed` (the CLI could not start). Existing codes are unchanged, and every failure still leaves the Composer text untouched. A timeout kills the whole process group, not only the direct child, so a CLI that spawns its own server cannot keep a run alive.
+
+**Evidence source.** Gate `artifacts/gates/c033eaf6e44d306ead1a22b260026ae1c424e7a0.log` REAL_EXIT:0 (16 files, 167 passed / 9 skipped); `npx tsc --noEmit` REAL_EXIT:0. Live CLI probe `scripts/probe-cli.ts` against installed CLIs — all four OK, all preserving `/Volumes/DataSSD/app/login.ts` and `npm run gate`: `pi` (deepseek-v4.1-flash) 2.3s, `opencode` (deepseek-v4.1-flash) 5.5s, `codex` (gpt-5.6-luna) 31.0s, `claude` (claude-haiku-4-5) 12.1s. Live daemon probe `scripts/probe-daemon.ts` through the installed plugin's `prompt-kit.rewrite` RPC: `pi-peer` 2.1s, `codex` 26.0s, `claude` 4.9s, `claude-review` 3.4s, each preserving both literals; `paseo ls` counted 53 agents before and 53 after, so no agent is created; the primary agent stayed `idle` and received no turn. Plugin reloaded on the daemon: `paseo plugin reload prompt-kit` → `running`, log shows `Plugin ready`.
+
+**Browser evidence.** MultiZen profile `20def08f-9a62-4932-9d49-f7c5ab12c6d0` ("Bờm"), artifacts `artifacts/qa/ui-20260921T1545Z/`, report `REPORT.md`. Plugin loads with no evaluation error; the settings screen renders and the new `Provider CLI` section lists one row per available provider. Exactly one visible pill; pressing it produced `rewrite start action=coding agentId=3a262737-…` then `rewrite success provider=claude model=claude-haiku-4-5 durationMs=15384` — the **dedicated** selection, not the agent's own `codex/gpt-5.6-luna`, which proves the dedicated path reaches a CLI. The Composer text was replaced (61 → 92 chars) and focus kept. **No Paseo agent was created**: `paseo ls` = 53 before and after, and the newest agent carrying the `prompt-kit: rewrite` label predates the run by two hours (`13:45:29Z` vs `15:45:54Z`). The primary conversation gained no turn (`fetchAgentTimeline` = the pre-existing 2 entries, none containing the rewritten text). Empty Composer performed no generation (log line count unchanged). An edit during the request was kept (` [EDITED-BY-HUMAN]`), so the stale-text refusal still holds. Reload left exactly one pill and one active Composer. **Not covered:** wall-clock improvement (the two runs took 15.4s and 76.2s, so a speed win is not demonstrated — `claude -p` startup dominates), the `codex`/`opencode` families through the UI, the `unsupported_provider` row, and the agent-switch row. Screenshots were captured but not visually inspected: the session's model cannot read images, so every row is asserted from the DOM and from `paseo plugin logs`, never from a PNG.
+
+**Not yet evidenced.** A packet is still owed before any release, and `unsupported_provider` has no UI row (unit tests only).
+
+**Reversal condition.** A Paseo release exposes a one-shot generation RPC, or lets a plugin set `internal: true` through `AgentSessionConfigSchema`, making a plugin-owned CLI spawn unnecessary → new DLF. A CLI family changes its JSON output shape and the probe cannot be repaired by adjusting one parser → new DLF.
+
+**Supersedes / superseded by.** Amends DLF-003 (the settings snapshot still travels in the RPC; the `agents.create` path it describes is gone), DLF-006 (validator, injection boundary and timeout semantics unchanged; the temporary-agent archive clause no longer applies), DLF-007 (busy re-entry, stale-text and fail-closed refusals unchanged; the runner's transport changed). `docs/IMPELEMENT_PLAN.md` §15 ("Temporary Agent Rewrite Backend") is superseded and remains an untracked local research document.
+
+### DLF-013 — HUMAN_DIRECTIVE: a probe uses a cheap model
+
+- Decided at: 2026-09-21
+- Decision owner: Human (directive), recorded by Lead
+- Packet ID / AIT issue ID: none — a standing constraint, not a packet
+- Commit SHA at decision: working tree `c033eaf6e44d306ead1a22b260026ae1c424e7a0`
+
+**Production behavior.** A live probe or smoke test uses a cheap model. Spending a frontier call to check that argv is correct, that a JSONL line parses, or that a temporary directory is removed tests nothing a cheap model does not also test. `scripts/probe-cli.ts` lists `claude-haiku-4-5`, `gpt-5.6-luna` and `deepseek-v4.1-flash`. The directive binds the probe only: the plugin runs whatever model the user selected, and no model restriction exists in `server/` or `shared/`.
+
+**Evidence source.** Human directive, 2026-09-21, after the DLF-012 probe ran `claude-fable-5-1` and `claude-sonnet-5` instead of the specified `claude-haiku-4-5`. The violation is recorded rather than hidden: both `scripts/probe-cli.ts` and `scripts/probe-daemon.ts` spent frontier calls before this entry. A model allowlist was briefly added to the probe and removed on the Human's correction that the runtime accepts any model; the constraint is recorded here instead of enforced in code.
+
+**Reversal condition.** Human withdraws the directive.
+
+**Supersedes / superseded by.** NONE

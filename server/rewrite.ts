@@ -1,6 +1,8 @@
 import type { RewriteError, RewriteOutput } from "../shared/rpc.js";
 import type { PromptKitSettings } from "../shared/settings.js";
-import { generateRewrite } from "./generation.js";
+import { resolveFamily, type CliFamily } from "./cli/family.js";
+import { runCliRewrite } from "./cli/runner.js";
+import type { CliSpawner } from "./cli/process.js";
 import { validateRewriteOutput } from "./output-validator.js";
 import type { PaseoApi } from "./paseo-types.js";
 import { readProviderCatalog } from "./provider-catalog.js";
@@ -18,6 +20,8 @@ export interface RewriteDependencies {
   settings: PromptKitSettings;
   /** Overrides the request timeout; tests use it to exercise the timeout path. */
   timeoutMs?: number;
+  /** Test seam: replaces the process spawner under the CLI runner. */
+  spawn?: CliSpawner;
 }
 
 interface ResolvedModel {
@@ -27,12 +31,8 @@ interface ResolvedModel {
 }
 
 type ResolvedTarget =
-  | { ok: true; model: ResolvedModel; cwd: string }
+  | { ok: true; model: ResolvedModel; family: CliFamily; cwd: string }
   | { ok: false; error: RewriteError };
-
-function toSelector(provider: string, model: string | null): string {
-  return model === null || model === "" ? provider : `${provider}/${model}`;
-}
 
 /**
  * The daemon's provider entry may already carry a `provider/model` selector; the
@@ -44,9 +44,17 @@ function splitSelector(value: string): { provider: string; model: string | null 
   return { provider: value.slice(0, separator), model: value.slice(separator + 1) };
 }
 
+function unsupported(provider: string): RewriteError {
+  return {
+    code: "unsupported_provider",
+    message: `No rewrite CLI is configured for provider "${provider}".`,
+  };
+}
+
 async function resolveCurrentAgent(
   paseo: PaseoApi,
   agentId: string,
+  providerMap: Readonly<Record<string, string>>,
 ): Promise<ResolvedTarget> {
   const refreshed = await paseo.agents.ref(agentId).refresh();
   if (!refreshed) {
@@ -61,8 +69,11 @@ async function resolveCurrentAgent(
   const agent = refreshed.agent;
   const selector = agent.runtimeInfo?.provider ?? agent.provider;
   const provider = selector.includes("/") ? splitSelector(selector).provider : selector;
+  const family = resolveFamily(provider, providerMap);
+  if (family === null) return { ok: false, error: unsupported(provider) };
   return {
     ok: true,
+    family,
     model: {
       provider,
       model: agent.model,
@@ -88,6 +99,9 @@ async function resolveDedicatedModel(
       },
     };
   }
+  const family = resolveFamily(provider, settings.providerCli);
+  if (family === null) return { ok: false, error: unsupported(provider) };
+
   let catalog: Awaited<ReturnType<typeof readProviderCatalog>>;
   try {
     catalog = await readProviderCatalog(paseo, cwd);
@@ -131,6 +145,7 @@ async function resolveDedicatedModel(
   }
   return {
     ok: true,
+    family,
     model: { provider, model, thinkingOptionId: thinking },
     cwd,
   };
@@ -145,7 +160,7 @@ export async function runRewrite(
   const settings = dependencies.settings;
   const timeoutMs = dependencies.timeoutMs ?? settings.timeoutMs;
 
-  const current = await resolveCurrentAgent(paseo, request.agentId);
+  const current = await resolveCurrentAgent(paseo, request.agentId, settings.providerCli);
   if (!current.ok) return { status: "error", error: current.error };
 
   const target =
@@ -154,15 +169,33 @@ export async function runRewrite(
       : await resolveDedicatedModel(paseo, settings, current.cwd);
   if (!target.ok) return { status: "error", error: target.error };
 
-  const generated = await generateRewrite(paseo, {
-    workspaceId: request.workspaceId,
-    provider: toSelector(target.model.provider, target.model.model),
-    thinkingOptionId: target.model.thinkingOptionId,
-    systemPrompt: request.systemPrompt,
-    taskPrompt: request.taskPrompt,
-    timeoutMs,
-  });
-  if (!generated.ok) return { status: "error", error: generated.error };
+  if (target.model.model === null || target.model.model === "") {
+    return {
+      status: "error",
+      error: {
+        code: "invalid_selection",
+        message: `The agent has no model selected for provider "${target.model.provider}".`,
+      },
+    };
+  }
+
+  const generated = await runCliRewrite(
+    {
+      family: target.family,
+      model: target.model.model,
+      thinkingOptionId: target.model.thinkingOptionId,
+      systemPrompt: request.systemPrompt,
+      taskPrompt: request.taskPrompt,
+      timeoutMs,
+    },
+    dependencies.spawn === undefined ? {} : { spawn: dependencies.spawn },
+  );
+  if (!generated.ok) {
+    return {
+      status: "error",
+      error: { code: generated.code, message: generated.message },
+    };
+  }
 
   const validated = validateRewriteOutput({
     originalPrompt: request.originalPrompt,

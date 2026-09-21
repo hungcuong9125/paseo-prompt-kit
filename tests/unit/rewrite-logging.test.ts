@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import contribute from "../../index.server.js";
 import { runRewrite } from "../../server/rewrite.js";
-import { createRewriteHarness, REWRITE_REQUEST, settings } from "../server/harness.js";
+import { cliStdout, createRewriteHarness, REWRITE_REQUEST, settings } from "../server/harness.js";
 
 interface CapturedLog {
   stream: "stdout" | "stderr";
@@ -46,36 +46,33 @@ describe("default logs carry no prompt or output content", () => {
   });
 
   // Fails if a log call ever gains the original prompt or the rewritten text.
-  it("logs ids and model fields only, never the prompt on the success path", async () => {
+  it("logs model fields only, never the prompt on the success path", async () => {
     const harness = createRewriteHarness({
-      finish: {
-        status: "idle",
-        lastMessage: `Sửa lỗi đăng nhập trong /tmp/app/login.ts. ${MARKER}_OUTPUT`,
-        error: null,
+      cliResult: {
+        stdout: cliStdout(`Sửa lỗi đăng nhập trong /tmp/app/login.ts. ${MARKER}_OUTPUT`),
       },
     });
     const output = await runRewrite(
       harness.paseo,
       { ...REWRITE_REQUEST, originalPrompt: PROMPT, taskPrompt: PROMPT },
-      { settings: await settings() },
+      { settings: await settings(), spawn: harness.spawn },
     );
     expect(output.status).toBe("ok");
 
     const text = loggedText(captured.logs);
     expect(text).not.toContain(MARKER);
     expect(text).not.toContain("/tmp/app/login.ts");
-    expect(text).toContain("temp-agent-1");
   });
 
   // Fails if an error path logs the prompt to help debugging.
   it("logs the error code only, never the prompt on a failure path", async () => {
     const harness = createRewriteHarness({
-      finish: { status: "error", lastMessage: null, error: "provider exploded" },
+      cliResult: { stdout: "", timedOut: true, exitCode: null },
     });
     const output = await runRewrite(
       harness.paseo,
       { ...REWRITE_REQUEST, originalPrompt: PROMPT, taskPrompt: PROMPT },
-      { settings: await settings() },
+      { settings: await settings(), spawn: harness.spawn },
     );
     expect(output.status).toBe("error");
     expect(loggedText(captured.logs)).not.toContain(MARKER);
@@ -104,11 +101,11 @@ describe("the registered rewrite handler", () => {
       on: () => () => undefined,
       before: () => () => undefined,
     };
-    contribute(server as never);
-
     const harness = createRewriteHarness({
-      finish: { status: "idle", lastMessage: "Sửa lỗi đăng nhập trong /tmp/app/login.ts.", error: null },
+      cliResult: { stdout: cliStdout("Sửa lỗi đăng nhập trong /tmp/app/login.ts.") },
     });
+    contribute(server as never, { spawn: harness.spawn });
+
     const handler = handlers.get("prompt-kit.rewrite");
     expect(handler).toBeDefined();
 

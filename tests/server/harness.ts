@@ -1,5 +1,6 @@
 import type { PaseoApi } from "@getpaseo/client";
 import { promptKitSettingsSchema, type PromptKitSettings } from "../../shared/settings.js";
+import type { CliRunInput, CliRunResult, CliSpawner } from "../../server/cli/process.js";
 
 export interface FakeAgent {
   id: string;
@@ -11,27 +12,6 @@ export interface FakeAgent {
   runtimeInfo: { provider: string } | undefined;
 }
 
-export interface CreatedAgent {
-  options: {
-    config: {
-      provider: string;
-      thinkingOptionId?: string;
-      systemPrompt?: string;
-    };
-    prompt?: string;
-    title?: string;
-    labels?: Record<string, string>;
-    autoArchive?: boolean;
-  };
-  finish: FinishResult;
-}
-
-export interface FinishResult {
-  status: "idle" | "error" | "permission" | "timeout";
-  lastMessage: string | null;
-  error: string | null;
-}
-
 export interface CatalogEntry {
   provider: string;
   available: boolean;
@@ -41,21 +21,51 @@ export interface CatalogEntry {
 
 export interface Harness {
   paseo: PaseoApi;
-  created: CreatedAgent[];
-  archived: string[];
+  /** The CLI process spawner, wired into `runRewrite` by the caller. */
+  spawn: CliSpawner;
+  /** Every CLI process the rewrite started, in order. */
+  spawned: CliRunInput[];
+  /** Working directories the runner was given; each is deleted after the run. */
+  scratchDirs: string[];
   /** Calls that would touch the primary conversation; must stay at ["refresh"]. */
   mainAgentCalls: string[];
 }
 
 export interface HarnessInput {
   agent?: Partial<FakeAgent>;
-  finish?: FinishResult;
   models?: CatalogEntry[];
   /** Simulates the provider RPC failing while the daemon is up. */
   catalogError?: Error;
-  /** Simulates archive() rejecting after the turn already produced a result. */
-  archiveError?: Error;
-  tempAgentId?: string;
+  /** Overrides the captured CLI result. */
+  cliResult?: Partial<CliRunResult>;
+}
+
+/** A CLI result shaped like a real `--mode json` run that answered successfully. */
+export function cliStdout(text: string): string {
+  return `${JSON.stringify({
+    type: "turn_end",
+    message: { role: "assistant", content: [{ type: "text", text }] },
+  })}\n`;
+}
+
+/**
+ * The output shape each CLI family actually emits, so a test that swaps the
+ * process spawner still exercises the family's real parser, not a stand-in.
+ */
+export function stdoutFor(command: string, text: string): string {
+  switch (command) {
+    case "claude":
+      return JSON.stringify({ type: "result", subtype: "success", result: text });
+    case "codex":
+      return `${JSON.stringify({
+        type: "item.completed",
+        item: { id: "item_0", type: "agent_message", text },
+      })}\n`;
+    case "opencode":
+      return `${JSON.stringify({ type: "text", part: { type: "text", text } })}\n`;
+    default:
+      return cliStdout(text);
+  }
 }
 
 export function createRewriteHarness(input: HarnessInput = {}): Harness {
@@ -69,12 +79,9 @@ export function createRewriteHarness(input: HarnessInput = {}): Harness {
     runtimeInfo: { provider: "pi-peer" },
     ...input.agent,
   };
-  const created: CreatedAgent[] = [];
-  const archived: string[] = [];
+  const spawned: CliRunInput[] = [];
+  const scratchDirs: string[] = [];
   const mainAgentCalls: string[] = [];
-  const finish: FinishResult =
-    input.finish ?? { status: "idle", lastMessage: "rewritten text", error: null };
-  const tempAgentId = input.tempAgentId ?? "temp-agent-1";
 
   const paseo = {
     agents: {
@@ -126,27 +133,22 @@ export function createRewriteHarness(input: HarnessInput = {}): Harness {
         };
       },
     },
-    workspaces: {
-      ref: () => ({
-        agents: {
-          create: async (options: CreatedAgent["options"]) => {
-            created.push({ options, finish });
-            return {
-              id: tempAgentId,
-              waitForFinish: async () => finish,
-              archive: async () => {
-                if (input.archiveError) throw input.archiveError;
-                archived.push(tempAgentId);
-                return { archivedAt: new Date().toISOString() };
-              },
-            };
-          },
-        },
-      }),
-    },
   } as unknown as PaseoApi;
 
-  return { paseo, created, archived, mainAgentCalls };
+  const spawn: CliSpawner = async (run) => {
+    spawned.push(run);
+    scratchDirs.push(run.cwd);
+    return {
+      stdout: stdoutFor(run.command, "rewritten text"),
+      stderr: "",
+      exitCode: 0,
+      timedOut: false,
+      truncated: false,
+      ...input.cliResult,
+    };
+  };
+
+  return { paseo, spawn, spawned, scratchDirs, mainAgentCalls };
 }
 
 export async function settings(overrides: Record<string, unknown> = {}): Promise<PromptKitSettings> {

@@ -3,13 +3,15 @@
 Current-state takeover index. History → `docs/exec-plans/`; decisions → `docs/decision-log.md`.
 
 - Framework revision: bundle delivered 2026-09-21 (protocol v1)
-- Updated at: 2026-09-21 12:20Z
+- Updated at: 2026-09-21 22:40Z
 - Active Lead: claude-lead / claude-fable-5-1 (Lead-of-record) — open batch paseo-prompt-kit-post-release-composer-bug
 - Repository HEAD: see `git log -1`; branch `main`; origin https://github.com/hungcuong9125/paseo-prompt-kit — public main f07b0c6, tag v0.1.0 → 94e9a9a (release evidence commit below is local until the next push)
 - AIT database: initialized (prefix `pk`, `.ait/ait.db`, ignored)
 - AIT graph snapshot: epics pk-UkLWZ, pk-OIJLh CLOSED; epic pk-98Fqg (composer selection bug) OPEN with task .1
 - AIT open: 2 (epic pk-98Fqg, task .1) — reconciled 2026-09-21
 - Active AIT issue IDs: pk-98Fqg.1 → Peer d3fa32ad-a177-4075-bd83-2c41964b3545 (pi-peer/workbuddy/deepseek-v4.1-flash high + MultiZen; investigate→implement→verify; write scope client/composer/**, client/pills/rewrite-runner.ts, agent-pills.ts, index.client.tsx wiring, tests) — dispatched 10:57Z, base 6e6a5e8 (code tree 94cfc8f3… = v0.1.0)
+- Rewrite transport (DLF-012, UNCOMMITTED on main): the temporary-agent path is GONE. `server/generation.ts` deleted; `server/rewrite.ts` resolves a provider to a CLI family and `server/cli/{family,process,runner}.ts` spawns that CLI headlessly. No tab, no agent, no archive. New settings field `providerCli`; new error codes `unsupported_provider`, `spawn_failed`. Evidence: gate `artifacts/gates/c033eaf6e44d306ead1a22b260026ae1c424e7a0.log` REAL_EXIT:0 (167 passed / 9 skipped); live CLI probe all 4 families OK; live daemon RPC probe OK, `paseo ls` 53→53. Browser QA PASSED (artifacts/qa/ui-20260921T1545Z/REPORT.md, MultiZen profile 20def08f): plugin loads, 1 pill, dedicated claude/claude-haiku-4-5 rewrite replaced the Composer text with focus kept, `paseo ls` 53->53 (no agent created), primary timeline gained no turn, empty Composer did nothing, edit-during-request kept, reload -> 1 pill. NOT demonstrated: any wall-clock win (15.4s/76.2s; claude -p startup dominates). No packet, no commit, no push — a packet and a browser QA pass are owed before release.
+- HUMAN_DIRECTIVE (DLF-013): a live probe or smoke test uses a cheap model. The plugin itself runs whatever model the user selected; never add a model allowlist to runtime code.
 - Handoff type: NONE
 - Active Peer disposition: d3fa32ad pk-98Fqg.1 on main (sole writer)
 - Heartbeat ID: 14dc4094 (lead-pk-bugfix-watch, */30 min, expires 2026-09-21T14:56Z)

@@ -16,6 +16,7 @@ import {
 } from "@getpaseo/plugin/client/ui";
 import { actionsListRpc, providerCatalogRpc, type ActionsListOutput, type ProviderCatalogOutput } from "../../shared/rpc.js";
 import { promptKitSettings, type PromptKitSettings } from "../../shared/settings.js";
+import { CLI_FAMILY_IDS, isCliFamilyId } from "../../shared/cli-families.js";
 import { enabledActions } from "../actions/enabled.js";
 import { validateDedicatedSelection } from "./selection.js";
 
@@ -116,6 +117,25 @@ export function PromptKitSettingsScreen({ theme }: PluginSurfaceProps) {
     setSaved(ok);
     if (ok) setDraft(null);
   }, [base, values, revision]);
+
+  /**
+   * Records that one Paseo provider is run by one CLI family.
+   *
+   * Paseo names most providers after their CLI (`pi-peer`, `codex-lead`), and
+   * the plugin resolves those on its own. An entry here is for a profile whose
+   * id does not say which CLI runs it; without one that provider is refused
+   * rather than guessed at.
+   */
+  const setProviderCli = useCallback(
+    (provider: string, family: string) => {
+      if (!values) return;
+      const next = { ...values.providerCli };
+      if (!isCliFamilyId(family)) delete next[provider];
+      else next[provider] = family;
+      update({ providerCli: next });
+    },
+    [update, values],
+  );
 
   if (settings.status === "loading") return <Text style={style}>Loading PromptKit settings…</Text>;
   if (settings.status !== "ready") {
@@ -231,6 +251,30 @@ export function PromptKitSettingsScreen({ theme }: PluginSurfaceProps) {
               disabled={disabled}
               onPress={loadProviders}
             />
+            <SettingsSection title="Provider CLI">
+              <Text style={muted}>
+                Paseo already runs each provider through its own CLI, and PromptKit drives that
+                same CLI headlessly. Most providers need no entry here: a profile named after its
+                CLI (`pi-peer`, `codex-lead`) resolves on its own. Map a provider below only when
+                its name does not say which CLI runs it. An unmapped provider is refused, never
+                guessed.
+              </Text>
+              {(providers ?? [])
+                .filter((provider) => provider.available)
+                .map((provider) => (
+                  <SettingsSelect
+                    key={provider.provider}
+                    label={provider.label}
+                    value={values.providerCli[provider.provider] ?? NONE}
+                    options={[
+                      { label: "Resolve from the provider id", value: NONE },
+                      ...CLI_FAMILY_IDS.map((family) => ({ label: family, value: family })),
+                    ]}
+                    disabled={disabled}
+                    onValueChange={(family) => setProviderCli(provider.provider, family)}
+                  />
+                ))}
+            </SettingsSection>
           </>
         ) : null}
         <SettingsInput

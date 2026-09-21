@@ -1,20 +1,25 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
-import { buildTaskPrompt } from "./shared/actions/wrapper.js";
-import { listActions, listRejectedPacks, resolveAction } from "./shared/actions/registry.js";
+import { listActions, listRejectedPacks } from "./shared/actions/registry.js";
 import {
   actionsListRpc,
   providerCatalogRpc,
   rewriteRpc,
   type ActionsListOutput,
   type ProviderCatalogOutput,
-  type RewriteOutput,
 } from "./shared/rpc.js";
 import { promptKitSettings } from "./shared/settings.js";
 import { readProviderCatalog } from "./server/provider-catalog.js";
-import { runRewrite } from "./server/rewrite.js";
+import { createRewriteHandler, type RewriteHandlerDependencies } from "./server/rewrite-handler.js";
 import { pluginLog } from "./server/log.js";
 
-export default function contribute(server: PluginServerContext) {
+/**
+ * The composition root. `dependencies` exists so a test can drive the rewrite
+ * RPC without launching a real CLI; the host calls this with one argument.
+ */
+export default function contribute(
+  server: PluginServerContext,
+  dependencies: RewriteHandlerDependencies = {},
+) {
   server.registerSettings(promptKitSettings);
 
   const rejected = listRejectedPacks();
@@ -25,47 +30,7 @@ export default function contribute(server: PluginServerContext) {
     );
   }
 
-  server.handle(rewriteRpc, async (input, { paseo }) => {
-    const action = resolveAction(input.actionId);
-    if (action === null) {
-      pluginLog.error({ action: input.actionId }, "rewrite refused: unknown action");
-      return {
-        status: "error",
-        error: {
-          code: "unknown_action",
-          message: `No action pack provides "${input.actionId}".`,
-        },
-      } satisfies RewriteOutput;
-    }
-
-    pluginLog.info({ action: input.actionId, agentId: input.agentId }, "rewrite start");
-
-    const output = await runRewrite(
-      paseo,
-      {
-        agentId: input.agentId,
-        workspaceId: input.workspaceId,
-        systemPrompt: action.systemPrompt,
-        originalPrompt: input.originalPrompt,
-        taskPrompt: buildTaskPrompt(action, input.originalPrompt),
-      },
-      { settings: input.settings },
-    );
-    if (output.status === "ok") {
-      pluginLog.info(
-        {
-          action: input.actionId,
-          provider: output.model.provider,
-          model: output.model.model,
-          durationMs: output.durationMs,
-        },
-        "rewrite success",
-      );
-    } else {
-      pluginLog.error({ action: input.actionId, code: output.error.code }, "rewrite failed");
-    }
-    return output satisfies RewriteOutput;
-  });
+  server.handle(rewriteRpc, createRewriteHandler(dependencies));
 
   server.handle(actionsListRpc, () => {
     return {
