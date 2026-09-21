@@ -49,8 +49,8 @@ Settings are host-scoped and persist across plugin reload.
 
 ## Limitations
 
-- Desktop and Web only. Mobile is unsupported in this version: Paseo 0.8.0 exposes no plugin API for Composer text, so PromptKit attaches to the Desktop/Web Composer DOM.
-- Requires Paseo `>=0.8.0`. Because placement depends on the Composer DOM, a Paseo UI change can break it even when the public plugin SDK is compatible.
+- Desktop and Web only. Mobile is unsupported in this version: Paseo 0.8.0 exposes no plugin API for Composer text, so PromptKit reads and replaces the text through the Desktop/Web Composer DOM. The pill itself uses the official Composer pill API.
+- Requires Paseo `>=0.8.0`. Because text access depends on the Composer DOM, a Paseo UI change can break it even when the public plugin SDK is compatible.
 - No auto-send. PromptKit only replaces the Composer text; you send the message.
 - PromptKit refuses to replace text you edited while a rewrite was running, and refuses when more than one Composer (or none) is visible.
 - One action in this version: `Improve coding prompt`.
