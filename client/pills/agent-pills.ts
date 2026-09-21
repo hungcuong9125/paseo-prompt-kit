@@ -77,6 +77,18 @@ export function registerAgentPills(
   >();
   let cancelled = false;
 
+  // The registry is fixed for the life of a registration, so it is read once per
+  // session: an agent directory of N agents must not issue N identical RPCs.
+  let actionsPromise: Promise<readonly ActionSummary[]> | null = null;
+  function loadActionsOnce(): Promise<readonly ActionSummary[]> {
+    actionsPromise ??= dependencies.listActions().catch((error: unknown) => {
+      // Do not cache a failure: the next agent may still register.
+      actionsPromise = null;
+      throw error;
+    });
+    return actionsPromise;
+  }
+
   function remove(agentId: string): void {
     const entry = entries.get(agentId);
     if (!entry) return;
@@ -96,7 +108,7 @@ export function registerAgentPills(
     // rather than a pill whose enabled set is unknown.
     let actions: readonly ActionSummary[];
     try {
-      actions = await dependencies.listActions();
+      actions = await loadActionsOnce();
     } catch (error) {
       console.error("[prompt-kit] failed to list actions", error);
       return;

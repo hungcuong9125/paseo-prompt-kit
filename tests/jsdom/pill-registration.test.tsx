@@ -177,3 +177,43 @@ describe("settings changes are not observed live (SDK 0.8.0 limitation)", () => 
     cleanup();
   });
 });
+
+describe("registry read economy", () => {
+  it("reads the action registry once for a directory of many agents", async () => {
+    // The registry is fixed for the life of a registration; issuing one RPC per
+    // agent would make a large directory quadratic on the daemon.
+    const agents = Array.from({ length: 5 }, (_, index) => ({
+      id: `agent-${index}`,
+      workspaceId: `ws-${index}`,
+    }));
+    const listActions = vi.fn(async () => [
+      { id: "coding", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I" },
+    ]);
+    const fake = createFakeClient({
+      agents,
+      rpc: async (method) => {
+        if (method === "settings.prompt-kit.read") {
+          return { status: "ready", revision: "r1", values: promptKitSettingsSchema.parse({}) };
+        }
+        throw new Error(`unexpected rpc ${method}`);
+      },
+    });
+    // Drive the same entry point the plugin uses, with a counting listActions.
+    const { registerAgentPills } = await import("../../client/pills/agent-pills.js");
+    const cleanup = registerAgentPills(
+      fake.client,
+      () => async () => {},
+      {
+        listActions,
+        readSettings: async () => ({
+          status: "ready",
+          values: promptKitSettingsSchema.parse({}),
+        }),
+      },
+    );
+    await flush();
+    expect(fake.live()).toHaveLength(5);
+    expect(listActions).toHaveBeenCalledTimes(1);
+    cleanup();
+  });
+});
