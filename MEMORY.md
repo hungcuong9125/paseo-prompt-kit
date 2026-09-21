@@ -21,7 +21,7 @@ Current-state takeover index. History → `docs/exec-plans/`; decisions → `doc
 - Accepted commits on main: 76992b4 (.1 skeleton+contracts), f7e27ed (.3 server), 32c77c0 (.2 client), ef88e5e + 1005d68 (README), 71b1b5f (F2 server types). Gate: artifacts/gates/9fd26b0499f096c4933786124ead0a825756fc53.log REAL_EXIT:0 (118 tests, live-daemon ran).
 - Daemon state: plugin `prompt-kit` installed from Git (`--ref main` → 71b1b5f) and running; switch back to directory install with `paseo plugin install /Volumes/DataSSD/HomeWork/PLUGIN/paseo-prompt-kit`.
 - Target Paseo 0.8.0 (installed); upstream clone is 0.9.0-beta.2 — installed packages win (DLF-003).
-- Human decisions received post-closeout (DLF-009): license MIT, tag v0.1.0, npm deferred — NOT executed yet; they form the next bounded release batch (LICENSE + package.json license + tag v0.1.0 + push). Lead cannot push/tag from its seat: the release Peer does. MultiZen MCP is now available in the Lead runtime (profile 20def08f-9a62-4932-9d49-f7c5ab12c6d0, isRunning=false) — browser QA only in a new batch on the Human's instruction.
+- Human decisions received post-closeout (DLF-009): license MIT, tag v0.1.0, npm deferred — NOT executed yet; they form the next bounded release batch (LICENSE + package.json license + tag v0.1.0 + push). Lead cannot push/tag from its seat: the release Peer does. MultiZen MCP is available in the Lead runtime and, per HUMAN_DIRECTIVE 2026-09-21, on pi-peer seats (Deepseek) via npm:pi-mcp-adapter with bearer auth from the seat env (tools `multizen-mcp_*`: list_tabs, evaluate_js, get_cookies, …). Browser QA batch, when assigned, routes to `pi-peer/workbuddy/deepseek-v4.1-flash` and the dispatch must open with a capability check (list MultiZen tools; BLOCKED if absent) and never carry a token. Profile 20def08f-9a62-4932-9d49-f7c5ab12c6d0 (Bờm), isRunning=false at last report.
 - Browser QA: BLOCKED — no seat has MultiZen MCP (DEF-003).
 
 ## Upstream research pins (local only, never committed)
@@ -33,7 +33,7 @@ Current-state takeover index. History → `docs/exec-plans/`; decisions → `doc
 - `git worktree` and `git push` are denied on the Lead seat: worktrees via Paseo `create_workspace`, pushes via a Peer that holds the main checkout.
 - pi-peer at `low` thinking can degenerate into a prose loop with no tool calls after a mid-task re-prompt (seat 49d1e9f6); replacement at `high` finished cleanly.
 - The managed Git checkout has no `node_modules`: server code may import only host SDK specifiers (`@getpaseo/plugin*`); type-only imports from `@getpaseo/client` break `paseo plugin install <git>` (F2).
-- No seat in the room has an MCP browser client; browser QA needs a Human-provided seat.
+- Browser QA capability arrived after closeout: pi-peer + MultiZen MCP (Human-configured); Claude/Codex peers still lack it.
 
 ## Takeover instructions
 
