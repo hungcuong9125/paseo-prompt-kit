@@ -9,7 +9,7 @@ export interface FakeAgent {
   thinkingOptionId: string | null;
   effectiveThinkingOptionId: string | null;
   cwd: string;
-  runtimeInfo: { provider: string } | undefined;
+  runtimeInfo: { provider: string; model?: string | null } | undefined;
 }
 
 export interface CatalogEntry {

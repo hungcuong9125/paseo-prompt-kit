@@ -10,6 +10,7 @@ Lead-only and never combined with code commits.
 
 ## Current index
 
+- `DLF-014` — The two rewrite paths separated: current path reads the model the Composer shows (`runtimeInfo.model` first), dedicated path unchanged; daemon's 30s plugin-RPC cap measured and recorded as DEF-008 — ACTIVE
 - `DLF-013` — HUMAN_DIRECTIVE: live probes and smoke tests use cheap models; a probe never spends a frontier call — ACTIVE
 - `DLF-012` — Rewrite transport replaced: temporary Paseo agent → headless CLI of the agent's own provider; `server/generation.ts` deleted; new `unsupported_provider`/`spawn_failed` errors; settings gain `providerCli` — ACTIVE
 - `DLF-011` — Release 0.1.0 prep ACCEPTED: RC 94e9a9a (tree 94cfc8f3…), local tag v0.1.0, host loads plugin, browser rows PASS with MultiZen; push/tag left to Human — CLOSED
@@ -234,3 +235,28 @@ Lead-only and never combined with code commits.
 **Reversal condition.** Human withdraws the directive.
 
 **Supersedes / superseded by.** NONE
+
+### DLF-014 — The two rewrite paths separated: the Composer's own model, or a dedicated model, both through the provider's CLI
+
+- Decided at: 2026-09-21
+- Decision owner: Lead, on a Human instruction ("tách thành các đường riêng: 1. lấy model đang hiển thị ở mục chat, 2. thiết lập model chỉ định")
+- Packet ID / AIT issue ID: none yet — amends DLF-012 on the main checkout; the packet DLF-012 owes covers this too
+- Commit SHA at decision: working tree `bff9dc19bee113d1650eef7c09578ddd197fcabf` on `main`, parent 0926ea2; not committed, not pushed
+
+**Production behavior.** The two rewrite paths DLF-012 left in one function are now separate in what they read, and the current-model path reads the same field the host's own model control reads. `server/rewrite.ts` keeps `resolveCurrentAgent` and `resolveDedicatedModel` as the two resolvers; `settings.modelMode` (`current` | `dedicated`) selects one, and only one, per request. Neither path falls through to the other.
+
+**Current path reads the Composer's model.** Paseo resolves the model its Composer control displays from `runtimeInfo.model` first and only then from the configured model (`packages/app/src/composer/agent-controls/utils.ts`, `resolvePreferredModelId`: `runtimeSelectedModel?.id ?? normalizedConfiguredModelId ?? normalizedRuntimeModelId`). `resolveCurrentAgent` now does the same: `runtimeInfo.model`, else `agent.model`, with an empty or whitespace-only runtime value treated as absent. `runtimeInfo.model` is what the provider's own session reports (`agent-manager.ts` `refreshRuntimeInfo` → `session.getRuntimeInfo()`), so it is the value that can differ from `config.model` when a CLI picks its own default or switches model mid-session. Reading `agent.model` alone would run a model the user is not looking at, or refuse a rewrite for an agent whose Composer visibly shows one. The thinking option was already correct and is unchanged: `effectiveThinkingOptionId ?? thinkingOptionId`, which is exactly the host's `resolveEffectiveThinkingOptionId`.
+
+**Dedicated path.** Unchanged from DLF-012: `dedicatedProvider`/`dedicatedModel`/`dedicatedThinkingOptionId` are validated against the daemon's own catalog (provider available → model listed → thinking option listed) and run through that provider's CLI, whatever CLI the primary agent uses. A selection that fails any check returns `invalid_model` and starts no process.
+
+**The daemon's 30s ceiling, measured.** `@getpaseo/server` rejects any `plugin.rpc.invoke` after `REQUEST_TIMEOUT_MS = 30_000` (`plugins/runtime.ts`, read out of the installed Paseo 0.8.0 `app.asar`). Both the UI pill and the RPC probe travel that path, so a rewrite that outlives 30s fails in the host with `Plugin RPC timed out` before the plugin's own `timeoutMs` (default 90_000, max 600_000) can fire. Cold runs measured on this machine: `pi` 2.8s, `claude` 6.9s, `opencode` 36.3s, `codex` 41.4s — the last two above the cap. The CLI runner still kills the process tree at its own timeout, so nothing is leaked; only the reported failure is the wrong one. Recorded as DEF-008.
+
+**Evidence source.** Gate `artifacts/gates/bff9dc19bee113d1650eef7c09578ddd197fcabf.log` REAL_EXIT:0 (16 files, 183 passed, live-daemon rows included). Live two-path run `artifacts/qa/live-two-paths-20260921T1710Z.log`, primary agent `5ac80125-…` (`pi/workbuddy/deepseek-v4.1-flash`, cwd `~/Developer/zTESTING/test-model`), 13 passed: current path reported `provider=pi model=workbuddy/deepseek-v4.1-flash` (the agent's own model) at 2.0s; dedicated rows resolved one cheap model per family — `claude/claude-haiku-4-5` 12.4s, `codex/gpt-5.6-luna` 8.3s, `pi/workbuddy/deepseek-v4.1-flash` 2.9s, `opencode/workbuddy/deepseek-v4.1-flash` 3.8s. Every row asserted the agent set is unchanged across the call (`agentsBefore=136 agentsAfter=136`, plus no agent created in the workspace since the row started, plus no `prompt-kit: rewrite` label gained) and that the primary timeline gained no turn — the DLF-012 claim, now asserted by the tests instead of by a report. Failure rows: `invalid_model` (`pi-peer/model-that-does-not-exist-9f31`), `unsupported_provider` (`grok`), `timeout` at a 1s budget, each with no agent created. Language and protected-literal rows unchanged. Unit evidence for the current path: `tests/unit/rewrite.test.ts` gains three cases — the runtime model wins over the configured one and reaches argv, the runtime model is used when no configured model exists, and an empty runtime string falls back to the configured model. `npx tsc --noEmit` REAL_EXIT:0.
+
+**Probe budget.** Every live row spends a cheap model only (`claude-haiku-4-5`, `gpt-5.6-luna`, `workbuddy/deepseek-v4.1-flash`), per DLF-013. The list is a probe budget, not a runtime allowlist: `server/` and `shared/` still accept whatever model the user selected, and a family whose cheap model the catalog cannot confirm is skipped rather than substituted.
+
+**Not yet evidenced.** The `unsupported_provider` and `invalid_model` rows have no UI evidence (RPC only). No wall-clock comparison against the deleted temporary-agent transport. `codex` and `opencode` still cannot complete a browser row on a cold CLI because of the 30s cap (DEF-008). A packet is still owed.
+
+**Reversal condition.** Paseo's model control stops preferring `runtimeInfo.model`, or `AgentRuntimeInfo.model` is removed → the current path reads the configured model again. Upstream raises `REQUEST_TIMEOUT_MS` for `plugin.rpc.invoke`, or the rewrite stops being a single RPC → DEF-008 changes shape.
+
+**Supersedes / superseded by.** Amends DLF-012 (the transport, the families, the resolver split and the fail-closed rules are unchanged; the current path's model source and the live-test shape change).

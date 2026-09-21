@@ -51,6 +51,22 @@ function unsupported(provider: string): RewriteError {
   };
 }
 
+/**
+ * The model the Composer's model control is showing.
+ *
+ * Paseo resolves that control from `runtimeInfo.model` first and only falls back
+ * to the configured model (`composer/agent-controls/utils.ts`,
+ * `resolvePreferredModelId`). The runtime value is what the provider's own
+ * session reports, so it is the one that can differ from `config.model` when a
+ * CLI selects its own default or switches model mid-session. Reading the
+ * configured value alone would refuse a rewrite for an agent whose Composer
+ * visibly shows a model.
+ */
+function runtimeModel(agent: { runtimeInfo?: { model?: string | null } | null }): string | null {
+  const model = agent.runtimeInfo?.model;
+  return typeof model === "string" && model.trim() !== "" ? model : null;
+}
+
 async function resolveCurrentAgent(
   paseo: PaseoApi,
   agentId: string,
@@ -76,7 +92,9 @@ async function resolveCurrentAgent(
     family,
     model: {
       provider,
-      model: agent.model,
+      model: runtimeModel(agent) ?? agent.model,
+      // `effectiveThinkingOptionId` is the host's own resolution: the runtime
+      // option when the session reported one, otherwise the configured option.
       thinkingOptionId: agent.effectiveThinkingOptionId ?? agent.thinkingOptionId ?? null,
     },
     cwd: agent.cwd,

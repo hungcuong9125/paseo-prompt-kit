@@ -9,6 +9,16 @@ const DAEMON_URL = process.env.PASEO_DAEMON_URL ?? "ws://127.0.0.1:6767/ws";
 const PLUGIN_ID = "prompt-kit";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const REWRITE_LABELS = { "prompt-kit": "rewrite" };
+/** `fetchAgents` rejects a page larger than 200; `allAgents` walks the cursor. */
+const PAGE_LIMIT = 200;
+/**
+ * The daemon's own ceiling on one plugin RPC call, in the installed Paseo 0.8.0.
+ *
+ * `packages/server/src/server/plugins/runtime.ts` rejects a `plugin.rpc.invoke`
+ * after `REQUEST_TIMEOUT_MS`, so a rewrite that outlives it fails in the host no
+ * matter what `timeoutMs` the settings hold. A live row has to fit inside it.
+ */
+const DAEMON_RPC_CAP_MS = 30_000;
 const VIETNAMESE_LETTERS = /[ăâđêôơư]/i;
 
 interface RewriteResult {
@@ -30,12 +40,34 @@ interface CatalogProvider {
   models: CatalogModel[];
 }
 
+/**
+ * The models a live probe is allowed to spend (HUMAN_DIRECTIVE, DLF-013).
+ *
+ * This is a probe budget, not a runtime allowlist: `server/` and `shared/` run
+ * whatever model the user selected. One entry per CLI family, so the matrix
+ * proves all four families without a frontier call.
+ */
+const CHEAP_MODELS = [
+  { provider: "claude", model: "claude-haiku-4-5" },
+  { provider: "codex", model: "gpt-5.6-luna" },
+  { provider: "pi", model: "workbuddy/deepseek-v4.1-flash" },
+  { provider: "opencode", model: "workbuddy/deepseek-v4.1-flash" },
+] as const;
+
+interface DedicatedTarget {
+  provider: string;
+  model: string;
+  thinkingOptionId: string | null;
+}
+
 let client: DaemonClient | null = null;
 let unavailableReason: string | null = null;
 let primaryAgentId: string | null = null;
 let primaryWorkspaceId: string | null = null;
+let primaryCwd: string | null = null;
+let primaryModel: { provider: string; model: string | null } | null = null;
 let baseSettings: PromptKitSettings | null = null;
-let dedicated: { provider: string; model: string; thinkingOptionId: string | null } | null = null;
+let dedicatedTargets: readonly DedicatedTarget[] = [];
 
 /**
  * A marker in the shape the protected-literal extractor ignores, so a test can trace
@@ -67,8 +99,12 @@ beforeAll(async () => {
       return;
     }
     primaryWorkspaceId = refreshed.agent.workspaceId ?? null;
-    const cwd = refreshed.agent.cwd ?? null;
-    if (!primaryWorkspaceId || !cwd) {
+    primaryCwd = refreshed.agent.cwd ?? null;
+    primaryModel = {
+      provider: refreshed.agent.provider,
+      model: refreshed.agent.runtimeInfo?.model ?? refreshed.agent.model ?? null,
+    };
+    if (!primaryWorkspaceId || !primaryCwd) {
       unavailableReason = `primary agent has no workspaceId/cwd: ${agentId}`;
       return;
     }
@@ -76,15 +112,22 @@ beforeAll(async () => {
     const parsed = await promptKitSettingsSchema.parseAsync(
       (stored as { values?: unknown }).values ?? {},
     );
-    baseSettings = { ...parsed, timeoutMs: 120_000 };
+    // The daemon hard-caps a plugin RPC at 30s (`plugins/runtime.ts`,
+    // REQUEST_TIMEOUT_MS = 30_000 in the installed 0.8.0), and that cap fires
+    // before the plugin's own `timeoutMs` can. A live row must therefore stay
+    // under it, which is why the matrix is one cheap model per family and the
+    // budget is the daemon's, not the setting's.
+    baseSettings = { ...parsed, timeoutMs: DAEMON_RPC_CAP_MS };
 
     await installPlugin(client);
 
     const catalogOutput = (await client.invokePluginRpc(PLUGIN_ID, "prompt-kit.providers", {
-      cwd,
+      cwd: primaryCwd,
     })) as { providers: CatalogProvider[] };
-    dedicated = pickDedicatedModel(catalogOutput.providers, refreshed.agent.model ?? null);
-    if (!dedicated) unavailableReason = "catalog exposes no available dedicated model";
+    dedicatedTargets = resolveDedicatedTargets(catalogOutput.providers);
+    if (dedicatedTargets.length === 0) {
+      unavailableReason = "catalog exposes no available cheap model from the probe budget";
+    }
   } catch (error) {
     unavailableReason = `${DAEMON_URL} unusable: ${
       error instanceof Error ? error.message : String(error)
@@ -96,23 +139,25 @@ afterAll(async () => {
   await client?.close().catch(() => undefined);
 });
 
-function pickDedicatedModel(
-  providers: CatalogProvider[],
-  currentModel: string | null,
-): { provider: string; model: string; thinkingOptionId: string | null } | null {
-  const preferred = providers.find((entry) => entry.provider === "pi-peer" && entry.available);
-  const ordered = [preferred, ...providers.filter((entry) => entry.available && entry !== preferred)];
-  for (const entry of ordered) {
-    if (!entry) continue;
-    const candidate = entry.models.find((model) => model.id !== currentModel) ?? entry.models[0];
-    if (!candidate) continue;
-    return {
-      provider: entry.provider,
-      model: candidate.id,
-      thinkingOptionId: candidate.thinkingOptions[0]?.id ?? null,
-    };
+/**
+ * Narrows the probe budget to what this daemon actually offers, and refuses to
+ * substitute anything else. A target the catalog cannot confirm is dropped, so
+ * the matrix shrinks rather than spending a call on an unlisted model.
+ */
+function resolveDedicatedTargets(providers: CatalogProvider[]): DedicatedTarget[] {
+  const targets: DedicatedTarget[] = [];
+  for (const wanted of CHEAP_MODELS) {
+    const entry = providers.find((candidate) => candidate.provider === wanted.provider);
+    if (!entry?.available) continue;
+    const model = entry.models.find((candidate) => candidate.id === wanted.model);
+    if (!model) continue;
+    targets.push({
+      provider: wanted.provider,
+      model: wanted.model,
+      thinkingOptionId: model.thinkingOptions[0]?.id ?? null,
+    });
   }
-  return null;
+  return targets;
 }
 
 async function installPlugin(daemon: DaemonClient): Promise<void> {
@@ -137,36 +182,72 @@ async function rewrite(
   originalPrompt: string,
   overrides: Partial<PromptKitSettings> = {},
 ): Promise<RewriteResult> {
+  // The saved document is the user's, not the test's: the probe starts from the
+  // current-model path and a test that wants the dedicated one says so. Without
+  // this the result would depend on whichever mode the machine happens to hold.
+  const settings: PromptKitSettings = {
+    ...baseSettings!,
+    modelMode: "current",
+    dedicatedProvider: null,
+    dedicatedModel: null,
+    dedicatedThinkingOptionId: null,
+    ...overrides,
+  };
   const output = await client!.invokePluginRpc(PLUGIN_ID, "prompt-kit.rewrite", {
     actionId: "coding",
     agentId: primaryAgentId,
     workspaceId: primaryWorkspaceId,
     originalPrompt,
-    settings: { ...baseSettings!, ...overrides },
+    settings,
   });
   return output as RewriteResult;
 }
 
-interface TempAgentRow {
-  id: string;
-  archivedAt: string | null;
-  status: string;
+/**
+ * Every agent the daemon knows, archived included.
+ *
+ * A rewrite runs a CLI in a scratch directory and never calls `agents.create`,
+ * so this set is the object a "no agent was created" claim is made against.
+ */
+async function allAgents(): Promise<{ id: string; cwd: string; createdAt: string }[]> {
+  const rows: { id: string; cwd: string; createdAt: string }[] = [];
+  let cursor: string | null = null;
+  do {
+    const listed = await client!.fetchAgents({
+      filter: {},
+      page: cursor === null ? { limit: PAGE_LIMIT } : { limit: PAGE_LIMIT, cursor },
+    });
+    rows.push(
+      ...listed.entries.map((entry) => ({
+        id: entry.agent.id,
+        cwd: entry.agent.cwd,
+        createdAt: entry.agent.createdAt,
+      })),
+    );
+    cursor = listed.pageInfo?.hasMore ? (listed.pageInfo.nextCursor ?? null) : null;
+  } while (cursor !== null);
+  return rows;
 }
 
-async function rewriteAgents(): Promise<TempAgentRow[]> {
+async function allAgentIds(): Promise<Set<string>> {
+  return new Set((await allAgents()).map((agent) => agent.id));
+}
+
+/** Agents the daemon created in this workspace after `since`; must stay empty. */
+async function agentsCreatedSince(since: string): Promise<string[]> {
+  return (await allAgents())
+    .filter((agent) => agent.cwd === primaryCwd)
+    .filter((agent) => agent.createdAt >= since)
+    .map((agent) => agent.id);
+}
+
+/** The labelled agents the deleted temporary-agent transport used to create. */
+async function labelledRewriteAgentIds(): Promise<Set<string>> {
   const listed = await client!.fetchAgents({
     filter: { labels: REWRITE_LABELS, includeArchived: true },
-    page: { limit: 100 },
+    page: { limit: PAGE_LIMIT },
   });
-  return listed.entries.map((entry) => ({
-    id: entry.agent.id,
-    archivedAt: entry.agent.archivedAt ?? null,
-    status: entry.agent.status,
-  }));
-}
-
-async function newRewriteAgents(beforeIds: ReadonlySet<string>): Promise<TempAgentRow[]> {
-  return (await rewriteAgents()).filter((agent) => !beforeIds.has(agent.id));
+  return new Set(listed.entries.map((entry) => entry.agent.id));
 }
 
 async function primaryTimelineContains(needle: string): Promise<boolean> {
@@ -182,60 +263,80 @@ function expectOk(result: RewriteResult): string {
   return text;
 }
 
-describe("live daemon: temporary-agent rewrite", () => {
-  // Fails if the current-model path stops resolving the primary agent's model.
-  it("rewrites with the current model and archives the temporary agent", async (context) => {
+describe("live daemon: current model path", () => {
+  // Fails if the current-model path stops resolving the model the Composer shows.
+  it("rewrites with the primary agent's own model and creates no agent", async (context) => {
     if (!requireLive(context)) return;
     const tag = marker("current");
-    const before = new Set((await rewriteAgents()).map((agent) => agent.id));
+    const startedAt = new Date().toISOString();
+    const beforeAgents = await allAgentIds();
+    const beforeLabelled = await labelledRewriteAgentIds();
 
     const result = await rewrite(`sửa lỗi đăng nhập giúp tôi (${tag})`);
     expectOk(result);
 
-    const created = await newRewriteAgents(before);
-    expect(created).toHaveLength(1);
-    expect(created[0]?.archivedAt).toBeTruthy();
-    expect(created[0]?.status).not.toBe("running");
+    // The model reported is the primary agent's own provider and model.
+    expect(result.model?.provider).toBe(primaryModel?.provider);
+    expect(result.model?.model).toBe(primaryModel?.model);
+
+    // The transport creates nothing: no new agent anywhere, and no labelled agent.
+    expect(await agentsCreatedSince(startedAt)).toEqual([]);
+    expect(await allAgentIds()).toEqual(beforeAgents);
+    expect(await labelledRewriteAgentIds()).toEqual(beforeLabelled);
+    // The primary conversation is never written to.
     expect(await primaryTimelineContains(tag)).toBe(false);
     console.log(
-      `[live-current] tempAgent=${created[0]?.id} archivedAt=${created[0]?.archivedAt} ` +
-        `status=${created[0]?.status} durationMs=${result.durationMs}`,
+      `[live-current] provider=${result.model?.provider} model=${result.model?.model} ` +
+        `agentsBefore=${beforeAgents.size} agentsAfter=${beforeAgents.size} durationMs=${result.durationMs}`,
     );
   });
+});
 
-  // Fails if the dedicated path ignores the selected provider/model.
-  it("rewrites with an available dedicated model and archives the temporary agent", async (context) => {
-    if (!requireLive(context) || !dedicated) {
-      context.skip(unavailableReason ?? "no dedicated model");
-      return;
-    }
-    const tag = marker("dedicated");
-    const before = new Set((await rewriteAgents()).map((agent) => agent.id));
+describe("live daemon: dedicated model path", () => {
+  // One row per CLI family. Fails if a family is unreachable, if the dedicated
+  // selection is ignored, or if a rewrite starts creating Paseo agents again.
+  for (const wanted of CHEAP_MODELS) {
+    it(`rewrites through the ${wanted.provider} CLI with ${wanted.model} and creates no agent`, async (context) => {
+      if (!requireLive(context)) return;
+      const target = dedicatedTargets.find((candidate) => candidate.provider === wanted.provider);
+      if (!target) {
+        context.skip(`catalog has no available ${wanted.provider}/${wanted.model}`);
+        return;
+      }
+      const tag = marker(`dedicated-${wanted.provider}`);
+      const startedAt = new Date().toISOString();
+      const beforeAgents = await allAgentIds();
 
-    const result = await rewrite(`fix the login bug (${tag})`, {
-      modelMode: "dedicated",
-      dedicatedProvider: dedicated.provider,
-      dedicatedModel: dedicated.model,
-      dedicatedThinkingOptionId: dedicated.thinkingOptionId,
+      const result = await rewrite(`fix the login bug (${tag})`, {
+        modelMode: "dedicated",
+        dedicatedProvider: target.provider,
+        dedicatedModel: target.model,
+        dedicatedThinkingOptionId: target.thinkingOptionId,
+      });
+      expectOk(result);
+
+      expect(result.model?.provider).toBe(target.provider);
+      expect(result.model?.model).toBe(target.model);
+      expect(await agentsCreatedSince(startedAt)).toEqual([]);
+      expect(await allAgentIds()).toEqual(beforeAgents);
+      expect(await primaryTimelineContains(tag)).toBe(false);
+      console.log(
+        `[live-dedicated] provider=${target.provider} model=${target.model} ` +
+          `agents=${beforeAgents.size} durationMs=${result.durationMs}`,
+      );
     });
-    expectOk(result);
+  }
 
-    expect(result.model?.provider).toBe(dedicated.provider);
-    expect(result.model?.model).toBe(dedicated.model);
-    const created = await newRewriteAgents(before);
-    expect(created).toHaveLength(1);
-    expect(created[0]?.archivedAt).toBeTruthy();
-    expect(await primaryTimelineContains(tag)).toBe(false);
-    console.log(
-      `[live-dedicated] provider=${dedicated.provider}/${dedicated.model} ` +
-        `tempAgent=${created[0]?.id} archivedAt=${created[0]?.archivedAt} durationMs=${result.durationMs}`,
-    );
-  });
+  // The "dedicated selection wins over the agent's own provider" claim is already
+  // carried by every row above: the primary agent runs `pi`, and the `claude`,
+  // `codex` and `opencode` rows each resolved to their own CLI.
+});
 
+describe("live daemon: failure paths", () => {
   // Fails if an unavailable dedicated model falls back to the current model.
-  it("fails closed with invalid_model and starts no agent", async (context) => {
+  it("fails closed with invalid_model and starts no process", async (context) => {
     if (!requireLive(context)) return;
-    const before = new Set((await rewriteAgents()).map((agent) => agent.id));
+    const startedAt = new Date().toISOString();
     const result = await rewrite("fix the login bug", {
       modelMode: "dedicated",
       dedicatedProvider: "pi-peer",
@@ -244,15 +345,30 @@ describe("live daemon: temporary-agent rewrite", () => {
     expect(result.status).toBe("error");
     expect(result.error?.code).toBe("invalid_model");
     expect(result.rewrittenPrompt).toBeUndefined();
-    expect(await newRewriteAgents(before)).toEqual([]);
+    expect(await agentsCreatedSince(startedAt)).toEqual([]);
     console.log(`[live-invalid-model] code=${result.error?.code} message=${result.error?.message}`);
   });
 
-  // Fails if a timed-out turn leaves the temporary agent unarchived/running.
-  it("times out, returns the typed error and archives the temporary agent", async (context) => {
+  // Fails if an unresolvable provider is guessed at instead of refused.
+  it("fails closed with unsupported_provider and starts no process", async (context) => {
+    if (!requireLive(context)) return;
+    const startedAt = new Date().toISOString();
+    const result = await rewrite("fix the login bug", {
+      modelMode: "dedicated",
+      dedicatedProvider: "grok",
+      dedicatedModel: "grok-4",
+    });
+    expect(result.status).toBe("error");
+    expect(result.error?.code).toBe("unsupported_provider");
+    expect(await agentsCreatedSince(startedAt)).toEqual([]);
+    console.log(`[live-unsupported] code=${result.error?.code} message=${result.error?.message}`);
+  });
+
+  // Fails if a timed-out CLI leaves a process tree or an agent behind.
+  it("times out, returns the typed error and leaves nothing running", async (context) => {
     if (!requireLive(context)) return;
     const tag = marker("timeout");
-    const before = new Set((await rewriteAgents()).map((agent) => agent.id));
+    const startedAt = new Date().toISOString();
 
     const result = await rewrite(
       `phân tích toàn bộ luồng đăng nhập rồi viết báo cáo chi tiết (${tag})`,
@@ -262,15 +378,9 @@ describe("live daemon: temporary-agent rewrite", () => {
     expect(result.error?.code).toBe("timeout");
     expect(result.rewrittenPrompt).toBeUndefined();
 
-    const created = await newRewriteAgents(before);
-    expect(created).toHaveLength(1);
-    expect(created[0]?.archivedAt).toBeTruthy();
-    expect(created[0]?.status).not.toBe("running");
+    expect(await agentsCreatedSince(startedAt)).toEqual([]);
     expect(await primaryTimelineContains(tag)).toBe(false);
-    console.log(
-      `[live-timeout] tempAgent=${created[0]?.id} archivedAt=${created[0]?.archivedAt} ` +
-        `status=${created[0]?.status}`,
-    );
+    console.log(`[live-timeout] code=${result.error?.code} message=${result.error?.message}`);
   });
 });
 
@@ -355,7 +465,7 @@ describe("live daemon: protected literals", () => {
     } else {
       expect(["protected_literal_loss", "generation_failed"]).toContain(result.error?.code);
     }
-    expect(existsSync(canary), "the temp agent executed the injected command").toBe(false);
+    expect(existsSync(canary), "the CLI executed the injected command").toBe(false);
     expect(await primaryTimelineContains(tag)).toBe(false);
     console.log(
       `[live-injection] status=${result.status} code=${result.error?.code ?? "-"} canaryCreated=false`,

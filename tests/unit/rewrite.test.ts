@@ -113,6 +113,54 @@ describe("runRewrite: current model", () => {
     expect(output.error.code).toBe("invalid_selection");
     expect(harness.spawned).toEqual([]);
   });
+
+  // The Composer's model control shows the runtime model, not the configured one
+  // (`composer/agent-controls/utils.ts` resolvePreferredModelId). Reading only
+  // `config.model` would run the wrong model, or refuse an agent whose Composer
+  // visibly shows one.
+  it("prefers the runtime model the Composer is showing over the configured one", async () => {
+    const harness = createRewriteHarness({
+      agent: {
+        model: "workbuddy/deepseek-v4.1-flash",
+        runtimeInfo: { provider: "pi-peer", model: "workbuddy/hy4-preview-f" },
+      },
+    });
+    const output = await rewrite(harness);
+    expect(output.status).toBe("ok");
+    if (output.status !== "ok") throw new Error("expected ok");
+    expect(output.model.model).toBe("workbuddy/hy4-preview-f");
+    expect(harness.spawned[0]?.args).toContain("workbuddy/hy4-preview-f");
+    expect(harness.spawned[0]?.args).not.toContain("workbuddy/deepseek-v4.1-flash");
+  });
+
+  // A runtime model the CLI reports while the config is still empty is the only
+  // model in play; refusing it would be a fail-closed on a visible selection.
+  it("uses the runtime model when no configured model is set", async () => {
+    const harness = createRewriteHarness({
+      agent: {
+        model: null,
+        runtimeInfo: { provider: "pi-peer", model: "workbuddy/hy4-preview-f" },
+      },
+    });
+    const output = await rewrite(harness);
+    expect(output.status).toBe("ok");
+    if (output.status !== "ok") throw new Error("expected ok");
+    expect(output.model.model).toBe("workbuddy/hy4-preview-f");
+  });
+
+  // An empty runtime string is not a selection; the configured model still wins.
+  it("falls back to the configured model when the runtime model is empty", async () => {
+    const harness = createRewriteHarness({
+      agent: {
+        model: "workbuddy/deepseek-v4.1-flash",
+        runtimeInfo: { provider: "pi-peer", model: "  " },
+      },
+    });
+    const output = await rewrite(harness);
+    expect(output.status).toBe("ok");
+    if (output.status !== "ok") throw new Error("expected ok");
+    expect(output.model.model).toBe("workbuddy/deepseek-v4.1-flash");
+  });
 });
 
 describe("runRewrite: CLI failure paths", () => {

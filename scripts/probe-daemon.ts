@@ -12,6 +12,8 @@ import { promptKitSettingsSchema } from "../shared/settings.js";
 
 const DAEMON_URL = process.env.PASEO_DAEMON_URL ?? "ws://127.0.0.1:6767/ws";
 const AGENT_ID = process.env.PASEO_AGENT_ID;
+/** The daemon's own ceiling on one plugin RPC, in the installed Paseo 0.8.0. */
+const DAEMON_RPC_CAP_MS = 30_000;
 
 if (!AGENT_ID) {
   console.error("PASEO_AGENT_ID is not set");
@@ -30,11 +32,17 @@ await client.connect();
 const refreshed = await client.fetchAgent(AGENT_ID);
 if (!refreshed) throw new Error(`agent not found: ${AGENT_ID}`);
 const agent = refreshed.agent;
+const composerModel = agent.runtimeInfo?.model ?? agent.model ?? null;
 console.log(
-  `agent provider=${agent.provider} model=${agent.model} workspace=${agent.workspaceId}`,
+  `agent provider=${agent.provider} configModel=${agent.model} ` +
+    `runtimeModel=${agent.runtimeInfo?.model ?? null} composerShows=${composerModel} ` +
+    `workspace=${agent.workspaceId}`,
 );
 
-const settings = await promptKitSettingsSchema.parseAsync({ timeoutMs: 180_000 });
+// The daemon caps one plugin RPC at 30s, so the probe asks for a budget it can
+// actually honour. `modelMode` is left at the schema default, which is the
+// current-model path: the model the Composer's own control is showing.
+const settings = await promptKitSettingsSchema.parseAsync({ timeoutMs: DAEMON_RPC_CAP_MS });
 const originalPrompt =
   "sửa lỗi đăng nhập trong /Volumes/DataSSD/app/login.ts, chạy npm run gate";
 
