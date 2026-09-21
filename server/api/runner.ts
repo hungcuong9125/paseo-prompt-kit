@@ -52,6 +52,10 @@ export type ApiRewriteResult =
   | { readonly ok: true; readonly text: string }
   | { readonly ok: false; readonly code: ApiRewriteFailureCode; readonly message: string };
 
+export type ApiTestResult =
+  | { readonly ok: true; readonly models: readonly string[] }
+  | { readonly ok: false; readonly code: ApiRewriteFailureCode; readonly message: string };
+
 export function findProtocol(protocol: string): ApiProtocol | null {
   return Object.prototype.hasOwnProperty.call(PROTOCOLS, protocol)
     ? PROTOCOLS[protocol as ApiProtocolId]
@@ -70,6 +74,95 @@ function describeHttpError(status: number, body: string): string {
   return trimmed === ""
     ? `The endpoint answered HTTP ${status}.`
     : `The endpoint answered HTTP ${status}: ${trimmed}`;
+}
+
+/**
+ * Tests one endpoint: resolves the key, lists its models, and reports either the
+ * list or the exact reason there is none. Never throws, and never echoes a key.
+ *
+ * This is what the settings screen's test button calls, so a wrong base URL or a
+ * missing key is discovered while the user is still on the settings screen
+ * instead of on the next rewrite.
+ */
+export async function testApiEndpoint(
+  input: {
+    readonly endpoint: ApiEndpoint;
+    readonly secretsDir: string | null;
+    readonly timeoutMs: number;
+  },
+  dependencies: ApiRewriteDependencies = {},
+): Promise<ApiTestResult> {
+  const protocol = findProtocol(input.endpoint.protocol);
+  if (protocol === null) {
+    return {
+      ok: false,
+      code: "api_endpoint_unknown",
+      message: `No protocol implementation for "${input.endpoint.protocol}".`,
+    };
+  }
+
+  const key = await resolveApiKey({
+    apiKeyEnv: input.endpoint.apiKeyEnv,
+    secretsDir: input.secretsDir,
+    ...(dependencies.env === undefined ? {} : { env: dependencies.env }),
+  });
+  if (!key.ok) {
+    const name = input.endpoint.apiKeyEnv.trim();
+    return {
+      ok: false,
+      code: "missing_api_key",
+      message:
+        name === ""
+          ? `Endpoint "${input.endpoint.id}" has no key configured.`
+          : `No value for "${name}". Set the environment variable or add it to secrets.json.`,
+    };
+  }
+
+  const request = protocol.buildModelsRequest({
+    baseUrl: input.endpoint.baseUrl,
+    apiKey: key.key,
+  });
+  const doFetch = dependencies.fetch ?? globalThis.fetch;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), input.timeoutMs);
+
+  let response: Response;
+  try {
+    response = await doFetch(request.url, {
+      method: "GET",
+      headers: request.headers,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    const aborted = controller.signal.aborted;
+    return {
+      ok: false,
+      code: aborted ? "timeout" : "api_http_error",
+      message: aborted
+        ? "The endpoint did not answer in time."
+        : `Could not reach the endpoint: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const body = await response.text().catch(() => "");
+  if (!response.ok) {
+    return { ok: false, code: "api_http_error", message: describeHttpError(response.status, body) };
+  }
+  let payload: unknown;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    return {
+      ok: false,
+      code: "api_bad_response",
+      message: "The endpoint answered with something that is not JSON.",
+    };
+  }
+  // An empty list is not a failure: a local server may expose none, and the key
+  // and URL still proved correct, which is the whole point of the test.
+  return { ok: true, models: protocol.parseModelsResponse(payload) };
 }
 
 export async function runApiRewrite(

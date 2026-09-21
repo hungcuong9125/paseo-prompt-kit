@@ -25,11 +25,24 @@ export interface ApiHttpRequest {
   readonly body: string;
 }
 
+/** Everything a protocol needs to ask an endpoint what models it offers. */
+export interface ApiModelsCall {
+  readonly baseUrl: string;
+  readonly apiKey: string;
+}
+
 export interface ApiProtocol {
   readonly id: ApiProtocolId;
   /** `null` means the answer could not be read; the runner maps that to a code. */
   buildRequest(call: ApiCall): ApiHttpRequest;
   parseResponse(payload: unknown): string | null;
+  /**
+   * The request that lists the models this endpoint offers. Used by the settings
+   * screen's test button, which is the only way a user learns whether a key and a
+   * base URL are right before a rewrite fails on them.
+   */
+  buildModelsRequest(input: ApiModelsCall): ApiHttpRequest;
+  parseModelsResponse(payload: unknown): string[];
 }
 
 /** Strips a trailing slash so a base URL and a path cannot produce a double slash. */
@@ -59,4 +72,22 @@ export function at(payload: unknown, ...path: readonly (string | number)[]): unk
     current = (current as Record<string | number, unknown>)[step];
   }
   return current;
+}
+
+/**
+ * Collects the string values at `path` into a de-duplicated list.
+ *
+ * Every protocol lists models as an array of objects with one identifying field,
+ * so this is the shared half of `parseModelsResponse` for all three.
+ */
+export function stringFieldAt(payload: unknown, path: readonly (string | number)[], field: string): string[] {
+  const list = at(payload, ...path);
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  for (const entry of list) {
+    if (entry === null || typeof entry !== "object") continue;
+    const value = (entry as Record<string, unknown>)[field];
+    if (typeof value === "string" && value.trim() !== "") seen.add(value.trim());
+  }
+  return [...seen];
 }

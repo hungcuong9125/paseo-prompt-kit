@@ -1,4 +1,4 @@
-import { at, authHeaders, joinUrl, type ApiCall, type ApiHttpRequest, type ApiProtocol } from "./protocol.js";
+import { at, authHeaders, joinUrl, stringFieldAt, type ApiCall, type ApiHttpRequest, type ApiModelsCall, type ApiProtocol } from "./protocol.js";
 
 /**
  * The Google Gemini `generateContent` protocol.
@@ -40,5 +40,23 @@ export const geminiProtocol: ApiProtocol = {
       if (typeof value === "string") text.push(value);
     }
     return text.length === 0 ? null : text.join("");
+  },
+  buildModelsRequest(call: ApiModelsCall): ApiHttpRequest {
+    // Google's model list is large, so only the fields the picker needs are asked
+    // for; the page size keeps a long catalogue from being pulled in one call.
+    return {
+      url: joinUrl(call.baseUrl, "/v1beta/models?pageSize=200"),
+      headers: {
+        ...authHeaders(call.apiKey, (key) => ({ "x-goog-api-key": key })),
+      },
+      body: "",
+    };
+  },
+  parseModelsResponse(payload: unknown): string[] {
+    // `models/gemini-2.5-flash` is the wire name; the path segment is the id a
+    // request takes, so the prefix is stripped here rather than by every caller.
+    return stringFieldAt(payload, ["models"], "name").map((name) =>
+      name.startsWith("models/") ? name.slice("models/".length) : name,
+    );
   },
 };

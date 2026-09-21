@@ -1,6 +1,7 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 import { ACTION_ID_PATTERN } from "./actions/schema.js";
+import { apiEndpointSchema } from "./api-protocol.js";
 import { promptKitSettingsSchema } from "./settings.js";
 
 export const rewriteErrorCodeSchema = z.enum([
@@ -107,9 +108,37 @@ export const providerCatalogRpc = defineRpc({
   }),
 });
 
+/**
+ * Checks one API endpoint from the settings screen: resolves its key, asks the
+ * endpoint which models it offers, and reports the outcome.
+ *
+ * It exists so a wrong base URL, a missing key or an unreachable host is found on
+ * the settings screen rather than on the next rewrite. The answer never carries a
+ * key value: a failure names the variable, never the secret.
+ */
+export const apiTestRpc = defineRpc({
+  name: "prompt-kit.api.test",
+  input: z.object({
+    endpoint: apiEndpointSchema,
+    secretsFile: z.string().min(1).nullable(),
+  }),
+  output: z.discriminatedUnion("status", [
+    z.object({
+      status: z.literal("ok"),
+      models: z.array(z.string()),
+    }),
+    z.object({
+      status: z.literal("error"),
+      error: rewriteErrorSchema,
+    }),
+  ]),
+});
+
 export type RewriteInput = z.output<typeof rewriteRpc.input>;
 export type RewriteOutput = z.output<typeof rewriteRpc.output>;
 export type RewriteError = z.output<typeof rewriteErrorSchema>;
 export type ActionSummary = z.output<typeof actionSummarySchema>;
 export type ActionsListOutput = z.output<typeof actionsListRpc.output>;
 export type ProviderCatalogOutput = z.output<typeof providerCatalogRpc.output>;
+export type ApiTestInput = z.output<typeof apiTestRpc.input>;
+export type ApiTestOutput = z.output<typeof apiTestRpc.output>;

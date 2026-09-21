@@ -2,12 +2,15 @@ import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { listActions, listRejectedPacks } from "./shared/actions/registry.js";
 import {
   actionsListRpc,
+  apiTestRpc,
   providerCatalogRpc,
   rewriteRpc,
   type ActionsListOutput,
+  type ApiTestOutput,
   type ProviderCatalogOutput,
 } from "./shared/rpc.js";
 import { promptKitSettings } from "./shared/settings.js";
+import { testApiEndpoint } from "./server/api/runner.js";
 import { readProviderCatalog } from "./server/provider-catalog.js";
 import { createRewriteHandler, type RewriteHandlerDependencies } from "./server/rewrite-handler.js";
 import { pluginLog } from "./server/log.js";
@@ -48,6 +51,27 @@ export default function contribute(
   server.handle(providerCatalogRpc, async (input, { paseo }) => {
     const providers = await readProviderCatalog(paseo, input.cwd);
     return { providers } satisfies ProviderCatalogOutput;
+  });
+
+  // The settings screen's test button. It shares the rewrite path's key lookup, so
+  // "test passed" means the same thing a rewrite would find.
+  server.handle(apiTestRpc, async (input) => {
+    const result = await testApiEndpoint(
+      { endpoint: input.endpoint, secretsDir: input.secretsFile, timeoutMs: 15_000 },
+      dependencies.fetch === undefined && dependencies.env === undefined
+        ? {}
+        : {
+            ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
+            ...(dependencies.env === undefined ? {} : { env: dependencies.env }),
+          },
+    );
+    if (!result.ok) {
+      return {
+        status: "error",
+        error: { code: result.code, message: result.message },
+      } satisfies ApiTestOutput;
+    }
+    return { status: "ok", models: [...result.models] } satisfies ApiTestOutput;
   });
 
   return () => {};

@@ -6,6 +6,7 @@ import { anthropicProtocol } from "../../server/api/anthropic.js";
 import { geminiProtocol } from "../../server/api/gemini.js";
 import { openAiProtocol } from "../../server/api/openai.js";
 import { resolveApiKey, secretsFilePath } from "../../server/api/key.js";
+import { testApiEndpoint } from "../../server/api/runner.js";
 
 const CALL = {
   baseUrl: "https://api.example.com/openai/v1",
@@ -195,5 +196,106 @@ describe("api key resolution", () => {
     expect(secretsFilePath("/custom/dir", { PASEO_HOME: "/tmp/home" })).toBe(
       "/custom/dir/secrets.json",
     );
+  });
+});
+
+describe("api endpoint test", () => {
+  const ENDPOINT = {
+    id: "gemini",
+    label: "Gemini",
+    protocol: "gemini" as const,
+    baseUrl: "https://generativelanguage.googleapis.com",
+    apiKeyEnv: "GEMINI_API_KEY",
+    models: [],
+  };
+
+  function stubFetch(response: { status?: number; body?: unknown; reject?: Error }) {
+    const calls: { url: string; headers: Record<string, string> }[] = [];
+    const impl = (async (url: string, init: { headers: Record<string, string> }) => {
+      calls.push({ url, headers: init.headers });
+      if (response.reject) throw response.reject;
+      const status = response.status ?? 200;
+      const body = response.body === undefined ? {} : response.body;
+      return {
+        ok: status >= 200 && status < 300,
+        status,
+        text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
+      };
+    }) as unknown as typeof globalThis.fetch;
+    return { impl, calls };
+  }
+
+  it("lists the endpoint's models and strips Gemini's name prefix", async () => {
+    const { impl, calls } = stubFetch({
+      body: { models: [{ name: "models/gemini-2.5-flash" }, { name: "models/gemini-3.7-flash" }] },
+    });
+    const result = await testApiEndpoint(
+      { endpoint: ENDPOINT, secretsDir: null, timeoutMs: 5_000 },
+      { fetch: impl, env: { GEMINI_API_KEY: "k" } },
+    );
+    expect(result).toEqual({ ok: true, models: ["gemini-2.5-flash", "gemini-3.7-flash"] });
+    expect(calls[0]?.url).toContain("/v1beta/models");
+    expect(calls[0]?.headers["x-goog-api-key"]).toBe("k");
+  });
+
+  // The test must fail the same way a rewrite would, or it would give false
+  // confidence about a key the rewrite then cannot use.
+  it("reports a missing key without making a request", async () => {
+    const { impl, calls } = stubFetch({});
+    const result = await testApiEndpoint(
+      { endpoint: ENDPOINT, secretsDir: null, timeoutMs: 5_000 },
+      { fetch: impl, env: {} },
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected failure");
+    expect(result.code).toBe("missing_api_key");
+    expect(result.message).toContain("GEMINI_API_KEY");
+    expect(calls).toEqual([]);
+  });
+
+  it("reports a non-2xx answer with the provider's own text", async () => {
+    const { impl } = stubFetch({ status: 401, body: '{"error":{"message":"Invalid API Key"}}' });
+    const result = await testApiEndpoint(
+      { endpoint: ENDPOINT, secretsDir: null, timeoutMs: 5_000 },
+      { fetch: impl, env: { GEMINI_API_KEY: "k" } },
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected failure");
+    expect(result.code).toBe("api_http_error");
+    expect(result.message).toContain("401");
+  });
+
+  it("reports an unreadable body", async () => {
+    const { impl } = stubFetch({ body: "not json" });
+    const result = await testApiEndpoint(
+      { endpoint: ENDPOINT, secretsDir: null, timeoutMs: 5_000 },
+      { fetch: impl, env: { GEMINI_API_KEY: "k" } },
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected failure");
+    expect(result.code).toBe("api_bad_response");
+  });
+
+  // An empty list is a pass: the key and URL proved correct, which is the point.
+  it("accepts an endpoint that lists no models", async () => {
+    const { impl } = stubFetch({ body: { data: [] } });
+    const openai = { ...ENDPOINT, protocol: "openai" as const, baseUrl: "https://api.groq.com/openai/v1" };
+    const result = await testApiEndpoint(
+      { endpoint: openai, secretsDir: null, timeoutMs: 5_000 },
+      { fetch: impl, env: { GEMINI_API_KEY: "k" } },
+    );
+    expect(result).toEqual({ ok: true, models: [] });
+  });
+
+  // A keyless local server is a legitimate endpoint, so no key must not fail.
+  it("tests a keyless endpoint without a credential header", async () => {
+    const { impl, calls } = stubFetch({ body: { data: [{ id: "local-model" }] } });
+    const local = { ...ENDPOINT, protocol: "openai" as const, baseUrl: "http://127.0.0.1:1234/v1", apiKeyEnv: "" };
+    const result = await testApiEndpoint(
+      { endpoint: local, secretsDir: null, timeoutMs: 5_000 },
+      { fetch: impl, env: {} },
+    );
+    expect(result).toEqual({ ok: true, models: ["local-model"] });
+    expect(calls[0]?.headers["authorization"]).toBeUndefined();
   });
 });

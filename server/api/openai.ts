@@ -1,4 +1,4 @@
-import { at, authHeaders, joinUrl, type ApiCall, type ApiHttpRequest, type ApiProtocol } from "./protocol.js";
+import { at, authHeaders, joinUrl, stringFieldAt, type ApiCall, type ApiHttpRequest, type ApiModelsCall, type ApiProtocol } from "./protocol.js";
 
 /**
  * The OpenAI Chat Completions protocol.
@@ -36,5 +36,17 @@ export const openAiProtocol: ApiProtocol = {
   parseResponse(payload: unknown): string | null {
     const content = at(payload, "choices", 0, "message", "content");
     return typeof content === "string" ? content : null;
+  },
+  buildModelsRequest(call: ApiModelsCall): ApiHttpRequest {
+    return {
+      url: joinUrl(call.baseUrl, "/models"),
+      headers: {
+        ...authHeaders(call.apiKey, (key) => ({ authorization: `Bearer ${key}` })),
+      },
+      body: "",
+    };
+  },
+  parseModelsResponse(payload: unknown): string[] {
+    return stringFieldAt(payload, ["data"], "id");
   },
 };

@@ -1,4 +1,4 @@
-import { at, authHeaders, joinUrl, type ApiCall, type ApiHttpRequest, type ApiProtocol } from "./protocol.js";
+import { at, authHeaders, joinUrl, stringFieldAt, type ApiCall, type ApiHttpRequest, type ApiModelsCall, type ApiProtocol } from "./protocol.js";
 
 /**
  * The Anthropic Messages protocol.
@@ -44,5 +44,18 @@ export const anthropicProtocol: ApiProtocol = {
       if (typed.type === "text" && typeof typed.text === "string") parts.push(typed.text);
     }
     return parts.length === 0 ? null : parts.join("\n");
+  },
+  buildModelsRequest(call: ApiModelsCall): ApiHttpRequest {
+    return {
+      url: joinUrl(call.baseUrl, "/v1/models"),
+      headers: {
+        "anthropic-version": "2023-06-01",
+        ...authHeaders(call.apiKey, (key) => ({ "x-api-key": key })),
+      },
+      body: "",
+    };
+  },
+  parseModelsResponse(payload: unknown): string[] {
+    return stringFieldAt(payload, ["data"], "id");
   },
 };

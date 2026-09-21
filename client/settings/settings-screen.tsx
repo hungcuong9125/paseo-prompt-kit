@@ -14,12 +14,13 @@ import {
   SettingsSelect,
   SettingsSwitch,
 } from "@getpaseo/plugin/client/ui";
-import { actionsListRpc, providerCatalogRpc, type ActionsListOutput, type ProviderCatalogOutput } from "../../shared/rpc.js";
+import { actionsListRpc, apiTestRpc, providerCatalogRpc, type ActionsListOutput, type ProviderCatalogOutput } from "../../shared/rpc.js";
 import type { ApiEndpoint } from "../../shared/api-protocol.js";
 import { promptKitSettings, type PromptKitSettings } from "../../shared/settings.js";
 import { CLI_FAMILY_IDS, isCliFamilyId } from "../../shared/cli-families.js";
 import { enabledActions } from "../actions/enabled.js";
 import { validateDedicatedSelection } from "./selection.js";
+import { ApiEndpointEditor } from "./api-endpoint-editor.js";
 
 type Providers = ProviderCatalogOutput["providers"];
 type ActionSummary = ActionsListOutput["actions"][number];
@@ -73,6 +74,7 @@ export function PromptKitSettingsScreen({ theme }: PluginSurfaceProps) {
   const settings = useSettings(promptKitSettings);
   const listProviders = useRpc(providerCatalogRpc);
   const listActions = useRpc(actionsListRpc);
+  const testEndpoint = useRpc(apiTestRpc);
   const [providers, setProviders] = useState<Providers | null>(null);
   const [actions, setActions] = useState<ActionSummary[] | null>(null);
   const [actionsError, setActionsError] = useState<string | null>(null);
@@ -221,26 +223,26 @@ export function PromptKitSettingsScreen({ theme }: PluginSurfaceProps) {
           }
         />
         {values.transport === "api" ? (
-          <SettingsSection title="API endpoints">
-            <Text style={muted}>
-              An endpoint is a base URL, a protocol and the name of the variable that holds its
-              key. The key itself is never stored here: this document reaches your browser. Set the
-              environment variable, or put the value in secrets.json next to the plugin settings.
-              See README.md, "API keys".
-            </Text>
-            <SettingsSelect
-              label="Endpoint"
-              value={values.apiEndpointId ?? NONE}
-              options={[
-                { label: "Select an endpoint", value: NONE },
-                ...values.apiEndpoints.map((endpoint) => ({
-                  label: `${endpoint.label} (${endpoint.protocol})`,
-                  value: endpoint.id,
-                })),
-              ]}
+          <>
+            <ApiEndpointEditor
+              endpoints={values.apiEndpoints}
+              selectedId={values.apiEndpointId}
               disabled={disabled}
-              onValueChange={(endpointId) =>
-                update({ apiEndpointId: endpointId === NONE ? null : endpointId, apiModel: null })
+              secretsFile={values.secretsFile}
+              muted={muted}
+              style={style}
+              onSelect={(endpointId) => update({ apiEndpointId: endpointId, apiModel: null })}
+              onChange={(apiEndpoints, selected) =>
+                update({
+                  apiEndpoints: [...apiEndpoints],
+                  apiEndpointId: selected,
+                  // A removed or renamed endpoint must not stay referenced, so the
+                  // model choice is dropped whenever the endpoint changes.
+                  apiModel: null,
+                })
+              }
+              test={(endpoint) =>
+                testEndpoint({ endpoint, secretsFile: values.secretsFile })
               }
             />
             {values.modelMode === "dedicated" ? (
@@ -252,12 +254,13 @@ export function PromptKitSettingsScreen({ theme }: PluginSurfaceProps) {
                   ...apiModelOptions(values.apiEndpoints, values.apiEndpointId),
                 ]}
                 disabled={disabled}
+                hint="Pick one of the endpoint's models, or type an id in the editor above."
                 onValueChange={(apiModel) =>
                   update({ apiModel: apiModel === NONE ? null : apiModel })
                 }
               />
             ) : null}
-          </SettingsSection>
+          </>
         ) : null}
         {values.transport === "cli" && values.modelMode === "dedicated" ? (
           <>
