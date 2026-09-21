@@ -1,51 +1,17 @@
 import type { ComposerAdapter } from "./adapter.js";
+import { locateComposerField, setNativeValue } from "./dom.js";
 
-// Paseo has no public plugin API for Composer text, so Desktop/Web attach to the
-// DOM. Selectors come from the app source, never from positional structure.
-// `[data-testid="message-input-root"]` - packages/app/src/composer/input/input.tsx:1787
-// `textarea[data-composer-input]`    - dataSet={COMPOSER_INPUT_DATASET} at input.tsx:670
-//                                      from input.tsx:87, and consumed by
-//                                      packages/app/src/styles/install-web-scrollbar-styles.web.ts:22
-export const COMPOSER_ROOT_SELECTOR = '[data-testid="message-input-root"]';
-export const COMPOSER_INPUT_SELECTOR = "textarea[data-composer-input]";
+export { COMPOSER_INPUT_SELECTOR, COMPOSER_ROOT_SELECTOR, isElementVisible } from "./dom.js";
 
 /**
- * A hidden Composer (inactive tab, unmounted pane) must not be rewritten.
- * Returns null unless exactly one Composer root is present and visible.
+ * The rewrite path needs a stable identity for "the Composer the user pressed the
+ * pill in", not merely "some Composer that is currently visible". When more than
+ * one Composer is genuinely visible (a split pane), the adapter must refuse: the
+ * plugin has no relation from a pill to its own agent's pane. Binding the pill to
+ * its pane is the `composer-resolver` work unit of CORE v0.2.0.
  */
-function locateField(root: ParentNode = document): HTMLTextAreaElement | null {
-  const roots = Array.from(root.querySelectorAll(COMPOSER_ROOT_SELECTOR)).filter(isVisible);
-  if (roots.length !== 1) return null;
-  const fields = Array.from(
-    roots[0]!.querySelectorAll<HTMLTextAreaElement>(COMPOSER_INPUT_SELECTOR),
-  ).filter(isVisible);
-  if (fields.length !== 1) return null;
-  return fields[0]!;
-}
-
-function isVisible(element: Element): boolean {
-  if (!element.isConnected) return false;
-  const style = element.ownerDocument.defaultView?.getComputedStyle(element);
-  if (!style) return true;
-  return style.display !== "none" && style.visibility !== "hidden";
-}
-
-/**
- * React tracks the value it last saw, so a plain assignment is invisible to
- * `onChange`. The native setter updates the DOM without tripping React's own
- * value tracking, and the bubbling `input` event is what React listens to.
- */
-function setNativeValue(field: HTMLTextAreaElement, value: string): void {
-  let prototype: object | null = Object.getPrototypeOf(field) as object | null;
-  while (prototype) {
-    const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
-    if (setter) {
-      setter.call(field, value);
-      return;
-    }
-    prototype = Object.getPrototypeOf(prototype) as object | null;
-  }
-  field.value = value;
+function locateField(): HTMLTextAreaElement | null {
+  return locateComposerField();
 }
 
 export function createWebComposerAdapter(): ComposerAdapter {

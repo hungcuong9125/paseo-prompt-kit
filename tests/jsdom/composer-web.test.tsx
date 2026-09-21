@@ -3,6 +3,7 @@ import {
   COMPOSER_INPUT_SELECTOR,
   COMPOSER_ROOT_SELECTOR,
   createWebComposerAdapter,
+  isElementVisible,
 } from "../../client/composer/web.js";
 
 /**
@@ -21,6 +22,25 @@ function mountComposer(value = "", options: { readonly?: boolean } = {}): HTMLTe
   root.appendChild(field);
   document.body.appendChild(root);
   return field;
+}
+
+/**
+ * A retained (inactive) pane: the root stays mounted, and the host hides an
+ * ancestor with `display: none` (components/retained-panel.tsx:66-67). The
+ * descendant's own computed `display` remains untouched.
+ */
+function mountRetainedComposer(value = ""): { field: HTMLTextAreaElement; panel: HTMLElement } {
+  const panel = document.createElement("div");
+  panel.style.display = "none";
+  const root = document.createElement("div");
+  root.setAttribute("data-testid", "message-input-root");
+  const field = document.createElement("textarea");
+  field.setAttribute("data-composer-input", "");
+  field.value = value;
+  root.appendChild(field);
+  panel.appendChild(root);
+  document.body.appendChild(panel);
+  return { field, panel };
 }
 
 afterEach(() => {
@@ -70,7 +90,7 @@ describe("web composer adapter", () => {
     expect(document.body.textContent).toBe("");
   });
 
-  it("ignores a hidden composer root and uses the visible one", () => {
+  it("ignores a composer root hidden by its own style and uses the visible one", () => {
     const hiddenRoot = document.createElement("div");
     hiddenRoot.setAttribute("data-testid", "message-input-root");
     hiddenRoot.style.display = "none";
@@ -85,6 +105,70 @@ describe("web composer adapter", () => {
     expect(adapter.readText()).toBe("visible");
     expect(adapter.replaceText("replaced")).toBe(true);
     expect(hidden.value).toBe("hidden");
+  });
+
+  it("ignores a retained pane hidden at an ancestor, not at the root", () => {
+    // The regression: `display: none` on the ancestor leaves the root's own
+    // computed display untouched, so reading the element alone sees it as visible.
+    const { field } = mountRetainedComposer("retained");
+    mountComposer("active");
+
+    const adapter = createWebComposerAdapter();
+    expect(adapter.readText()).toBe("active");
+    expect(adapter.replaceText("replaced")).toBe(true);
+    expect(field.value).toBe("retained");
+  });
+
+  it("uses the visible composer when several retained panes are mounted", () => {
+    mountRetainedComposer("first-hidden");
+    mountRetainedComposer("second-hidden");
+    const active = mountComposer("active");
+
+    const adapter = createWebComposerAdapter();
+    expect(adapter.readText()).toBe("active");
+    adapter.focus();
+    expect(document.activeElement).toBe(active);
+  });
+
+  it("fails closed when two retained panes are both visible", () => {
+    // A split pane shows two Composers at once and the plugin cannot prove which
+    // one belongs to the pressed pill, so the guard must still refuse.
+    mountComposer("pane-one");
+    mountComposer("pane-two");
+    const adapter = createWebComposerAdapter();
+    expect(adapter.readText()).toBeNull();
+  });
+
+  it("refuses a field hidden inside a visible root", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-testid", "message-input-root");
+    const field = document.createElement("textarea");
+    field.setAttribute("data-composer-input", "");
+    field.value = "hidden-field";
+    field.style.display = "none";
+    root.appendChild(field);
+    document.body.appendChild(root);
+
+    expect(createWebComposerAdapter().readText()).toBeNull();
+  });
+
+  it("refuses an ancestor hidden with visibility, even when the field restores it", () => {
+    // A stricter walk can only refuse more; it must never rewrite a Composer it
+    // cannot prove the user sees. `visibility` is not inherited here, so the
+    // ancestor itself is the only evidence.
+    const panel = document.createElement("div");
+    panel.style.visibility = "hidden";
+    const root = document.createElement("div");
+    root.setAttribute("data-testid", "message-input-root");
+    const field = document.createElement("textarea");
+    field.setAttribute("data-composer-input", "");
+    field.value = "hidden-ancestor";
+    root.appendChild(field);
+    panel.appendChild(root);
+    document.body.appendChild(panel);
+
+    expect(isElementVisible(root)).toBe(false);
+    expect(createWebComposerAdapter().readText()).toBeNull();
   });
 
   it("focuses the composer field", () => {
