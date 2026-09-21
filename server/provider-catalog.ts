@@ -1,5 +1,5 @@
-import type { PaseoApi } from "@getpaseo/client";
 import type { ProviderCatalogOutput } from "../shared/rpc.js";
+import type { PaseoApi } from "./paseo-types.js";
 
 export type ProviderCatalog = ProviderCatalogOutput["providers"];
 export type CatalogProvider = ProviderCatalog[number];

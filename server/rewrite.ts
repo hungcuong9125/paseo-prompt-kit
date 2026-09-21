@@ -1,8 +1,8 @@
-import type { PaseoApi } from "@getpaseo/client";
 import type { RewriteError, RewriteOutput } from "../shared/rpc.js";
 import type { PromptKitSettings } from "../shared/settings.js";
 import { generateRewrite } from "./generation.js";
 import { validateRewriteOutput } from "./output-validator.js";
+import type { PaseoApi } from "./paseo-types.js";
 import { readProviderCatalog } from "./provider-catalog.js";
 
 export interface RewriteRequest {

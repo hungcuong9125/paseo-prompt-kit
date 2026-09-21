@@ -1,6 +1,6 @@
-import type { PaseoAgentHandle, PaseoApi } from "@getpaseo/client";
 import type { RewriteError } from "../shared/rpc.js";
 import { pluginLog } from "./log.js";
+import type { PaseoAgentHandle, PaseoApi } from "./paseo-types.js";
 
 export interface GenerateRewriteInput {
   workspaceId: string;
