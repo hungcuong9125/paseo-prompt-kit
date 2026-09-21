@@ -54,3 +54,7 @@ Settings are host-scoped and persist across plugin reload.
 - No auto-send. PromptKit only replaces the Composer text; you send the message.
 - PromptKit refuses to replace text you edited while a rewrite was running, and refuses when more than one Composer (or none) is visible.
 - One action in this version: `Improve coding prompt`.
+
+## License
+
+MIT — see `LICENSE`. PromptKit contains no copied upstream code. The Composer text access pattern follows [paseo-emoji](https://github.com/YoseptF/paseo-emoji) (MIT); the plugin runs on [Paseo](https://github.com/getpaseo/paseo) (Apache-2.0) through its public plugin SDK.

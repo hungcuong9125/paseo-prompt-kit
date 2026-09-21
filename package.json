@@ -2,6 +2,7 @@
   "name": "prompt-kit",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "description": "PromptKit - rewrite and transform prompts directly from the Paseo composer.",
   "type": "module",
   "files": [
