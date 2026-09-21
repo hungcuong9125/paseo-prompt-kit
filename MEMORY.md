@@ -4,16 +4,31 @@ Current-state takeover index. History → `docs/exec-plans/`; decisions → `doc
 
 - Framework revision: bundle delivered 2026-09-21 (protocol v1)
 - Updated at: 2026-09-21 04:05Z
-- Active Lead: claude-lead / claude-fable-5-1 (Lead-of-record, idle after release-prep closeout)
+- Active Lead: claude-lead / claude-fable-5-1 (Lead-of-record) — open batch paseo-prompt-kit-post-release-composer-bug
 - Repository HEAD: see `git log -1`; branch `main`; origin https://github.com/hungcuong9125/paseo-prompt-kit — public main f07b0c6, tag v0.1.0 → 94e9a9a (release evidence commit below is local until the next push)
 - AIT database: initialized (prefix `pk`, `.ait/ait.db`, ignored)
-- AIT graph snapshot: epics pk-UkLWZ and pk-OIJLh CLOSED
-- AIT open: 0 — reconciled 2026-09-21
-- Active AIT issue IDs: none
+- AIT graph snapshot: epics pk-UkLWZ, pk-OIJLh CLOSED; epic pk-98Fqg (composer selection bug) OPEN with task .1
+- AIT open: 2 (epic pk-98Fqg, task .1) — reconciled 2026-09-21
+- Active AIT issue IDs: pk-98Fqg.1 → Peer d3fa32ad-a177-4075-bd83-2c41964b3545 (pi-peer/workbuddy/deepseek-v4.1-flash high + MultiZen; investigate→implement→verify; write scope client/composer/**, client/pills/rewrite-runner.ts, agent-pills.ts, index.client.tsx wiring, tests) — dispatched 10:57Z, base 6e6a5e8 (code tree 94cfc8f3… = v0.1.0)
 - Handoff type: NONE
-- Active Peer disposition: none (f57a7628 archived after handback)
-- Heartbeat ID: none (9e0e898c deleted at closeout)
+- Active Peer disposition: d3fa32ad pk-98Fqg.1 on main (sole writer)
+- Heartbeat ID: 14dc4094 (lead-pk-bugfix-watch, */30 min, expires 2026-09-21T14:56Z)
 - Deferred: 4 open — docs/DEFERRED.md (DEF-001, DEF-002, DEF-006, DEF-007)
+
+## Batch paseo-prompt-kit-post-release-composer-bug — OPEN
+
+- Packet: docs/exec-plans/active/paseo-prompt-kit-post-release-composer-bug.md · intent @ 6e6a5e81c77fc184713bc1d3ba5e3825492bcc75 · Report to bf776d78-0b8a-44d3-9336-72a79e280ad7
+- Bug: pill visible, pressing the action → "PromptKit needs one visible Composer." (`client/composer/web.ts` locateField requires exactly one visible root; host keeps several mounted). Fix must bind the pressed pill's agent to its Composer by positive DOM evidence; fail closed otherwise. If no relation exists in 0.8.0 → DEPENDENCY_REQUEST → Lead DECISION_REQUEST.
+- v0.1.0 immutable; next release version undecided → DECISION_REQUEST when the candidate is ready.
+- Unpushed on main: 0db4c1c, 6e6a5e8.
+
+## Proposed paseo-prompt-kit-core-v0.2.0 — PROPOSED, G0-blocked (do NOT open implementation)
+
+- Packet: docs/exec-plans/proposed/paseo-prompt-kit-core-v0.2.0.md (TEAM DEV) · source docs/CORE.md (DRAFT, untracked) · review docs/reviews/core-review-lead-claude-fable-5-1-20260921.md (verdict FINDINGS, self-review — needs a non-author lane).
+- LOCKED UX (HUMAN_PRODUCT_DIRECTION 2026-09-21): clicking PromptKit runs the default flow directly with the current default action; the control exposes a menu only when additional flows are enabled in Settings; current menu item "Improve coding prompt". Locked for CORE proposal + future packet; NOT permission to reopen/implement CORE now. CORE.md/plan incorporate it in Phase 0, not before.
+- G0 still requires TWO explicit Human decisions, kept SEPARATE, not inferred from the UX: (1) OQ-1/OQ-3/OQ-8 = trust model for Action Pack sources (Lead recommends bundled-only, one namespace); (2) OQ-4 = image scope. DECISION_REQUEST drafted in the packet, not yet sent.
+- Do NOT open CORE implementation until ALL four settle: plan/CORE contract corrected (F-1..F-5 + UX section), independent non-author review, Human G0 decisions, and the v0.1.1 Composer resolver contract.
+- Open implementability gaps beyond the plan: `packs/` missing from package.json `files` (frozen path); daemon reading pack files unverified (esbuild bundles index.server.ts, no node_modules — `.md` not in bundle) → spike (A) fs+install-dir vs (B) JSON-inline static import before freezing the manifest.
 
 ## Batch paseo-prompt-kit-release-0.1.0 — ACCEPTED, PUBLIC (Human pushed 2026-09-21)
 
@@ -47,4 +62,4 @@ Current-state takeover index. History → `docs/exec-plans/`; decisions → `doc
 
 ## Takeover instructions
 
-- Immediate next action: none. Optional bounded ops task on request: verify `paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.1.0`. Next brief starts a new packet; re-read WORKSPACE_PROTOCOL.md, framework/protocol.md, framework/provider-routing.md, this file.
+- Immediate next action: await PEER_HAND_BACK from d3fa32ad; review the mechanism from the object (must be positive identity evidence, never 'the only visible'); confirm regression red→green and gate; then DECISION_REQUEST for the fix release version (proposal: v0.1.1) with push/tag commands. Next brief starts a new packet; re-read WORKSPACE_PROTOCOL.md, framework/protocol.md, framework/provider-routing.md, this file.
