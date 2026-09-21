@@ -274,8 +274,16 @@ const TOOL_CONTEXT_WORDS = ["tool", "tools", "toolkit"] as const;
 const FENCE_PATTERN = /```[^\n]*\n([\s\S]*?)```/g;
 const INLINE_PATTERN = /`([^`\n]+)`/g;
 
+/**
+ * Builds an alternation from a closed vocabulary. Each entry is regex-escaped so
+ * the function stays correct if a future entry carries a metacharacter; the
+ * current vocabularies are plain identifiers and extensions.
+ */
 function alternate(alternatives: readonly string[]): string {
-  return [...alternatives].sort((left, right) => right.length - left.length).join("|");
+  return [...alternatives]
+    .sort((left, right) => right.length - left.length)
+    .map((entry) => entry.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
 }
 
 /** Ranges of the text that are code: fenced bodies and inline spans. */

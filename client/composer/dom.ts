@@ -39,11 +39,13 @@ export function isElementVisible(element: Element): boolean {
 export function locateComposerField(root: ParentNode = document): HTMLTextAreaElement | null {
   const roots = Array.from(root.querySelectorAll(COMPOSER_ROOT_SELECTOR)).filter(isElementVisible);
   if (roots.length !== 1) return null;
+  const onlyRoot = roots[0];
+  if (!onlyRoot) return null;
   const fields = Array.from(
-    roots[0]!.querySelectorAll<HTMLTextAreaElement>(COMPOSER_INPUT_SELECTOR),
+    onlyRoot.querySelectorAll<HTMLTextAreaElement>(COMPOSER_INPUT_SELECTOR),
   ).filter(isElementVisible);
   if (fields.length !== 1) return null;
-  return fields[0]!;
+  return fields[0] ?? null;
 }
 
 /**
