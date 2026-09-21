@@ -1,0 +1,6 @@
+{
+  "id": "prompt-kit",
+  "requirements": {
+    "paseo": ">=0.8.0"
+  }
+}
