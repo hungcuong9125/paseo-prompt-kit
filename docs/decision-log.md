@@ -10,6 +10,7 @@ Lead-only and never combined with code commits.
 
 ## Current index
 
+- `DLF-007` — pk-UkLWZ.2 ACCEPTED at 32c77c0 (tree 7b1805892aa9b0d875d9cc12ec1bb5afbd51aac7 after merge with .3); pills per agent, guarded rewrite, settings screen — ACTIVE
 - `DLF-006` — pk-UkLWZ.3 ACCEPTED at f7e27ed (tree df54e01cb07c17c5b67c8b4f2da13315a4a7f2aa); validator fail-closed; injection boundary — ACTIVE
 - `DLF-005` — PromptKit control placement: official `addComposerPill` only (one pill per agent, menu); DOM toolbar button dropped — ACTIVE
 - `DLF-004` — Human directive: bug-scanner pass + MultiZen browser QA bound to pk-UkLWZ.4 — ACTIVE
@@ -106,5 +107,20 @@ Lead-only and never combined with code commits.
 **Evidence source.** Peer 613157ea handback 2026-09-21 02:4xZ: typecheck REAL_EXIT:0; `npm test` REAL_EXIT:0 (93 tests); live-daemon 9/9 — current model temp agent 503dee62… archived 02:41:17Z, dedicated `pi-peer/workbuddy/hy4-preview-f` df2c2422… archived 02:41:26Z, invalid model → `invalid_model` with no agent, timeout 23b33095… archived 02:41:28Z, injection canary absent, plugin logs contain no prompt text. Lead read validator, prompt, rewrite/generation diffs from the object.
 
 **Reversal condition.** A model whose legitimate rewrites routinely start with a phrase in META_PREFACE/COMMENTARY → narrow the vocabulary (new DLF). Client 0.8.0 exposing a truncation signal on `lastMessage` → replace the indirect length/fence heuristics.
+
+**Supersedes / superseded by.** NONE
+
+### DLF-007 — pk-UkLWZ.2 accepted: client pills, guarded rewrite flow, settings screen
+
+- Decided at: 2026-09-21
+- Decision owner: Lead
+- Packet ID / AIT issue ID: paseo-prompt-kit-mvp / pk-UkLWZ.2
+- Commit SHA at decision: 32c77c0 (squash of 605ea5b from task/pk-UkLWZ.2; merged tree 7b1805892aa9b0d875d9cc12ec1bb5afbd51aac7)
+
+**Production behavior.** One Composer pill per live agent (`addComposerPill`, menu from the action registry), added/removed from the daemon agent directory and all removed on plugin cleanup. The rewrite runner refuses on empty text, busy re-entry, invalid/incomplete/unlisted dedicated selection, agent removal, and stale Composer text; it replaces text only when the snapshot still matches, then restores focus; every refusal is an error surfaced by the host. Settings are read through the host settings RPC (`settingsRpc(promptKitSettings.id).read`) because 0.8.0 exposes `useSettings` only to React surfaces.
+
+**Evidence source.** Peer 28e8376d handback 03:32Z: typecheck 0, `npm test` 0 (73), composer-dom 32 tests, 16-mutation battery all red. Lead on merged main: typecheck REAL_EXIT:0; unit+jsdom+composer-dom 109/109 (`/tmp/pk-merge-test.log`). Lead read `contribute.tsx`, `agent-pills.ts`, `rewrite-runner.ts`, `read-settings.ts`, `selection.ts` from the object.
+
+**Reversal condition.** Live QA (pk-UkLWZ.4) shows the host does not surface a thrown `onPress` error to the user → the runner reports through a visible channel instead (corrections pass on the client scope).
 
 **Supersedes / superseded by.** NONE
