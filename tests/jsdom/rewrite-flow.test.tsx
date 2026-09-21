@@ -6,7 +6,7 @@ vi.mock(
   async () => (await import("./mocks.js")).pluginUiMock,
 );
 
-import contribute from "../../client/contribute.js";
+import contribute from "../../index.client.js";
 import { promptKitSettingsSchema, type PromptKitSettings } from "../../shared/settings.js";
 import { createWebComposerAdapter } from "../../client/composer/web.js";
 import { createFakeClient, mountComposer, unmountComposer } from "./fakes.js";

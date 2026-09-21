@@ -6,7 +6,7 @@ vi.mock(
   async () => (await import("./mocks.js")).pluginUiMock,
 );
 
-import contribute from "../../client/contribute.js";
+import contribute from "../../index.client.js";
 import { createFakeClient, unmountComposer, type FakePill } from "./fakes.js";
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
