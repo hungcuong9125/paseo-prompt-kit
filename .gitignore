@@ -1,0 +1,12 @@
+# local research: agent-readable, never published
+/docs/IMPELEMENT_PLAN.md
+/upstreams/
+
+# local runtime state
+/.ait/
+/.logs/
+/artifacts/
+/node_modules/
+/dist/
+.DS_Store
+/.worktrees/
