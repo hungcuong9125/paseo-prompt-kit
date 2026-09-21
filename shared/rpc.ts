@@ -1,11 +1,12 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
-import { promptActionIds } from "./actions.js";
+import { ACTION_ID_PATTERN } from "./actions/schema.js";
 import { promptKitSettingsSchema } from "./settings.js";
 
 export const rewriteErrorCodeSchema = z.enum([
   "invalid_model",
   "invalid_selection",
+  "unknown_action",
   "timeout",
   "empty_output",
   "protected_literal_loss",
@@ -31,7 +32,7 @@ export const rewriteModelSchema = z.object({
 export const rewriteRpc = defineRpc({
   name: "prompt-kit.rewrite",
   input: z.object({
-    actionId: z.enum(promptActionIds),
+    actionId: z.string().regex(ACTION_ID_PATTERN),
     agentId: z.string().min(1),
     workspaceId: z.string().min(1),
     originalPrompt: z.string().min(1).max(50_000),
@@ -49,6 +50,28 @@ export const rewriteRpc = defineRpc({
       error: rewriteErrorSchema,
     }),
   ]),
+});
+
+export const actionSummarySchema = z.object({
+  id: z.string().min(1),
+  version: z.number().int().positive(),
+  enabledByDefault: z.boolean(),
+  title: z.string().min(1),
+  description: z.string().min(1),
+  icon: z.string().min(1),
+});
+
+/**
+ * The registry as loaded, with no settings applied. Which actions are enabled is
+ * a client-side decision, so the same settings document never has to be read
+ * twice and the RPC stays a pure function of the loaded packs.
+ */
+export const actionsListRpc = defineRpc({
+  name: "prompt-kit.actions.list",
+  input: z.object({}),
+  output: z.object({
+    actions: z.array(actionSummarySchema),
+  }),
 });
 
 export const thinkingOptionSchema = z.object({
@@ -81,4 +104,6 @@ export const providerCatalogRpc = defineRpc({
 export type RewriteInput = z.output<typeof rewriteRpc.input>;
 export type RewriteOutput = z.output<typeof rewriteRpc.output>;
 export type RewriteError = z.output<typeof rewriteErrorSchema>;
+export type ActionSummary = z.output<typeof actionSummarySchema>;
+export type ActionsListOutput = z.output<typeof actionsListRpc.output>;
 export type ProviderCatalogOutput = z.output<typeof providerCatalogRpc.output>;

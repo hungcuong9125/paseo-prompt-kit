@@ -27,12 +27,20 @@ const settings: PromptKitSettings = promptKitSettingsSchema.parse({});
 
 type RpcResult = Record<string, unknown>;
 
+/**
+ * Presses whatever the pill currently offers: a direct action button when one
+ * action is enabled, or the first menu entry when several are.
+ */
 function itemPress(pill: {
   button: Record<string, unknown>;
 }): () => void | Promise<void> {
-  const behavior = pill.button.behavior as {
-    items: { behavior: { onPress(): void | Promise<void> } }[];
-  };
+  const behavior = pill.button.behavior as
+    | { kind: "action"; onPress(): void | Promise<void> }
+    | {
+        kind: "menu";
+        items: { behavior: { onPress(): void | Promise<void> } }[];
+      };
+  if (behavior.kind === "action") return behavior.onPress;
   return behavior.items[0]!.behavior.onPress;
 }
 
@@ -47,6 +55,9 @@ async function mountWithRewrite(
       if (method === "settings.prompt-kit.read") {
         return { status: "ready", revision: "r1", values: settings };
       }
+      // `unexpected rpc` is the marker the fake uses to answer a host contract it
+      // owns itself; without it the rewrite result would be read as an action list.
+      if (method === "prompt-kit.actions.list") throw new Error(`unexpected rpc ${method}`);
       return rpc(method, input);
     },
   });
@@ -158,6 +169,11 @@ describe("rewrite flow", () => {
             values: { ...settings, modelMode: "dedicated", dedicatedProvider: "openai" },
           };
         }
+        if (method === "prompt-kit.providers") {
+          return {
+            providers: [{ provider: "openai", label: "OpenAI", available: true, models: [] }],
+          };
+        }
         throw new Error(`unexpected rpc ${method}`);
       },
     });
@@ -207,7 +223,10 @@ describe("rewrite flow", () => {
     cleanup();
   });
 
-  it("refuses to run when the settings document cannot be read", async () => {
+  it("registers no pill when the settings document cannot be read", async () => {
+    // Fail closed: an unreadable document must not be replaced by defaults the
+    // user never chose, so the enabled set is unknown and no control is shown.
+    // The settings screen reports the document and offers a reset.
     const fake = createFakeClient({
       agents: [agent],
       rpc: async (method) => {
@@ -217,13 +236,19 @@ describe("rewrite flow", () => {
         throw new Error(`unexpected rpc ${method}`);
       },
     });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const cleanup = contribute(fake.client);
     await flush();
     mountComposer("keep me");
 
-    await expect(itemPress(fake.live()[0]!)()).rejects.toThrow("stored document is corrupt");
+    expect(fake.live()).toHaveLength(0);
+    expect(error).toHaveBeenCalledWith(
+      "[prompt-kit] settings unavailable; no pill registered",
+      "stored document is corrupt",
+    );
     expect(rewriteCalls(fake)).toHaveLength(0);
     cleanup();
+    error.mockRestore();
   });
 
   it("refuses to replace when the visible composer is gone", async () => {

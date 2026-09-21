@@ -2,7 +2,6 @@ import type { PluginClientContext } from "@getpaseo/plugin/client";
 import type { ComposerAdapter } from "../composer/adapter.js";
 import { providerCatalogRpc, rewriteRpc, type ProviderCatalogOutput, type RewriteInput } from "../../shared/rpc.js";
 import { promptKitSettingsSchema } from "../../shared/settings.js";
-import type { PromptActionId } from "../../shared/actions.js";
 import type { SettingsRead } from "../settings/read-settings.js";
 import { validateDedicatedSelection } from "../settings/selection.js";
 
@@ -17,7 +16,7 @@ export interface RewriteRunnerInput {
 }
 
 export interface RewriteRunner {
-  run(actionId: PromptActionId): Promise<void>;
+  run(actionId: string): Promise<void>;
   isBusy(): boolean;
 }
 
@@ -30,7 +29,7 @@ export interface RewriteRunner {
 export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
   let busy = false;
 
-  async function run(actionId: PromptActionId): Promise<void> {
+  async function run(actionId: string): Promise<void> {
     if (busy) throw new Error("PromptKit is already rewriting this prompt.");
     const source = input.adapter.readText();
     if (source === null) {

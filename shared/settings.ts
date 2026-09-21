@@ -13,6 +13,12 @@ export const promptKitSettingsSchema = z.object({
   dedicatedModel: z.string().min(1).nullable().default(null),
   dedicatedThinkingOptionId: z.string().min(1).nullable().default(null),
   timeoutMs: z.number().int().min(1_000).max(600_000).default(90_000),
+  /**
+   * Per-action user toggle, keyed by action id. An id absent here falls back to
+   * the pack's `enabledByDefault`, so a newly added pack is usable without a
+   * settings migration and a removed pack leaves no stale state behind.
+   */
+  actionEnabled: z.record(z.string(), z.boolean()).default({}),
 });
 
 export type PromptKitSettings = z.output<typeof promptKitSettingsSchema>;

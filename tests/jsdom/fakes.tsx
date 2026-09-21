@@ -1,5 +1,7 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { createElement } from "react";
+import { listActions } from "../../shared/actions/registry.js";
+import { promptKitSettingsSchema } from "../../shared/settings.js";
 
 export interface FakeAgent {
   id: string;
@@ -38,11 +40,24 @@ export interface FakeClient {
  * rule as `PluginButtonStore` and refuses every send/run path, so a rewrite that
  * tried to auto-send would fail here instead of passing silently.
  */
+/**
+ * A test rpc that does not implement one of the fake-owned host contracts signals
+ * that by throwing; the fake then answers from its own state. Any other error is
+ * the test's own and must propagate.
+ */
+function isUnhandled(error: unknown, method: string): boolean {
+  return error instanceof Error && error.message === `unexpected rpc ${method}`;
+}
+
 export function createFakeClient(
   options: {
     agents?: readonly FakeAgent[];
     rpc?: (method: string, input: unknown) => Promise<unknown>;
     listError?: unknown;
+    /** Makes `prompt-kit.actions.list` fail, to exercise the fail-closed path. */
+    actionsError?: unknown;
+    /** Makes the settings read fail, to exercise the fail-closed path. */
+    settingsError?: unknown;
   } = {},
 ): FakeClient {
   const pills: FakePill[] = [];
@@ -99,8 +114,33 @@ export function createFakeClient(
     },
     rpc: async (contract: { name: string }, input: unknown) => {
       rpcCalls.push({ method: contract.name, input });
-      if (!options.rpc) throw new Error(`No fake rpc handler for ${contract.name}`);
-      return options.rpc(contract.name, input);
+      // The fake owns the two host contracts the pill depends on, so a test only
+      // has to describe the behaviour it is exercising. A test rpc may override
+      // them; `actionsError` / `settingsError` simulate an unreadable host.
+      const owned = contract.name === "prompt-kit.actions.list" || contract.name === "settings.prompt-kit.read";
+      if (!owned && options.rpc) return options.rpc(contract.name, input);
+      if (owned && options.rpc) {
+        try {
+          return await options.rpc(contract.name, input);
+        } catch (error) {
+          if (!isUnhandled(error, contract.name)) throw error;
+        }
+      }
+      if (contract.name === "prompt-kit.actions.list") {
+        if (options.actionsError) throw options.actionsError;
+        return {
+          actions: listActions().map((action) => ({
+            id: action.id,
+            version: action.version,
+            enabledByDefault: action.enabledByDefault,
+            title: action.title,
+            description: action.description,
+            icon: action.icon,
+          })),
+        };
+      }
+      if (options.settingsError) throw options.settingsError;
+      return { status: "ready", revision: "r1", values: promptKitSettingsSchema.parse({}) };
     },
     paseo: {
       agents: {

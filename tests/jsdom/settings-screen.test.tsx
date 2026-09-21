@@ -15,11 +15,13 @@ const holder = vi.hoisted(() => ({
   state: null as Record<string, unknown> | null,
   save: vi.fn(),
   listProviders: vi.fn(),
+  listActions: vi.fn(),
 }));
 
 vi.mock("@getpaseo/plugin/client", () => ({
   useSettings: () => holder.state,
-  useRpc: () => holder.listProviders,
+  useRpc: (contract: { name: string }) =>
+    contract.name === "prompt-kit.providers" ? holder.listProviders : holder.listActions,
 }));
 
 import { PromptKitSettingsScreen } from "../../client/settings/settings-screen.js";
@@ -73,6 +75,19 @@ const catalog = {
 
 const defaults = promptKitSettingsSchema.parse({});
 
+const actionCatalog = {
+  actions: [
+    {
+      id: "coding",
+      version: 1,
+      enabledByDefault: true,
+      title: "Improve coding prompt",
+      description: "Rewrite the current request for a coding agent.",
+      icon: "Code2",
+    },
+  ],
+};
+
 function readyState(values: Record<string, unknown>): Record<string, unknown> {
   return {
     status: "ready",
@@ -90,6 +105,7 @@ let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
 async function render(): Promise<HTMLDivElement> {
+  holder.listActions.mockResolvedValue(actionCatalog);
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -130,7 +146,13 @@ afterEach(() => {
   container = null;
   holder.save.mockReset();
   holder.listProviders.mockReset();
+  holder.listActions.mockReset();
 });
+
+/** Every render loads the action list, so tests stub it once. */
+function stubActions() {
+  holder.listActions.mockResolvedValue(actionCatalog);
+}
 
 describe("promptkit settings screen", () => {
   it("saves the edited selection through the host settings API and keeps it after the host echoes it back", async () => {

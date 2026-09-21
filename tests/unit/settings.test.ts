@@ -14,7 +14,18 @@ describe("prompt kit settings", () => {
       dedicatedModel: null,
       dedicatedThinkingOptionId: null,
       timeoutMs: 90_000,
+      actionEnabled: {},
     });
+  });
+
+  it("treats an absent action toggle as the pack default and an explicit one as the user's choice", async () => {
+    const values = await promptKitSettingsSchema.parseAsync({
+      actionEnabled: { coding: false },
+    });
+    expect(values.actionEnabled).toEqual({ coding: false });
+    // A key the document does not carry is absent, not false: the pack's own
+    // `enabledByDefault` decides, so a newly added pack needs no migration.
+    expect(values.actionEnabled["other"]).toBeUndefined();
   });
 
   it("is a version 1 host-scoped definition with the plugin id", () => {

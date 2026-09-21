@@ -12,12 +12,15 @@ import {
   SettingsRow,
   SettingsSection,
   SettingsSelect,
+  SettingsSwitch,
 } from "@getpaseo/plugin/client/ui";
-import { providerCatalogRpc, type ProviderCatalogOutput } from "../../shared/rpc.js";
+import { actionsListRpc, providerCatalogRpc, type ActionsListOutput, type ProviderCatalogOutput } from "../../shared/rpc.js";
 import { promptKitSettings, type PromptKitSettings } from "../../shared/settings.js";
+import { enabledActions } from "../actions/enabled.js";
 import { validateDedicatedSelection } from "./selection.js";
 
 type Providers = ProviderCatalogOutput["providers"];
+type ActionSummary = ActionsListOutput["actions"][number];
 
 const modeOptions = [
   { label: "Current agent model", value: "current" },
@@ -53,7 +56,10 @@ interface Draft {
 export function PromptKitSettingsScreen({ theme }: PluginSurfaceProps) {
   const settings = useSettings(promptKitSettings);
   const listProviders = useRpc(providerCatalogRpc);
+  const listActions = useRpc(actionsListRpc);
   const [providers, setProviders] = useState<Providers | null>(null);
+  const [actions, setActions] = useState<ActionSummary[] | null>(null);
+  const [actionsError, setActionsError] = useState<string | null>(null);
   const [providersError, setProvidersError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saved, setSaved] = useState(false);
@@ -70,11 +76,23 @@ export function PromptKitSettingsScreen({ theme }: PluginSurfaceProps) {
       );
   }, [listProviders]);
 
+  const loadActions = useCallback(() => {
+    setActionsError(null);
+    void listActions({})
+      .then((output) => setActions(output.actions))
+      .catch((error: unknown) =>
+        setActionsError(error instanceof Error ? error.message : String(error)),
+      );
+  }, [listActions]);
+
   const base = settings.status === "ready" ? settings : null;
   const dedicated = base?.values.modelMode === "dedicated";
   useEffect(() => {
     if (dedicated && providers === null) loadProviders();
   }, [dedicated, providers, loadProviders]);
+  useEffect(() => {
+    if (actions === null) loadActions();
+  }, [actions, loadActions]);
 
   const update = useCallback(
     (patch: Partial<PromptKitSettings>) => {
@@ -123,6 +141,32 @@ export function PromptKitSettingsScreen({ theme }: PluginSurfaceProps) {
   return (
     <SettingsSection title="PromptKit">
       <SettingsCard>
+        <SettingsSection title="Actions">
+          {actionsError ? <Text style={style}>{actionsError}</Text> : null}
+          {actions === null ? (
+            <Text style={style}>Loading actions…</Text>
+          ) : actions.length === 0 ? (
+            <Text style={muted}>No action pack is loaded.</Text>
+          ) : (
+            actions.map((action) => (
+              <SettingsSwitch
+                key={action.id}
+                label={action.title}
+                hint={action.description}
+                value={enabledActions([action], values).length === 1}
+                disabled={disabled}
+                onValueChange={(next) =>
+                  update({
+                    actionEnabled: { ...values.actionEnabled, [action.id]: next },
+                  })
+                }
+              />
+            ))
+          )}
+          <Text style={muted}>
+            A change here applies to the Composer pill when the agent re-opens or the plugin reloads.
+          </Text>
+        </SettingsSection>
         <SettingsSelect
           label="Rewrite model"
           value={values.modelMode}

@@ -1,7 +1,6 @@
 import { settingsRpc } from "@getpaseo/plugin";
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import {
-  isDedicatedSelectionComplete,
   promptKitSettings,
   promptKitSettingsSchema,
   type PromptKitSettings,
@@ -19,9 +18,14 @@ function message(error: unknown): string {
 
 /**
  * Reads the persisted settings through the host settings API. Every failure —
- * unreadable document, schema mismatch, or an incomplete dedicated selection —
- * is reported as `invalid` so the rewrite path refuses instead of falling back
- * to the current model.
+ * unreadable document or schema mismatch — is reported as `invalid` so callers
+ * refuse instead of falling back to defaults the user never chose.
+ *
+ * Whether a *dedicated* selection is usable depends on the live provider
+ * catalog, so that check belongs to the rewrite path
+ * (`validateDedicatedSelection`), not here. Reporting an incomplete selection as
+ * an unreadable document would also hide the pill, because the pill's enabled
+ * set cannot be computed from a document the reader refuses.
  */
 export function createSettingsReader(rpc: Rpc): () => Promise<SettingsRead> {
   const read = settingsRpc(promptKitSettings.id).read;
@@ -32,12 +36,6 @@ export function createSettingsReader(rpc: Rpc): () => Promise<SettingsRead> {
       const parsed = promptKitSettingsSchema.safeParse(result.values);
       if (!parsed.success) {
         return { status: "invalid", error: "PromptKit settings are invalid." };
-      }
-      if (parsed.data.modelMode === "dedicated" && !isDedicatedSelectionComplete(parsed.data)) {
-        return {
-          status: "invalid",
-          error: "Select a dedicated provider and model in PromptKit settings.",
-        };
       }
       return { status: "ready", values: parsed.data };
     } catch (error) {

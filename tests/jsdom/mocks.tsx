@@ -41,6 +41,25 @@ export const pluginUiMock = {
       error ? createElement("span", { "data-error": error }, error) : null,
       children,
     ),
+  SettingsSwitch: ({
+    label,
+    value,
+    onValueChange,
+    disabled,
+  }: {
+    label: string;
+    value: boolean;
+    onValueChange(value: boolean): void;
+    disabled?: boolean;
+  }) =>
+    createElement("input", {
+      type: "checkbox",
+      "data-label": label,
+      checked: value,
+      disabled,
+      onChange: (event: { target: { checked: boolean } }) =>
+        onValueChange(event.target.checked),
+    }),
   SettingsSelect: ({
     label,
     value,
