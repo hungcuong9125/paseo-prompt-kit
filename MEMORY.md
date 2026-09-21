@@ -8,17 +8,17 @@ Current-state takeover index. History → `docs/exec-plans/`; decisions → `doc
 - Repository HEAD: see `git log -1`; branch `main`; origin https://github.com/hungcuong9125/paseo-prompt-kit (empty remote, nothing pushed)
 - AIT database: initialized (prefix `pk`, `.ait/ait.db`, ignored)
 - AIT graph snapshot: epic pk-UkLWZ → .1 scaffold+spike, .2 client, .3 server, .4 qa+release; .2/.3 blocked by .1; .4 blocked by .2/.3
-- AIT open: 5 (epics 1, tasks 4) — reconciled 2026-09-21
-- Active AIT issue IDs: pk-UkLWZ.1 (next dispatch)
+- AIT open: 4 (epics 1, tasks 3) — reconciled 2026-09-21
+- Active AIT issue IDs: pk-UkLWZ.1 — dispatched to Peer f5e1d938-a6a9-4c9b-9795-9ce1e1ba22af (pi-peer/workbuddy/deepseek-v4.1-flash high), base 3a2cba63e7b8b2eec6bbcde24874f4b176e0ca42
 - Handoff type: NONE
-- Active Peer disposition: none yet
-- Heartbeat ID: none
-- Deferred: 0 open — docs/DEFERRED.md
+- Active Peer disposition: f5e1d938 (pk-UkLWZ.1) handed back, ACCEPTED, retained idle (warm context for shared/** questions)
+- Heartbeat ID: cf4d76e8 (lead-pk-mvp-watch, */30 min, expires 2026-09-21T13:10Z)
+- Deferred: 2 open — docs/DEFERRED.md
 
 ## Active packets
 
 - Packet: docs/exec-plans/active/paseo-prompt-kit-mvp.md · intent docs/intents/paseo-prompt-kit-mvp.md · Report to bf776d78-0b8a-44d3-9336-72a79e280ad7
-- State: packet opened; DECISION_REQUEST (framework source) answered → Option A; no writable dispatch yet.
+- State: pk-UkLWZ.1 ACCEPTED 76992b4070ed38c76befd9d18a623c3f907b78d7 (tree 0de83b0e2bab3b15e455951a43ce2b883ccf8f1a; DLF-003). Human directive DLF-004 (bug scanner + MultiZen) bound to .4. Next: .2 and .3 in worktrees.
 - Route: implement on `pi-peer/workbuddy/deepseek-v4.1-flash` (brief lock); catalog confirms thinking ids low/high/max; Pi has no modeId.
 - Open questions upward (not yet material): npm scope/publish; release tag; min Paseo version (bind from `paseo plugin init` output in .1).
 
@@ -42,9 +42,9 @@ Current-state takeover index. History → `docs/exec-plans/`; decisions → `doc
 
 ## Writable ownership
 
-- Scope: none active. Frozen after pk-UkLWZ.1: `shared/**`, `package.json`, `paseo-plugin.json`, `tsconfig.json`, `vitest.config.ts`.
+- Scope: frozen at 76992b40: `shared/**`, `package.json`, `paseo-plugin.json`, `tsconfig.json`, `vitest.config.ts`.
 
 ## Takeover instructions
 
-- Immediate next action: dispatch pk-UkLWZ.1 (or read its handback if a seat exists — `list_agents`).
+- Immediate next action: read F1 correction commit from f5e1d938; confirm with the prose probe (`make the login page work again` etc. must yield no literal); squash 78a700c+5c60258+correction into one acceptance commit; then create worktrees `.worktrees/client` (.2) and `.worktrees/server` (.3) from the acceptance SHA and dispatch both on pi-peer/workbuddy/deepseek-v4.1-flash low.
 - Preflight: re-read WORKSPACE_PROTOCOL.md, framework/protocol.md, framework/provider-routing.md, this file, packet; `ait status`; `git status`.

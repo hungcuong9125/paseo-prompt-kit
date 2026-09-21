@@ -17,4 +17,5 @@ Rules:
 
 | ID | Item | Deferred at | Source | Revisit when | State |
 |---|---|---|---|---|---|
-| DEF-000 | <one-line description of the deferred item> | YYYY-MM-DD | DLF-nnn / AIT id | <observable trigger> | OPEN |
+| DEF-001 | Protected-literal validator ignores bare commands mid-sentence (rule anchors at line start), e.g. `… using npm run gate` dropped by a rewrite is not detected | 2026-09-21 | DLF-003 / pk-UkLWZ.1 | QA matrix in pk-UkLWZ.4 shows a real mid-sentence command loss, or the validator is next touched | OPEN |
+| DEF-002 | Absolute path whose last segment is one character truncates (`/Volumes/x` → `/Volumes`) | 2026-09-21 | DLF-003 / pk-UkLWZ.1 | Validator is next touched | OPEN |
