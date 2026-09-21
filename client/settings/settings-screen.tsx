@@ -15,6 +15,7 @@ import {
   SettingsSwitch,
 } from "@getpaseo/plugin/client/ui";
 import { actionsListRpc, providerCatalogRpc, type ActionsListOutput, type ProviderCatalogOutput } from "../../shared/rpc.js";
+import type { ApiEndpoint } from "../../shared/api-protocol.js";
 import { promptKitSettings, type PromptKitSettings } from "../../shared/settings.js";
 import { CLI_FAMILY_IDS, isCliFamilyId } from "../../shared/cli-families.js";
 import { enabledActions } from "../actions/enabled.js";
@@ -26,6 +27,11 @@ type ActionSummary = ActionsListOutput["actions"][number];
 const modeOptions = [
   { label: "Current agent model", value: "current" },
   { label: "Dedicated model", value: "dedicated" },
+] as const;
+
+const transportOptions = [
+  { label: "Provider CLI", value: "cli" },
+  { label: "Direct API", value: "api" },
 ] as const;
 
 /** Empty string is the "no selection" option; the schema stores null for it. */
@@ -47,6 +53,15 @@ function thinkingOptions(providers: Providers, providerId: string | null, modelI
   const entry = providers.find((provider) => provider.provider === providerId);
   const model = entry?.models.find((candidate) => candidate.id === modelId);
   return (model?.thinkingOptions ?? []).map((option) => ({ label: option.label, value: option.id }));
+}
+
+/** The models the selected API endpoint declares. An endpoint may declare none. */
+function apiModelOptions(
+  endpoints: readonly ApiEndpoint[],
+  endpointId: string | null,
+): readonly { label: string; value: string }[] {
+  const endpoint = endpoints.find((candidate) => candidate.id === endpointId);
+  return (endpoint?.models ?? []).map((model) => ({ label: model, value: model }));
 }
 
 interface Draft {
@@ -188,6 +203,15 @@ export function PromptKitSettingsScreen({ theme }: PluginSurfaceProps) {
           </Text>
         </SettingsSection>
         <SettingsSelect
+          label="Transport"
+          value={values.transport}
+          options={transportOptions}
+          disabled={disabled}
+          onValueChange={(transport) =>
+            update({ transport: transport === "api" ? "api" : "cli" })
+          }
+        />
+        <SettingsSelect
           label="Rewrite model"
           value={values.modelMode}
           options={modeOptions}
@@ -196,7 +220,46 @@ export function PromptKitSettingsScreen({ theme }: PluginSurfaceProps) {
             update({ modelMode: modelMode === "dedicated" ? "dedicated" : "current" })
           }
         />
-        {values.modelMode === "dedicated" ? (
+        {values.transport === "api" ? (
+          <SettingsSection title="API endpoints">
+            <Text style={muted}>
+              An endpoint is a base URL, a protocol and the name of the variable that holds its
+              key. The key itself is never stored here: this document reaches your browser. Set the
+              environment variable, or put the value in secrets.json next to the plugin settings.
+              See README.md, "API keys".
+            </Text>
+            <SettingsSelect
+              label="Endpoint"
+              value={values.apiEndpointId ?? NONE}
+              options={[
+                { label: "Select an endpoint", value: NONE },
+                ...values.apiEndpoints.map((endpoint) => ({
+                  label: `${endpoint.label} (${endpoint.protocol})`,
+                  value: endpoint.id,
+                })),
+              ]}
+              disabled={disabled}
+              onValueChange={(endpointId) =>
+                update({ apiEndpointId: endpointId === NONE ? null : endpointId, apiModel: null })
+              }
+            />
+            {values.modelMode === "dedicated" ? (
+              <SettingsSelect
+                label="API model"
+                value={values.apiModel ?? NONE}
+                options={[
+                  { label: "Select a model", value: NONE },
+                  ...apiModelOptions(values.apiEndpoints, values.apiEndpointId),
+                ]}
+                disabled={disabled}
+                onValueChange={(apiModel) =>
+                  update({ apiModel: apiModel === NONE ? null : apiModel })
+                }
+              />
+            ) : null}
+          </SettingsSection>
+        ) : null}
+        {values.transport === "cli" && values.modelMode === "dedicated" ? (
           <>
             <SettingsSelect
               label="Provider"

@@ -1,5 +1,7 @@
 import type { RewriteError, RewriteOutput } from "../shared/rpc.js";
+import type { ApiEndpoint } from "../shared/api-protocol.js";
 import type { PromptKitSettings } from "../shared/settings.js";
+import { runApiRewrite } from "./api/runner.js";
 import { resolveFamily, type CliFamily } from "./cli/family.js";
 import { runCliRewrite } from "./cli/runner.js";
 import type { CliSpawner } from "./cli/process.js";
@@ -22,6 +24,10 @@ export interface RewriteDependencies {
   timeoutMs?: number;
   /** Test seam: replaces the process spawner under the CLI runner. */
   spawn?: CliSpawner;
+  /** Test seam: replaces the HTTP call under the API runner. */
+  fetch?: typeof globalThis.fetch;
+  /** Test seam: replaces the environment an API key is read from. */
+  env?: NodeJS.ProcessEnv;
 }
 
 interface ResolvedModel {
@@ -30,8 +36,22 @@ interface ResolvedModel {
   thinkingOptionId: string | null;
 }
 
+/**
+ * The three rewrite paths, once their model is resolved.
+ *
+ * `modelMode` and `transport` are separate axes: the first answers *which* model,
+ * the second *how it is reached*. The union below is where that becomes concrete
+ * — a CLI target needs a family, an API target needs an endpoint — so neither
+ * transport has to know about the other's requirements.
+ */
 type ResolvedTarget =
-  | { ok: true; model: ResolvedModel; family: CliFamily; cwd: string }
+  | CliTarget
+  | { ok: true; via: "api"; endpoint: ApiEndpoint; model: string; reported: ResolvedModel }
+  | { ok: false; error: RewriteError };
+
+/** A target a CLI runs: the model plus the family whose binary executes it. */
+type CliTarget =
+  | { ok: true; via: "cli"; family: CliFamily; model: ResolvedModel; cwd: string }
   | { ok: false; error: RewriteError };
 
 /**
@@ -71,7 +91,7 @@ async function resolveCurrentAgent(
   paseo: PaseoApi,
   agentId: string,
   providerMap: Readonly<Record<string, string>>,
-): Promise<ResolvedTarget> {
+): Promise<CliTarget> {
   const refreshed = await paseo.agents.ref(agentId).refresh();
   if (!refreshed) {
     return {
@@ -89,6 +109,7 @@ async function resolveCurrentAgent(
   if (family === null) return { ok: false, error: unsupported(provider) };
   return {
     ok: true,
+    via: "cli",
     family,
     model: {
       provider,
@@ -101,11 +122,31 @@ async function resolveCurrentAgent(
   };
 }
 
+/**
+ * The model a CLI agent is running, read without requiring a CLI family.
+ *
+ * `resolveCurrentAgent` also resolves the family, which is the right question for
+ * the CLI transport and the wrong one for the API transport: a provider like
+ * `grok` has no CLI family yet is perfectly reachable through an endpoint. This
+ * reads the same two fields the Composer's model control reads, and nothing else.
+ */
+async function readAgentModel(paseo: PaseoApi, agentId: string): Promise<ResolvedModel | null> {
+  const refreshed = await paseo.agents.ref(agentId).refresh();
+  if (!refreshed) return null;
+  const agent = refreshed.agent;
+  const selector = agent.runtimeInfo?.provider ?? agent.provider;
+  return {
+    provider: selector.includes("/") ? splitSelector(selector).provider : selector,
+    model: runtimeModel(agent) ?? agent.model,
+    thinkingOptionId: agent.effectiveThinkingOptionId ?? agent.thinkingOptionId ?? null,
+  };
+}
+
 async function resolveDedicatedModel(
   paseo: PaseoApi,
   settings: PromptKitSettings,
   cwd: string,
-): Promise<ResolvedTarget> {
+): Promise<CliTarget> {
   const provider = settings.dedicatedProvider;
   const model = settings.dedicatedModel;
   if (provider === null || model === null) {
@@ -163,9 +204,115 @@ async function resolveDedicatedModel(
   }
   return {
     ok: true,
+    via: "cli",
     family,
     model: { provider, model, thinkingOptionId: thinking },
     cwd,
+  };
+}
+
+function invalidSelection(message: string): { ok: false; error: RewriteError } {
+  return { ok: false, error: { code: "invalid_selection", message } };
+}
+
+/**
+ * Paths 1 and 2: the model comes from the agent or from the dedicated selection,
+ * and a CLI of the matching family runs it.
+ */
+async function resolveCliTarget(
+  paseo: PaseoApi,
+  agentId: string,
+  settings: PromptKitSettings,
+): Promise<ResolvedTarget> {
+  const current = await resolveCurrentAgent(paseo, agentId, settings.providerCli);
+  if (!current.ok) return current;
+
+  if (settings.modelMode === "current") {
+    if (current.model.model === null || current.model.model === "") {
+      return invalidSelection(
+        `The agent has no model selected for provider "${current.model.provider}".`,
+      );
+    }
+    return current;
+  }
+
+  return resolveDedicatedModel(paseo, settings, current.cwd);
+}
+
+/**
+ * Path 3: the answer comes straight from an API endpoint.
+ *
+ * The model has two legitimate sources, and which one applies is decided by
+ * configuration rather than guessed:
+ *
+ * - `apiEndpointByProvider` names an endpoint for the agent's own provider. The
+ *   agent's model is then sent, which is the "opencode talks to my own OpenAI
+ *   endpoint" case. This takes precedence, because an explicit per-provider
+ *   mapping is a stronger statement than a global transport setting.
+ * - otherwise `apiEndpointId` + `apiModel` are used, and `modelMode` must be
+ *   `dedicated` — there is no agent model to borrow in that case.
+ *
+ * Note what is deliberately absent: no CLI family is resolved. A provider with no
+ * CLI at all (`grok`) is perfectly reachable through an endpoint, so requiring a
+ * family here would refuse a valid configuration.
+ */
+async function resolveApiTarget(
+  paseo: PaseoApi,
+  agentId: string,
+  settings: PromptKitSettings,
+): Promise<ResolvedTarget> {
+  const agent = await readAgentModel(paseo, agentId);
+  if (agent === null) return invalidSelection("The current agent is no longer available.");
+
+  const mappedEndpointId = settings.apiEndpointByProvider[agent.provider];
+  const viaProviderMapping = mappedEndpointId !== undefined;
+  if (!viaProviderMapping && settings.modelMode !== "dedicated") {
+    return invalidSelection(
+      "An API transport needs a dedicated model, or an endpoint mapped to this agent's provider.",
+    );
+  }
+
+  const endpointId = viaProviderMapping ? mappedEndpointId : settings.apiEndpointId;
+  if (endpointId === null) {
+    return invalidSelection("No API endpoint is selected in PromptKit settings.");
+  }
+  const endpoint = settings.apiEndpoints.find((candidate) => candidate.id === endpointId);
+  if (endpoint === undefined) {
+    return {
+      ok: false,
+      error: {
+        code: "api_endpoint_unknown",
+        message: `No API endpoint is configured with the id "${endpointId}".`,
+      },
+    };
+  }
+
+  const model = viaProviderMapping ? agent.model : settings.apiModel;
+  if (model === null || model.trim() === "") {
+    return invalidSelection(
+      viaProviderMapping
+        ? `The agent has no model selected for provider "${agent.provider}".`
+        : "No API model is selected in PromptKit settings.",
+    );
+  }
+  // Catching this here turns a misconfiguration into a named error instead of an
+  // HTTP 400 from the endpoint. An endpoint that lists no models is not checked.
+  if (endpoint.models.length > 0 && !endpoint.models.includes(model)) {
+    return {
+      ok: false,
+      error: {
+        code: "invalid_model",
+        message: `Model is unavailable on endpoint "${endpoint.id}": ${model}`,
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    via: "api",
+    endpoint,
+    model,
+    reported: { provider: endpoint.id, model, thinkingOptionId: null },
   };
 }
 
@@ -178,36 +325,42 @@ export async function runRewrite(
   const settings = dependencies.settings;
   const timeoutMs = dependencies.timeoutMs ?? settings.timeoutMs;
 
-  const current = await resolveCurrentAgent(paseo, request.agentId, settings.providerCli);
-  if (!current.ok) return { status: "error", error: current.error };
-
+  // `transport: "api"` is only meaningful together with a model choice, so it is
+  // resolved after the model and never as a substitute for it. This is where the
+  // two axes meet.
   const target =
-    settings.modelMode === "current"
-      ? current
-      : await resolveDedicatedModel(paseo, settings, current.cwd);
+    settings.transport === "api"
+      ? await resolveApiTarget(paseo, request.agentId, settings)
+      : await resolveCliTarget(paseo, request.agentId, settings);
   if (!target.ok) return { status: "error", error: target.error };
 
-  if (target.model.model === null || target.model.model === "") {
-    return {
-      status: "error",
-      error: {
-        code: "invalid_selection",
-        message: `The agent has no model selected for provider "${target.model.provider}".`,
-      },
-    };
-  }
-
-  const generated = await runCliRewrite(
-    {
-      family: target.family,
-      model: target.model.model,
-      thinkingOptionId: target.model.thinkingOptionId,
-      systemPrompt: request.systemPrompt,
-      taskPrompt: request.taskPrompt,
-      timeoutMs,
-    },
-    dependencies.spawn === undefined ? {} : { spawn: dependencies.spawn },
-  );
+  const generated =
+    target.via === "api"
+      ? await runApiRewrite(
+          {
+            endpoint: target.endpoint,
+            model: target.model,
+            systemPrompt: request.systemPrompt,
+            taskPrompt: request.taskPrompt,
+            timeoutMs,
+            secretsDir: settings.secretsFile,
+          },
+          {
+            ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
+            ...(dependencies.env === undefined ? {} : { env: dependencies.env }),
+          },
+        )
+      : await runCliRewrite(
+          {
+            family: target.family,
+            model: target.model.model ?? "",
+            thinkingOptionId: target.model.thinkingOptionId,
+            systemPrompt: request.systemPrompt,
+            taskPrompt: request.taskPrompt,
+            timeoutMs,
+          },
+          dependencies.spawn === undefined ? {} : { spawn: dependencies.spawn },
+        );
   if (!generated.ok) {
     return {
       status: "error",
@@ -215,6 +368,8 @@ export async function runRewrite(
     };
   }
 
+  // Both transports feed the same validator against the same original prompt, so a
+  // protected literal cannot survive one path and be dropped by the other.
   const validated = validateRewriteOutput({
     originalPrompt: request.originalPrompt,
     output: generated.text,
@@ -224,7 +379,7 @@ export async function runRewrite(
   return {
     status: "ok",
     rewrittenPrompt: validated.text,
-    model: target.model,
+    model: target.via === "api" ? target.reported : target.model,
     durationMs: Date.now() - startedAt,
   };
 }

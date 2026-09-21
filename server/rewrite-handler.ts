@@ -9,6 +9,10 @@ import { runRewrite } from "./rewrite.js";
 export interface RewriteHandlerDependencies {
   /** Test seam: replaces the CLI spawner underneath the rewrite engine. */
   spawn?: CliSpawner;
+  /** Test seam: replaces the HTTP call underneath the API runner. */
+  fetch?: typeof globalThis.fetch;
+  /** Test seam: replaces the environment an API key is read from. */
+  env?: NodeJS.ProcessEnv;
 }
 
 /**
@@ -47,9 +51,12 @@ export function createRewriteHandler(dependencies: RewriteHandlerDependencies = 
         originalPrompt: input.originalPrompt,
         taskPrompt: buildTaskPrompt(action, input.originalPrompt),
       },
-      dependencies.spawn === undefined
-        ? { settings: input.settings }
-        : { settings: input.settings, spawn: dependencies.spawn },
+      {
+        settings: input.settings,
+        ...(dependencies.spawn === undefined ? {} : { spawn: dependencies.spawn }),
+        ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
+        ...(dependencies.env === undefined ? {} : { env: dependencies.env }),
+      },
     );
 
     if (output.status === "ok") {

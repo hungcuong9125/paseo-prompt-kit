@@ -11,6 +11,10 @@ export const rewriteErrorCodeSchema = z.enum([
   "empty_output",
   "unsupported_provider",
   "spawn_failed",
+  "missing_api_key",
+  "api_endpoint_unknown",
+  "api_http_error",
+  "api_bad_response",
   "protected_literal_loss",
   "generation_failed",
 ]);

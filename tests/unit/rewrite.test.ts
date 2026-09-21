@@ -316,3 +316,315 @@ describe("runRewrite: dedicated model", () => {
     expect(harness.spawned).toEqual([]);
   });
 });
+
+/**
+ * The API transport, driven through the same `runRewrite` entry point as the CLI
+ * paths. `fetch` and `env` are seams, so no test opens a socket or needs a real key.
+ */
+async function rewriteApi(
+  harness: ReturnType<typeof createRewriteHarness>,
+  overrides: Record<string, unknown>,
+  http: {
+    status?: number;
+    body?: unknown;
+    reject?: Error;
+    env?: NodeJS.ProcessEnv;
+    request?: Partial<typeof REWRITE_REQUEST>;
+  } = {},
+) {
+  const calls: { url: string; headers: Record<string, string>; body: string }[] = [];
+  const fetchImpl = (async (url: string, init: { headers: Record<string, string>; body: string }) => {
+    calls.push({ url, headers: init.headers, body: init.body });
+    if (http.reject) throw http.reject;
+    const status = http.status ?? 200;
+    const body = http.body === undefined ? {} : http.body;
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
+    };
+  }) as unknown as typeof globalThis.fetch;
+
+  const output = await runRewrite(
+    harness.paseo,
+    { ...REWRITE_REQUEST, ...http.request },
+    {
+      settings: await settings(overrides),
+      fetch: fetchImpl,
+      env: http.env ?? {},
+    },
+  );
+  return { output, calls };
+}
+
+const GROQ_ENDPOINT = {
+  id: "groq",
+  label: "Groq",
+  protocol: "openai",
+  baseUrl: "https://api.groq.com/openai/v1",
+  apiKeyEnv: "GROQ_API_KEY",
+  models: ["openai/gpt-oss-20b"],
+};
+
+const OK_BODY = { choices: [{ message: { content: "rewritten text" } }] };
+
+describe("runRewrite: api transport", () => {
+  it("posts to the endpoint and returns its text without spawning a CLI", async () => {
+    const harness = createRewriteHarness({});
+    const { output, calls } = await rewriteApi(
+      harness,
+      {
+        transport: "api",
+        modelMode: "dedicated",
+        apiEndpoints: [GROQ_ENDPOINT],
+        apiEndpointId: "groq",
+        apiModel: "openai/gpt-oss-20b",
+      },
+      { body: OK_BODY, env: { GROQ_API_KEY: "sk-test" } },
+    );
+
+    expect(output.status).toBe("ok");
+    if (output.status !== "ok") throw new Error("expected ok");
+    expect(output.rewrittenPrompt).toBe("rewritten text");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe("https://api.groq.com/openai/v1/chat/completions");
+    expect(calls[0]?.headers["authorization"]).toBe("Bearer sk-test");
+    // The CLI path must stay untouched: no process, and the agent is only read.
+    expect(harness.spawned).toEqual([]);
+    expect(harness.mainAgentCalls).toEqual(["refresh"]);
+    expect(output.model).toEqual({
+      provider: "groq",
+      model: "openai/gpt-oss-20b",
+      thinkingOptionId: null,
+    });
+  });
+
+  // "opencode talks to my own OpenAI endpoint": the endpoint is mapped to the
+  // agent's provider, so the agent's own model is sent and no dedicated model is
+  // needed.
+  it("sends the agent's own model when an endpoint is mapped to its provider", async () => {
+    const harness = createRewriteHarness({
+      agent: {
+        provider: "opencode",
+        model: "workbuddy/deepseek-v4.1-flash",
+        runtimeInfo: { provider: "opencode" },
+      },
+    });
+    const { output, calls } = await rewriteApi(
+      harness,
+      {
+        transport: "api",
+        modelMode: "current",
+        apiEndpoints: [{ ...GROQ_ENDPOINT, models: [] }],
+        apiEndpointByProvider: { opencode: "groq" },
+      },
+      { body: OK_BODY, env: { GROQ_API_KEY: "sk-test" } },
+    );
+
+    expect(output.status).toBe("ok");
+    expect(JSON.parse(calls[0]!.body).model).toBe("workbuddy/deepseek-v4.1-flash");
+    expect(harness.spawned).toEqual([]);
+  });
+
+  // A provider with no CLI family is still reachable through an endpoint, so the
+  // API path must not require one.
+  it("works for a provider that has no CLI family", async () => {
+    const harness = createRewriteHarness({
+      agent: { provider: "grok", runtimeInfo: { provider: "grok" } },
+    });
+    const { output } = await rewriteApi(
+      harness,
+      {
+        transport: "api",
+        modelMode: "current",
+        apiEndpoints: [{ ...GROQ_ENDPOINT, models: [] }],
+        apiEndpointByProvider: { grok: "groq" },
+      },
+      { body: OK_BODY, env: { GROQ_API_KEY: "sk-test" } },
+    );
+    expect(output.status).toBe("ok");
+  });
+
+  it("fails closed with missing_api_key and makes no request", async () => {
+    const harness = createRewriteHarness({});
+    const { output, calls } = await rewriteApi(
+      harness,
+      {
+        transport: "api",
+        modelMode: "dedicated",
+        apiEndpoints: [GROQ_ENDPOINT],
+        apiEndpointId: "groq",
+        apiModel: "openai/gpt-oss-20b",
+      },
+      { body: OK_BODY, env: {} },
+    );
+    expect(output.status).toBe("error");
+    if (output.status !== "error") throw new Error("expected error");
+    expect(output.error.code).toBe("missing_api_key");
+    // The name is named; the value is not, because there is none.
+    expect(output.error.message).toContain("GROQ_API_KEY");
+    expect(calls).toEqual([]);
+    expect(harness.spawned).toEqual([]);
+  });
+
+  it("maps a non-2xx answer to api_http_error", async () => {
+    const harness = createRewriteHarness({});
+    const { output } = await rewriteApi(
+      harness,
+      {
+        transport: "api",
+        modelMode: "dedicated",
+        apiEndpoints: [GROQ_ENDPOINT],
+        apiEndpointId: "groq",
+        apiModel: "openai/gpt-oss-20b",
+      },
+      { status: 401, body: "unauthorized", env: { GROQ_API_KEY: "sk-test" } },
+    );
+    expect(output.status).toBe("error");
+    if (output.status !== "error") throw new Error("expected error");
+    expect(output.error.code).toBe("api_http_error");
+    expect(output.error.message).toContain("401");
+  });
+
+  it("maps an unreadable body to api_bad_response", async () => {
+    const harness = createRewriteHarness({});
+    const { output } = await rewriteApi(
+      harness,
+      {
+        transport: "api",
+        modelMode: "dedicated",
+        apiEndpoints: [GROQ_ENDPOINT],
+        apiEndpointId: "groq",
+        apiModel: "openai/gpt-oss-20b",
+      },
+      { body: "not json", env: { GROQ_API_KEY: "sk-test" } },
+    );
+    expect(output.status).toBe("error");
+    if (output.status !== "error") throw new Error("expected error");
+    expect(output.error.code).toBe("api_bad_response");
+  });
+
+  it("maps a well-formed body with no text to api_bad_response", async () => {
+    const harness = createRewriteHarness({});
+    const { output } = await rewriteApi(
+      harness,
+      {
+        transport: "api",
+        modelMode: "dedicated",
+        apiEndpoints: [GROQ_ENDPOINT],
+        apiEndpointId: "groq",
+        apiModel: "openai/gpt-oss-20b",
+      },
+      { body: { choices: [] }, env: { GROQ_API_KEY: "sk-test" } },
+    );
+    expect(output.status).toBe("error");
+    if (output.status !== "error") throw new Error("expected error");
+    expect(output.error.code).toBe("api_bad_response");
+  });
+
+  it("fails closed with api_endpoint_unknown and makes no request", async () => {
+    const harness = createRewriteHarness({});
+    const { output, calls } = await rewriteApi(harness, {
+      transport: "api",
+      modelMode: "dedicated",
+      apiEndpoints: [GROQ_ENDPOINT],
+      apiEndpointId: "absent",
+      apiModel: "openai/gpt-oss-20b",
+    });
+    expect(output.status).toBe("error");
+    if (output.status !== "error") throw new Error("expected error");
+    expect(output.error.code).toBe("api_endpoint_unknown");
+    expect(calls).toEqual([]);
+  });
+
+  // The two axes are independent, but not every combination is meaningful: with
+  // no provider mapping there is no model to borrow, so `current + api` is refused.
+  it("refuses the api transport with a current model and no provider mapping", async () => {
+    const harness = createRewriteHarness({});
+    const { output, calls } = await rewriteApi(harness, {
+      transport: "api",
+      modelMode: "current",
+      apiEndpoints: [GROQ_ENDPOINT],
+      apiEndpointId: "groq",
+    });
+    expect(output.status).toBe("error");
+    if (output.status !== "error") throw new Error("expected error");
+    expect(output.error.code).toBe("invalid_selection");
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses a model the endpoint does not declare", async () => {
+    const harness = createRewriteHarness({});
+    const { output, calls } = await rewriteApi(harness, {
+      transport: "api",
+      modelMode: "dedicated",
+      apiEndpoints: [GROQ_ENDPOINT],
+      apiEndpointId: "groq",
+      apiModel: "not-a-listed-model",
+    });
+    expect(output.status).toBe("error");
+    if (output.status !== "error") throw new Error("expected error");
+    expect(output.error.code).toBe("invalid_model");
+    expect(calls).toEqual([]);
+  });
+
+  // The protected-literal guard is shared, so the API path cannot be a way around it.
+  it("refuses output that dropped a protected literal", async () => {
+    const harness = createRewriteHarness({});
+    const { output } = await rewriteApi(
+      harness,
+      {
+        transport: "api",
+        modelMode: "dedicated",
+        apiEndpoints: [GROQ_ENDPOINT],
+        apiEndpointId: "groq",
+        apiModel: "openai/gpt-oss-20b",
+      },
+      {
+        body: { choices: [{ message: { content: "no literal here" } }] },
+        env: { GROQ_API_KEY: "sk-test" },
+        request: { originalPrompt: "fix /tmp/app/login.ts" },
+      },
+    );
+    expect(output.status).toBe("error");
+    if (output.status !== "error") throw new Error("expected error");
+    expect(output.error.code).toBe("protected_literal_loss");
+  });
+
+  it("maps an aborted request to timeout", async () => {
+    const harness = createRewriteHarness({});
+    const abort = new Error("aborted");
+    const { output } = await rewriteApi(
+      harness,
+      {
+        transport: "api",
+        modelMode: "dedicated",
+        apiEndpoints: [GROQ_ENDPOINT],
+        apiEndpointId: "groq",
+        apiModel: "openai/gpt-oss-20b",
+      },
+      { reject: abort, env: { GROQ_API_KEY: "sk-test" } },
+    );
+    expect(output.status).toBe("error");
+    if (output.status !== "error") throw new Error("expected error");
+    expect(["api_http_error", "timeout"]).toContain(output.error.code);
+  });
+
+  // The API transport is selected by `transport`, so a CLI family must not be
+  // resolved for it. A provider with no family proves that.
+  it("does not require a CLI family on the api path", async () => {
+    const harness = createRewriteHarness({ agent: { provider: "no-such-cli" } });
+    const { output } = await rewriteApi(
+      harness,
+      {
+        transport: "api",
+        modelMode: "dedicated",
+        apiEndpoints: [GROQ_ENDPOINT],
+        apiEndpointId: "groq",
+        apiModel: "openai/gpt-oss-20b",
+      },
+      { body: OK_BODY, env: { GROQ_API_KEY: "sk-test" } },
+    );
+    expect(output.status).toBe("ok");
+  });
+});

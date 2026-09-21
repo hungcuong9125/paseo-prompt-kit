@@ -10,10 +10,16 @@ describe("prompt kit settings", () => {
     const values = await promptKitSettingsSchema.parseAsync({});
     expect(values).toEqual({
       modelMode: "current",
+      transport: "cli",
       dedicatedProvider: null,
       dedicatedModel: null,
       dedicatedThinkingOptionId: null,
       providerCli: {},
+      apiEndpoints: [],
+      apiEndpointId: null,
+      apiModel: null,
+      apiEndpointByProvider: {},
+      secretsFile: null,
       timeoutMs: 90_000,
       actionEnabled: {},
     });

@@ -1,3 +1,19 @@
+/**
+ * Live daemon probe: calls the installed plugin's `prompt-kit.rewrite` RPC
+ * through the real daemon, with a real agent id and the real CLI path.
+ *
+ * Opt-in, because it is not a gate: it spends real model calls and its timing is
+ * the machine's, not the code's. A cold CLI can outlive the daemon's own 30s
+ * plugin-RPC ceiling (`@getpaseo/server` `plugins/runtime.ts`,
+ * `REQUEST_TIMEOUT_MS`), which turns a row that passes warm into
+ * `Plugin RPC timed out` cold — DEF-008. `npm run gate` must not depend on that,
+ * so the rows skip unless both variables are set:
+ *
+ *   PASEO_LIVE=1 PASEO_AGENT_ID=<uuid> npx vitest run tests/integration
+ *
+ * Use an agent in a scratch project: a row never writes to the workspace, but it
+ * does spend the agent's provider, so it must not be pointed at real work.
+ */
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -78,6 +94,12 @@ function marker(kind: string): string {
 }
 
 beforeAll(async () => {
+  // Not live: do not touch the daemon at all, so a plain gate run neither installs
+  // the plugin nor spends a call.
+  if (process.env.PASEO_LIVE !== "1") {
+    unavailableReason = "PASEO_LIVE is not 1; the live rows are opt-in";
+    return;
+  }
   const agentId = process.env.PASEO_AGENT_ID;
   if (!agentId) {
     unavailableReason = "PASEO_AGENT_ID is not set; there is no primary agent to rewrite from";
@@ -171,6 +193,10 @@ async function installPlugin(daemon: DaemonClient): Promise<void> {
 }
 
 function requireLive(context: { skip: (reason: string) => void }): boolean {
+  if (process.env.PASEO_LIVE !== "1") {
+    context.skip("PASEO_LIVE is not 1; the live rows spend real model calls, so they are opt-in");
+    return false;
+  }
   if (unavailableReason || !client || !primaryAgentId || !primaryWorkspaceId || !baseSettings) {
     context.skip(unavailableReason ?? "daemon unavailable");
     return false;

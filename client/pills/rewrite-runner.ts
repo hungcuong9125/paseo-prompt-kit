@@ -42,9 +42,15 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
     try {
       const settings = await input.readSettings();
       if (settings.status === "invalid") throw new Error(settings.error);
-      if (settings.values.modelMode === "dedicated") {
+      // The API path needs no provider catalog: its endpoints are in settings, so
+      // asking the daemon for a CLI catalog would be a wasted round trip and would
+      // refuse a valid configuration when the catalog is slow or unavailable.
+      if (settings.values.transport === "cli" && settings.values.modelMode === "dedicated") {
         const catalog = await input.rpc(providerCatalogRpc, {});
         const selectionError = validateDedicatedSelection(settings.values, catalog.providers);
+        if (selectionError !== null) throw new Error(selectionError);
+      } else if (settings.values.transport === "api") {
+        const selectionError = validateDedicatedSelection(settings.values, []);
         if (selectionError !== null) throw new Error(selectionError);
       }
       if (!input.isActive()) {
