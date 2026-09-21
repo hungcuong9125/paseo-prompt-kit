@@ -5,7 +5,7 @@ Current-state takeover index. History → `docs/exec-plans/`; decisions → `doc
 - Framework revision: bundle delivered 2026-09-21 (protocol v1)
 - Updated at: 2026-09-21 04:05Z
 - Active Lead: claude-lead / claude-fable-5-1 (Lead-of-record, idle after release-prep closeout)
-- Repository HEAD: see `git log -1`; branch `main`; origin https://github.com/hungcuong9125/paseo-prompt-kit — landing code 71b1b5f81b1e2c2f37422665267a75dc4f4d92c0 pushed
+- Repository HEAD: see `git log -1`; branch `main`; origin https://github.com/hungcuong9125/paseo-prompt-kit — public main f07b0c6, tag v0.1.0 → 94e9a9a (release evidence commit below is local until the next push)
 - AIT database: initialized (prefix `pk`, `.ait/ait.db`, ignored)
 - AIT graph snapshot: epics pk-UkLWZ and pk-OIJLh CLOSED
 - AIT open: 0 — reconciled 2026-09-21
@@ -15,13 +15,13 @@ Current-state takeover index. History → `docs/exec-plans/`; decisions → `doc
 - Heartbeat ID: none (9e0e898c deleted at closeout)
 - Deferred: 4 open — docs/DEFERRED.md (DEF-001, DEF-002, DEF-006, DEF-007)
 
-## Batch paseo-prompt-kit-release-0.1.0 — ACCEPTED (locally prepared; push is the Human's)
+## Batch paseo-prompt-kit-release-0.1.0 — ACCEPTED, PUBLIC (Human pushed 2026-09-21)
 
 - Packet: docs/exec-plans/done/paseo-prompt-kit-release-0.1.0.md · DLF-009..011.
 - Release candidate 94e9a9a3c70f9a68a71017dca80739e221a122b7 (tree 94cfc8f30cb72e9a4d81381e1f33583e16d88c00); local annotated tag v0.1.0 → 94e9a9a. Gate artifacts/gates/94cfc8f3….log REAL_EXIT:0 (119 tests).
 - Host-load defect DLF-010 fixed (index.client.tsx default export declared); browser QA PASS with MultiZen (artifacts/qa/ui-20260921T095604Z/); repro kept in artifacts/qa/ui-20260921T092855Z/.
-- origin/main = fcd1a7a until the Human pushes. Exact commands in the ACCEPTED capsule (git push origin main; git push origin v0.1.0).
-- Daemon: prompt-kit running from the DIRECTORY install (/Volumes/DataSSD/HomeWork/PLUGIN/paseo-prompt-kit); the earlier Git install (71b1b5f) is broken by DLF-010 — do not reinstall from Git until v0.1.0 is pushed.
+- origin/main = f07b0c63cc87190b60bfdce16b577aac5381f7db; refs/tags/v0.1.0^{} = 94e9a9a3c70f9a68a71017dca80739e221a122b7 (Human-run push, verified by `git ls-remote`). npm deferred.
+- Daemon: prompt-kit running from the DIRECTORY install (/Volumes/DataSSD/HomeWork/PLUGIN/paseo-prompt-kit); a Git install is now valid: `paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.1.0` (not yet run; optional bounded ops task).
 - MultiZen profile 20def08f-… was left running (visible window); theme `auto` untouched.
 
 ## Batch paseo-prompt-kit-mvp — ACCEPTED
@@ -47,4 +47,4 @@ Current-state takeover index. History → `docs/exec-plans/`; decisions → `doc
 
 ## Takeover instructions
 
-- Immediate next action: none — wait for the Human's push report (main + v0.1.0), then optionally verify `paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.1.0` in a bounded ops task. Next brief starts a new packet; re-read WORKSPACE_PROTOCOL.md, framework/protocol.md, framework/provider-routing.md, this file.
+- Immediate next action: none. Optional bounded ops task on request: verify `paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.1.0`. Next brief starts a new packet; re-read WORKSPACE_PROTOCOL.md, framework/protocol.md, framework/provider-routing.md, this file.
