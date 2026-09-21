@@ -3,48 +3,38 @@
 Current-state takeover index. History → `docs/exec-plans/`; decisions → `docs/decision-log.md`.
 
 - Framework revision: bundle delivered 2026-09-21 (protocol v1)
-- Updated at: 2026-09-21
-- Active Lead: claude-lead / claude-fable-5-1 (Lead-of-record)
-- Repository HEAD: see `git log -1`; branch `main`; origin https://github.com/hungcuong9125/paseo-prompt-kit (empty remote, nothing pushed)
+- Updated at: 2026-09-21 04:05Z
+- Active Lead: claude-lead / claude-fable-5-1 (Lead-of-record, idle after closeout)
+- Repository HEAD: see `git log -1`; branch `main`; origin https://github.com/hungcuong9125/paseo-prompt-kit — landing code 71b1b5f81b1e2c2f37422665267a75dc4f4d92c0 pushed
 - AIT database: initialized (prefix `pk`, `.ait/ait.db`, ignored)
-- AIT graph snapshot: epic pk-UkLWZ → .1 scaffold+spike, .2 client, .3 server, .4 qa+release; .2/.3 blocked by .1; .4 blocked by .2/.3
-- AIT open: 2 (epics 1, tasks 1: .4) — reconciled 2026-09-21
-- Active AIT issue IDs: pk-UkLWZ.2 → Peer 28e8376d-02ba-421f-b64a-40283da63802 seat 2, thinking high (seat 1 49d1e9f6 archived 02:55Z: after DLF-005 landed it looped in prose without tool calls; worktree untouched) (worktree /Users/hungcuong/.paseo/worktrees/0riequtk/pk-client, branch task/pk-UkLWZ.2, wks_c209f9813dde03b1); pk-UkLWZ.3 → Peer 613157ea-010e-4012-9366-5f86ebc5a092 (worktree /Users/hungcuong/.paseo/worktrees/0riequtk/pk-server, branch task/pk-UkLWZ.3, wks_97e0ebb1eb3e5825); both pi-peer/workbuddy/deepseek-v4.1-flash low, base 76992b40 (HEAD f24592b), dispatched 2026-09-21 02:13Z. .2 raised DEPENDENCY_REQUEST (no agent identity for DOM placement) → resolved DLF-005: addComposerPill is the only placement; re-prompted 02:40Z. Worktrees were created with Paseo create_workspace because `git worktree` is denied on the Lead seat.
+- AIT graph snapshot: epic pk-UkLWZ CLOSED (.1–.4 closed)
+- AIT open: 0 — reconciled 2026-09-21
+- Active AIT issue IDs: none
 - Handoff type: NONE
-- Active Peer disposition: f5e1d938 (pk-UkLWZ.1) handed back, ACCEPTED, retained idle (warm context for shared/** questions)
-- Heartbeat ID: cf4d76e8 (lead-pk-mvp-watch, */30 min, expires 2026-09-21T13:10Z)
-- Deferred: 2 open — docs/DEFERRED.md
+- Active Peer disposition: none (a04d2f13 pending final evidence push, then all Peers archived)
+- Heartbeat ID: cf4d76e8 (delete after final push)
+- Deferred: 5 open — docs/DEFERRED.md
 
-## Active packets
+## Batch paseo-prompt-kit-mvp — ACCEPTED
 
-- Packet: docs/exec-plans/active/paseo-prompt-kit-mvp.md · intent docs/intents/paseo-prompt-kit-mvp.md · Report to bf776d78-0b8a-44d3-9336-72a79e280ad7
-- State: pk-UkLWZ.1 ACCEPTED 76992b4070ed38c76befd9d18a623c3f907b78d7 (tree 0de83b0e2bab3b15e455951a43ce2b883ccf8f1a; DLF-003). Human directive DLF-004 (bug scanner + MultiZen) bound to .4. pk-UkLWZ.3 ACCEPTED f7e27ed (tree df54e01c; DLF-006) via squash-merge onto main. .2 ACCEPTED 32c77c0 (DLF-007); merged main tree 7b1805892aa9b0d875d9cc12ec1bb5afbd51aac7, typecheck+109 tests green. Next: .4 integration/QA/release. DECISION_REQUEST (license) sent 03:40Z, non-blocking.
-- Route: implement on `pi-peer/workbuddy/deepseek-v4.1-flash` (brief lock); catalog confirms thinking ids low/high/max; Pi has no modeId.
-- Open questions upward (not yet material): npm scope/publish; release tag; min Paseo version (bind from `paseo plugin init` output in .1).
+- Packet: docs/exec-plans/done/paseo-prompt-kit-mvp.md · intent docs/intents/paseo-prompt-kit-mvp.md · Report to bf776d78-0b8a-44d3-9336-72a79e280ad7
+- Accepted commits on main: 76992b4 (.1 skeleton+contracts), f7e27ed (.3 server), 32c77c0 (.2 client), ef88e5e + 1005d68 (README), 71b1b5f (F2 server types). Gate: artifacts/gates/9fd26b0499f096c4933786124ead0a825756fc53.log REAL_EXIT:0 (118 tests, live-daemon ran).
+- Daemon state: plugin `prompt-kit` installed from Git (`--ref main` → 71b1b5f) and running; switch back to directory install with `paseo plugin install /Volumes/DataSSD/HomeWork/PLUGIN/paseo-prompt-kit`.
+- Target Paseo 0.8.0 (installed); upstream clone is 0.9.0-beta.2 — installed packages win (DLF-003).
+- Open upward: DECISION_REQUEST license (DEF-004). Not sent: npm scope/tag (DEF-005, not material).
+- Browser QA: BLOCKED — no seat has MultiZen MCP (DEF-003).
 
 ## Upstream research pins (local only, never committed)
 
-- upstreams/paseo            d636abd7a4ce302e7ccb9eb6074f637c6dd4d83b (v0.9.0-beta.2, depth 1)
-- upstreams/paseo-emoji      425e37563234d05a3ceaf15040db221625537db9 (pinned per plan §7)
-- upstreams/aidrin           e70248c34c7588a97a07830ff2652d4e35ce5fe4
-- upstreams/nativeprompt     45c2948da6beeb6c2f3e239a8457d4a6d36e64fb
-- upstreams/prompt-optimizer 5d47a19aa53e6976b7f288d3ec4a6f1e2a1ed197
-- Clone log: .logs/upstream-clone.log (REAL_EXIT:0)
+- upstreams/paseo d636abd7a4ce302e7ccb9eb6074f637c6dd4d83b · paseo-emoji 425e37563234d05a3ceaf15040db221625537db9 · aidrin e70248c34c7588a97a07830ff2652d4e35ce5fe4 · nativeprompt 45c2948da6beeb6c2f3e239a8457d4a6d36e64fb · prompt-optimizer 5d47a19aa53e6976b7f288d3ec4a6f1e2a1ed197
 
-## Plan assumptions verified against upstreams/paseo (2026-09-21)
+## Lessons (this batch)
 
-- `addComposerPill`, `addSettingsScreen`: packages/plugin/src/client/contracts.ts:88,95; button kinds action/menu/popover: client/buttons.ts:15-18.
-- Server: `registerSettings`, `handle(contract, handler, {paseo: PaseoApi})`: packages/plugin/src/server/contracts.ts. `defineSettings`/`defineRpc`: packages/plugin/src/index.ts:14,22.
-- SDK create agent: `systemPrompt`, `autoArchive` (packages/client/src/index.ts:238,259); `waitForFinish` on client.
-- CLI: `paseo plugin init <dir> [--id]`, `install|add <source> [--ref]`, `ls`, `logs`, `update`, `remove` (packages/cli/src/commands/plugin/index.ts:197-250).
-- Composer DOM: `[data-testid="message-input-root"]` (emoji client/web.ts:61; still in packages/app/src/composer/input/input.tsx); inner field testID `composer-input`; write via native value setter + `input` event.
-- Local `paseo` CLI denied on Lead seat; `semble` absent (grep fallback). `dcg`, `ait`, `gh`, node v22.23.1, npm 10.9.8 present.
-
-## Writable ownership
-
-- Scope: .2 owns client/** (minus composer/adapter.ts, web.ts), index.client.tsx, tests/jsdom, tests/client; .3 owns server/**, index.server.ts, shared/prompts/**, tests/unit/rewrite*, tests/server, tests/integration; .3 holds the daemon plugin slot. Frozen at 76992b40 (shared/prompts carved out, DECISION_NOTICE sent): `shared/**`, `package.json`, `paseo-plugin.json`, `tsconfig.json`, `vitest.config.ts`.
+- `git worktree` and `git push` are denied on the Lead seat: worktrees via Paseo `create_workspace`, pushes via a Peer that holds the main checkout.
+- pi-peer at `low` thinking can degenerate into a prose loop with no tool calls after a mid-task re-prompt (seat 49d1e9f6); replacement at `high` finished cleanly.
+- The managed Git checkout has no `node_modules`: server code may import only host SDK specifiers (`@getpaseo/plugin*`); type-only imports from `@getpaseo/client` break `paseo plugin install <git>` (F2).
+- No seat in the room has an MCP browser client; browser QA needs a Human-provided seat.
 
 ## Takeover instructions
 
-- Immediate next action: .4 dispatched on main (see Active AIT); on its handback: review, fold, push to origin (allowed external effect), second prompt to the same seat for install-from-Git check; browser QA via MultiZen needs an MCP-capable seat (pi-peer has supportsMcpServers=false) — separate verify dispatch if any seat has it, else UNKNOWN in closeout (QA matrix, ultimate_bug_scanner per DLF-004, MultiZen profile 20def08f-9a62-4932-9d49-f7c5ab12c6d0 if MCP available, full gate, install local + Git after Lead push, README/LICENSE).
-- Preflight: re-read WORKSPACE_PROTOCOL.md, framework/protocol.md, framework/provider-routing.md, this file, packet; `ait status`; `git status`.
+- Immediate next action: none pending except the final evidence push (Peer a04d2f13) and heartbeat deletion. Next brief starts a new packet; re-read WORKSPACE_PROTOCOL.md, framework/protocol.md, framework/provider-routing.md, this file.

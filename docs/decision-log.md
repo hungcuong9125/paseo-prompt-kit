@@ -10,6 +10,7 @@ Lead-only and never combined with code commits.
 
 ## Current index
 
+- `DLF-008` — Batch paseo-prompt-kit-mvp ACCEPTED at landing 71b1b5f (tree 9fd26b04…); F2 Git-install fix; scanner triage; browser QA BLOCKED (no MultiZen seat) — CLOSED
 - `DLF-007` — pk-UkLWZ.2 ACCEPTED at 32c77c0 (tree 7b1805892aa9b0d875d9cc12ec1bb5afbd51aac7 after merge with .3); pills per agent, guarded rewrite, settings screen — ACTIVE
 - `DLF-006` — pk-UkLWZ.3 ACCEPTED at f7e27ed (tree df54e01cb07c17c5b67c8b4f2da13315a4a7f2aa); validator fail-closed; injection boundary — ACTIVE
 - `DLF-005` — PromptKit control placement: official `addComposerPill` only (one pill per agent, menu); DOM toolbar button dropped — ACTIVE
@@ -122,5 +123,20 @@ Lead-only and never combined with code commits.
 **Evidence source.** Peer 28e8376d handback 03:32Z: typecheck 0, `npm test` 0 (73), composer-dom 32 tests, 16-mutation battery all red. Lead on merged main: typecheck REAL_EXIT:0; unit+jsdom+composer-dom 109/109 (`/tmp/pk-merge-test.log`). Lead read `contribute.tsx`, `agent-pills.ts`, `rewrite-runner.ts`, `read-settings.ts`, `selection.ts` from the object.
 
 **Reversal condition.** Live QA (pk-UkLWZ.4) shows the host does not surface a thrown `onPress` error to the user → the runner reports through a visible channel instead (corrections pass on the client scope).
+
+**Supersedes / superseded by.** NONE
+
+### DLF-008 — Batch closeout: pk-UkLWZ.4 accepted, F2 correction, scanner triage, browser QA status
+
+- Decided at: 2026-09-21
+- Decision owner: Lead
+- Packet ID / AIT issue ID: paseo-prompt-kit-mvp / pk-UkLWZ (epic), pk-UkLWZ.4
+- Commit SHA at decision: landing 71b1b5f81b1e2c2f37422665267a75dc4f4d92c0 (tree 9fd26b0499f096c4933786124ead0a825756fc53), pushed to origin/main
+
+**Production behavior.** The published `main` installs into a Paseo 0.8.0 daemon both from the local directory and from Git (`paseo plugin install hungcuong9125/paseo-prompt-kit --ref 71b1b5f` and `--ref main` → `running`; live-daemon suite 9/9 against the Git install, temp agent dce8f1f4… archived 04:00:34Z). Server code derives Paseo types from `@getpaseo/plugin/server` (`server/paseo-types.ts`) because the managed Git checkout has no `node_modules` (F2). No `build` step and no install-time dependency install were added. README documents both install paths, settings, and limitations.
+
+**Evidence source.** Gate `artifacts/gates/9fd26b0499f096c4933786124ead0a825756fc53.log` REAL_EXIT:0, 13 files / 118 tests, live-daemon project ran. QA matrix `artifacts/qa/qa-matrix-16ed058d….md` (code identical except server type imports): 14/16 PASS live, rows 11/12 PASS on jsdom+source, row 15 visual and row 16 theme UNKNOWN. HUMAN_DIRECTIVE scanner: `artifacts/scans/ultimate_bug_scanner-16ed058d….full.log` REAL_EXIT:1, critical=417 warning=55 info=1341 over 41 files; Lead triage: every critical is `package-lock.json` metadata (substring/loose-equality false positives); source hits are `settings-screen.tsx` hooks-deps/list-key false positives (no `.map`, deps array correct), `web.ts:20` non-null assertion behind a length check, `protected-literals.ts` dynamic RegExp by design (rules are data), `framework/tools/file-size-audit.sh` cd-without-exit (framework file, not project scope). None touches an acceptance check or a safety invariant; no fix owed. Browser QA: MultiZen MCP absent on pi-peer (`supportsMcpServers=false`) and on claude-peer (seat dd5dce81 saw only `WebFetch`) → recorded BLOCKED per the directive, never simulated (DEF-003).
+
+**Reversal condition.** Human connects a MultiZen-capable seat → DEF-003 is taken up and rows 11/12/15/16 get UI evidence; a UI failure there reopens the client scope.
 
 **Supersedes / superseded by.** NONE

@@ -19,3 +19,6 @@ Rules:
 |---|---|---|---|---|---|
 | DEF-001 | Protected-literal validator ignores bare commands mid-sentence (rule anchors at line start), e.g. `… using npm run gate` dropped by a rewrite is not detected | 2026-09-21 | DLF-003 / pk-UkLWZ.1 | QA matrix in pk-UkLWZ.4 shows a real mid-sentence command loss, or the validator is next touched | OPEN |
 | DEF-002 | Absolute path whose last segment is one character truncates (`/Volumes/x` → `/Volumes`) | 2026-09-21 | DLF-003 / pk-UkLWZ.1 | Validator is next touched | OPEN |
+| DEF-003 | Desktop/Web UI QA rows (visual single pill, switch-agent and edit-during-request in the live UI, theme) have no browser evidence: no seat in the room has the MultiZen MCP client | 2026-09-21 | DLF-008 / pk-UkLWZ.4 | Human connects MultiZen (profile 20def08f-9a62-4932-9d49-f7c5ab12c6d0) to a Peer seat | OPEN |
+| DEF-004 | License file and `package.json` license field absent; DECISION_REQUEST (MIT / Apache-2.0 / none) unanswered at closeout | 2026-09-21 | DLF-008 / pk-UkLWZ.4 | Human answers the license DECISION_REQUEST | OPEN |
+| DEF-005 | npm package scope / publish and release tag undecided (brief open question); `private: true` keeps npm publish impossible | 2026-09-21 | DLF-008 | Human decides npm scope and tag | OPEN |

@@ -1,5 +1,7 @@
 # PromptKit MVP — Desktop/Web Improve coding prompt
 
+**State: ACCEPTED (2026-09-21).** Landing 71b1b5f81b1e2c2f37422665267a75dc4f4d92c0 on origin/main; gate artifacts/gates/9fd26b0499f096c4933786124ead0a825756fc53.log REAL_EXIT:0; DLF-003..008. Open UNKNOWN carried to docs/DEFERRED.md DEF-003 (browser UI rows), DEF-004 (license), DEF-005 (npm scope/tag).
+
 Packet ID: paseo-prompt-kit-mvp · AIT epic: pk-UkLWZ · Intent: docs/intents/paseo-prompt-kit-mvp.md
 
 ## Outcome And Constraints
@@ -28,6 +30,8 @@ Frozen after .1 acceptance: `shared/**`, `package.json`, `paseo-plugin.json`, `t
 Each task hands back base/candidate SHA, commands + results, tests that fail if the claimed behavior vanished. Full gate once, on the landing tree, by .4, log at `artifacts/gates/<tree>.log`. Push to origin by Lead at acceptance only. Rollback: revert acceptance commit; plugin uninstall via `paseo plugin remove prompt-kit`.
 
 ## Task cards
+
+### pk-UkLWZ.2 — ACCEPTED 32c77c0 (DLF-007) · pk-UkLWZ.3 — ACCEPTED f7e27ed (DLF-006) + correction 71b1b5f (F2, DLF-008) · pk-UkLWZ.4 — ACCEPTED ef88e5e/1005d68 README, gate + QA + scanner + publish (DLF-008)
 
 ### pk-UkLWZ.1 — ACCEPTED 76992b4070ed38c76befd9d18a623c3f907b78d7 (tree 0de83b0e2bab3b15e455951a43ce2b883ccf8f1a), gate log artifacts/gates/0de83b0e2bab3b15e455951a43ce2b883ccf8f1a.log, DLF-003
 
