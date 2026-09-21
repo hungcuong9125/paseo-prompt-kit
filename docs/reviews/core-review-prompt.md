@@ -15,7 +15,7 @@
 | `AGENTS.md` | Luật kiến trúc: single live contract, hard cut, module boundaries |
 | `framework/module-boundaries.md` | Bài kiểm tra "một file một trách nhiệm" |
 | `framework/briefs/review.md` | Hợp đồng review của repo này |
-| `docs/IMPELEMENT_PLAN.md` | Định hướng gốc (Action Registry) — lưu ý file này bị gitignore |
+| `docs/CORE.md` §14 + exec-plan §"Ràng buộc" | Định hướng gốc (Action Registry). **Không** dựa `docs/IMPELEMENT_PLAN.md`: file đó bị gitignore (`.gitignore:2`), reviewer ngoài repo không đọc được — nội dung §9 cần thiết đã tóm trong exec-plan (mảng biên dịch, "V2 thêm object") |
 | `shared/actions.ts`, `shared/rpc.ts`, `shared/prompts/coding.ts`, `client/pills/agent-pills.ts`, `index.server.ts`, `server/rewrite.ts` | Hiện trạng bị thay đổi |
 | `docs/decision-log.md` | DLF-003, DLF-005, DLF-006, DLF-011 |
 | `docs/DEFERRED.md` | DEF-001, DEF-002, DEF-006, DEF-007 |

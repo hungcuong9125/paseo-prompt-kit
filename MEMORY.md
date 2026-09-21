@@ -3,7 +3,7 @@
 Current-state takeover index. History → `docs/exec-plans/`; decisions → `docs/decision-log.md`.
 
 - Framework revision: bundle delivered 2026-09-21 (protocol v1)
-- Updated at: 2026-09-21 04:05Z
+- Updated at: 2026-09-21 12:20Z
 - Active Lead: claude-lead / claude-fable-5-1 (Lead-of-record) — open batch paseo-prompt-kit-post-release-composer-bug
 - Repository HEAD: see `git log -1`; branch `main`; origin https://github.com/hungcuong9125/paseo-prompt-kit — public main f07b0c6, tag v0.1.0 → 94e9a9a (release evidence commit below is local until the next push)
 - AIT database: initialized (prefix `pk`, `.ait/ait.db`, ignored)
@@ -24,11 +24,11 @@ Current-state takeover index. History → `docs/exec-plans/`; decisions → `doc
 
 ## Proposed paseo-prompt-kit-core-v0.2.0 — PROPOSED, G0-blocked (do NOT open implementation)
 
-- Packet: docs/exec-plans/proposed/paseo-prompt-kit-core-v0.2.0.md (TEAM DEV) · source docs/CORE.md (DRAFT, untracked) · review docs/reviews/core-review-lead-claude-fable-5-1-20260921.md (verdict FINDINGS, self-review — needs a non-author lane).
+- Packet: docs/exec-plans/proposed/paseo-prompt-kit-core-v0.2.0.md (TEAM DEV) · source docs/CORE.md (DRAFT, tracked at b6e9a7f) · review docs/reviews/core-review-lead-claude-fable-5-1-20260921.md (verdict FINDINGS, self-review — needs a non-author lane).
 - LOCKED UX (HUMAN_PRODUCT_DIRECTION 2026-09-21): clicking PromptKit runs the default flow directly with the current default action; the control exposes a menu only when additional flows are enabled in Settings; current menu item "Improve coding prompt". Locked for CORE proposal + future packet; NOT permission to reopen/implement CORE now. CORE.md/plan incorporate it in Phase 0, not before.
 - G0 still requires TWO explicit Human decisions, kept SEPARATE, not inferred from the UX: (1) OQ-1/OQ-3/OQ-8 = trust model for Action Pack sources (Lead recommends bundled-only, one namespace); (2) OQ-4 = image scope. DECISION_REQUEST drafted in the packet, not yet sent.
 - Do NOT open CORE implementation until ALL four settle: plan/CORE contract corrected (F-1..F-5 + UX section), independent non-author review, Human G0 decisions, and the v0.1.1 Composer resolver contract.
-- Open implementability gaps beyond the plan: `packs/` missing from package.json `files` (frozen path); daemon reading pack files unverified (esbuild bundles index.server.ts, no node_modules — `.md` not in bundle) → spike (A) fs+install-dir vs (B) JSON-inline static import before freezing the manifest.
+- Pack distribution DECIDED (Lead, verified against host source at b6e9a7f): a pack is one JSON file under `shared/packs/<id>.json`, registered via a static barrel, bundled by esbuild at compile time. Evidence the alternatives are dead: `.md` has no esbuild loader (`compiler.ts:405` build() has no `loader` option); a top-level `packs/` dir is rejected by the module boundary (`compiler.ts:76-87`, `pluginDirectory=dirname(entryPath)` :385); the daemon never learns its install dir (`plugin-process-protocol.ts:19-25` initialize carries only pluginId/bundle/appVersion/settingsDirectory; bundle run via `eval`, `plugin-process.ts:227`), so fs+install-dir is impossible without an upstream FR. `shared/` is already in package.json `files`, so no frozen `package.json` change is needed for packs. Third-party/user-dir packs are deferred (need the upstream FR).
 
 ## Batch paseo-prompt-kit-release-0.1.0 — ACCEPTED, PUBLIC (Human pushed 2026-09-21)
 
