@@ -1,8 +1,8 @@
 import type { PaseoApi } from "@getpaseo/client";
 import type { RewriteError, RewriteOutput } from "../shared/rpc.js";
 import type { PromptKitSettings } from "../shared/settings.js";
-import { findMissingProtectedLiterals } from "../shared/protected-literals.js";
 import { generateRewrite } from "./generation.js";
+import { validateRewriteOutput } from "./output-validator.js";
 import { readProviderCatalog } from "./provider-catalog.js";
 
 export interface RewriteRequest {
@@ -88,7 +88,20 @@ async function resolveDedicatedModel(
       },
     };
   }
-  const catalog = await readProviderCatalog(paseo, cwd);
+  let catalog: Awaited<ReturnType<typeof readProviderCatalog>>;
+  try {
+    catalog = await readProviderCatalog(paseo, cwd);
+  } catch (error) {
+    return {
+      ok: false,
+      error: {
+        code: "invalid_model",
+        message: `Could not read the provider catalog: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      },
+    };
+  }
   const entry = catalog.find((candidate) => candidate.provider === provider);
   if (!entry || !entry.available) {
     return {
@@ -151,23 +164,15 @@ export async function runRewrite(
   });
   if (!generated.ok) return { status: "error", error: generated.error };
 
-  const missing = findMissingProtectedLiterals(request.originalPrompt, generated.text);
-  if (missing.length > 0) {
-    return {
-      status: "error",
-      error: {
-        code: "protected_literal_loss",
-        message: `The rewrite dropped ${missing.length} protected literal(s): ${missing
-          .slice(0, 5)
-          .map((literal) => literal.value)
-          .join(", ")}`,
-      },
-    };
-  }
+  const validated = validateRewriteOutput({
+    originalPrompt: request.originalPrompt,
+    output: generated.text,
+  });
+  if (!validated.ok) return { status: "error", error: validated.error };
 
   return {
     status: "ok",
-    rewrittenPrompt: generated.text,
+    rewrittenPrompt: validated.text,
     model: target.model,
     durationMs: Date.now() - startedAt,
   };

@@ -63,12 +63,7 @@ export async function generateRewrite(
       };
     }
     const text = result.lastMessage?.trim() ?? "";
-    if (text === "") {
-      return {
-        ok: false,
-        error: { code: "empty_output", message: "The rewrite agent returned empty output." },
-      };
-    }
+    // Emptiness and shape are the validator's contract; the generator returns raw text.
     return { ok: true, text };
   } catch (error) {
     return {
