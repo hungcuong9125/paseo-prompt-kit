@@ -10,6 +10,8 @@ Lead-only and never combined with code commits.
 
 ## Current index
 
+- `DLF-006` — pk-UkLWZ.3 ACCEPTED at f7e27ed (tree df54e01cb07c17c5b67c8b4f2da13315a4a7f2aa); validator fail-closed; injection boundary — ACTIVE
+- `DLF-005` — PromptKit control placement: official `addComposerPill` only (one pill per agent, menu); DOM toolbar button dropped — ACTIVE
 - `DLF-004` — Human directive: bug-scanner pass + MultiZen browser QA bound to pk-UkLWZ.4 — ACTIVE
 - `DLF-003` — pk-UkLWZ.1 ACCEPTED at 76992b4070ed38c76befd9d18a623c3f907b78d7; target Paseo 0.8.0; settings snapshot travels in rewrite RPC — ACTIVE
 - `DLF-002` — Batch topology: foundation task, then client ∥ server in worktrees, then qa+release — ACTIVE
@@ -74,5 +76,35 @@ Lead-only and never combined with code commits.
 **Evidence source.** Human directive text appended verbatim to `docs/intents/paseo-prompt-kit-mvp.md`.
 
 **Reversal condition.** Human withdraws the directive.
+
+**Supersedes / superseded by.** NONE
+
+### DLF-005 — Control placement: `addComposerPill` is the only placement
+
+- Decided at: 2026-09-21
+- Decision owner: Lead (DEPENDENCY_REQUEST from pk-UkLWZ.2)
+- Packet ID / AIT issue ID: paseo-prompt-kit-mvp / pk-UkLWZ.2
+- Commit SHA at decision: f24592b1d515ba8b0fbb83bc586b40f6ebdd9a33
+
+**Production behavior.** The plugin registers one Composer pill per live agent through `client.addComposerPill({ workspaceId, agentId, button: { behavior: { kind: "menu", items } } })`, items built from the shared action registry. The pressed pill supplies the `workspaceId`/`agentId` sent to `prompt-kit.rewrite`. The DOM adapter (`client/composer/web.ts`) only reads and replaces the Composer text; when the visible Composer does not belong to the pressed pill's agent, the rewrite result is discarded and a message is shown. No DOM-injected button exists.
+
+**Evidence source.** `node_modules/@getpaseo/plugin/dist/client/buttons.d.ts`: `PluginComposerPillContribution extends PluginHeaderButtonContribution { agentId }`, `PluginHeaderButtonContribution { id; workspaceId; button }`. Peer 49d1e9f6 handback 2026-09-21: no focused/active-agent accessor in `@getpaseo/plugin` or `@getpaseo/client` 0.8.0 dist; Composer subtree carries no identity attributes.
+
+**Reversal condition.** A Paseo release exposing a focused-agent accessor or a public Composer text API to plugins; then placement is revisited in a new DLF.
+
+**Supersedes / superseded by.** Refines DLF-002 (client scope unchanged). Plan §2.2/§10 DOM-primary placement is not followed.
+
+### DLF-006 — pk-UkLWZ.3 accepted: server rewrite engine
+
+- Decided at: 2026-09-21
+- Decision owner: Lead
+- Packet ID / AIT issue ID: paseo-prompt-kit-mvp / pk-UkLWZ.3
+- Commit SHA at decision: f7e27ed (squash of 30a8868, 08b0bc0 from task/pk-UkLWZ.3; tree df54e01cb07c17c5b67c8b4f2da13315a4a7f2aa)
+
+**Production behavior.** `server/output-validator.ts` accepts only text that is the rewritten prompt: non-empty, ≤ 20 000 chars, fence-balanced, no full markdown envelope, no meta preface/refusal/commentary first line, every protected literal of the original present; anything else is a typed error and the Composer is never replaced. Catalog read failures map to `invalid_model`. `shared/prompts/coding.ts` treats `<user_prompt>` content as untrusted, escapes wrapper delimiters, and forbids commentary. Temporary agent archived on ok/error/timeout.
+
+**Evidence source.** Peer 613157ea handback 2026-09-21 02:4xZ: typecheck REAL_EXIT:0; `npm test` REAL_EXIT:0 (93 tests); live-daemon 9/9 — current model temp agent 503dee62… archived 02:41:17Z, dedicated `pi-peer/workbuddy/hy4-preview-f` df2c2422… archived 02:41:26Z, invalid model → `invalid_model` with no agent, timeout 23b33095… archived 02:41:28Z, injection canary absent, plugin logs contain no prompt text. Lead read validator, prompt, rewrite/generation diffs from the object.
+
+**Reversal condition.** A model whose legitimate rewrites routinely start with a phrase in META_PREFACE/COMMENTARY → narrow the vocabulary (new DLF). Client 0.8.0 exposing a truncation signal on `lastMessage` → replace the indirect length/fence heuristics.
 
 **Supersedes / superseded by.** NONE
