@@ -10,6 +10,7 @@ Lead-only and never combined with code commits.
 
 ## Current index
 
+- `DLF-009` — Human decisions after closeout: license MIT (DEF-004 TAKEN_UP), tag v0.1.0 + npm deferred (DEF-005 TAKEN_UP), MultiZen now reachable from the Lead runtime (DEF-003 stays OPEN until a QA batch) — RECORDED, not yet executed
 - `DLF-008` — Batch paseo-prompt-kit-mvp ACCEPTED at landing 71b1b5f (tree 9fd26b04…); F2 Git-install fix; scanner triage; browser QA BLOCKED (no MultiZen seat) — CLOSED
 - `DLF-007` — pk-UkLWZ.2 ACCEPTED at 32c77c0 (tree 7b1805892aa9b0d875d9cc12ec1bb5afbd51aac7 after merge with .3); pills per agent, guarded rewrite, settings screen — ACTIVE
 - `DLF-006` — pk-UkLWZ.3 ACCEPTED at f7e27ed (tree df54e01cb07c17c5b67c8b4f2da13315a4a7f2aa); validator fail-closed; injection boundary — ACTIVE
@@ -140,3 +141,18 @@ Lead-only and never combined with code commits.
 **Reversal condition.** Human connects a MultiZen-capable seat → DEF-003 is taken up and rows 11/12/15/16 get UI evidence; a UI failure there reopens the client scope.
 
 **Supersedes / superseded by.** NONE
+
+### DLF-009 — Human decisions after closeout: MIT license, v0.1.0 tag, npm deferred, MultiZen reachable
+
+- Decided at: 2026-09-21 (post-closeout DECISION_NOTICE from Supervisor bf776d78 carrying the Human's answers)
+- Decision owner: Human
+- Packet ID / AIT issue ID: none yet — to be executed in a new bounded release batch
+- Commit SHA at decision: fcd1a7aaa0edd503058cdecdd7dcbaec0e77221d (origin/main)
+
+**Production behavior.** The next release-owned change adds `LICENSE` (MIT) and `"license": "MIT"` in `package.json`, keeping attribution/license compatibility for any upstream-derived code (paseo-emoji pattern is MIT, Paseo is Apache-2.0; no code was copied, only patterns). Initial release tag is `v0.1.0`; npm publishing stays deferred for the MVP; the npm package name stays undecided (preferred `@<organization>/paseo-prompt-kit`, fallback `paseo-prompt-kit`); `private: true` remains until publishing is enabled. Browser QA, if the Human asks for it, runs as a new bounded batch using MultiZen profile 20def08f-9a62-4932-9d49-f7c5ab12c6d0; tokens never enter the repo, logs, briefs, or prompts. The accepted batch is not reopened.
+
+**Evidence source.** DECISION_NOTICE text received 2026-09-21; Supervisor verified `multizen.list_profiles` returns the profile (isRunning=false) in the current runtime; the Lead runtime now lists `mcp__multizen-mcp__*` tools.
+
+**Reversal condition.** Human changes the license, tag, or publishing decision.
+
+**Supersedes / superseded by.** Takes up DEF-004 and DEF-005; DEF-003 remains open.

@@ -11,9 +11,9 @@ Current-state takeover index. History → `docs/exec-plans/`; decisions → `doc
 - AIT open: 0 — reconciled 2026-09-21
 - Active AIT issue IDs: none
 - Handoff type: NONE
-- Active Peer disposition: none (a04d2f13 pending final evidence push, then all Peers archived)
-- Heartbeat ID: cf4d76e8 (delete after final push)
-- Deferred: 5 open — docs/DEFERRED.md
+- Active Peer disposition: none (all Peers archived)
+- Heartbeat ID: none (cf4d76e8 deleted at closeout)
+- Deferred: 3 open — docs/DEFERRED.md (DEF-004/005 TAKEN_UP by DLF-009)
 
 ## Batch paseo-prompt-kit-mvp — ACCEPTED
 
@@ -21,7 +21,7 @@ Current-state takeover index. History → `docs/exec-plans/`; decisions → `doc
 - Accepted commits on main: 76992b4 (.1 skeleton+contracts), f7e27ed (.3 server), 32c77c0 (.2 client), ef88e5e + 1005d68 (README), 71b1b5f (F2 server types). Gate: artifacts/gates/9fd26b0499f096c4933786124ead0a825756fc53.log REAL_EXIT:0 (118 tests, live-daemon ran).
 - Daemon state: plugin `prompt-kit` installed from Git (`--ref main` → 71b1b5f) and running; switch back to directory install with `paseo plugin install /Volumes/DataSSD/HomeWork/PLUGIN/paseo-prompt-kit`.
 - Target Paseo 0.8.0 (installed); upstream clone is 0.9.0-beta.2 — installed packages win (DLF-003).
-- Open upward: DECISION_REQUEST license (DEF-004). Not sent: npm scope/tag (DEF-005, not material).
+- Human decisions received post-closeout (DLF-009): license MIT, tag v0.1.0, npm deferred — NOT executed yet; they form the next bounded release batch (LICENSE + package.json license + tag v0.1.0 + push). Lead cannot push/tag from its seat: the release Peer does. MultiZen MCP is now available in the Lead runtime (profile 20def08f-9a62-4932-9d49-f7c5ab12c6d0, isRunning=false) — browser QA only in a new batch on the Human's instruction.
 - Browser QA: BLOCKED — no seat has MultiZen MCP (DEF-003).
 
 ## Upstream research pins (local only, never committed)
@@ -37,4 +37,4 @@ Current-state takeover index. History → `docs/exec-plans/`; decisions → `doc
 
 ## Takeover instructions
 
-- Immediate next action: none pending except the final evidence push (Peer a04d2f13) and heartbeat deletion. Next brief starts a new packet; re-read WORKSPACE_PROTOCOL.md, framework/protocol.md, framework/provider-routing.md, this file.
+- Immediate next action: on the Human's go, open batch `paseo-prompt-kit-release-0.1.0` (LICENSE MIT, package.json license, tag v0.1.0, push; optional browser QA rows from DEF-003). Local HEAD carries one unpushed evidence commit (DLF-009) — push it with the release batch. Next brief starts a new packet; re-read WORKSPACE_PROTOCOL.md, framework/protocol.md, framework/provider-routing.md, this file.
