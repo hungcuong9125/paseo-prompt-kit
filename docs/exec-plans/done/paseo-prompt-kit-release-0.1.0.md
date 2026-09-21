@@ -1,5 +1,7 @@
 # PromptKit release 0.1.0 preparation and browser QA
 
+**State: ACCEPTED (2026-09-21).** RC 94e9a9a3c70f9a68a71017dca80739e221a122b7, local tag v0.1.0, gate artifacts/gates/94cfc8f30cb72e9a4d81381e1f33583e16d88c00.log REAL_EXIT:0; DLF-010 (host-load defect) and DLF-011 (acceptance). Push of main and v0.1.0 is the Human's action; until reported, the release is locally prepared only. Open: DEF-006, DEF-007.
+
 Packet ID: paseo-prompt-kit-release-0.1.0 · AIT epic: pk-OIJLh · Intent: docs/intents/paseo-prompt-kit-release-0.1.0.md · Base: main @ 09e1d89 (accepted code tree 9fd26b0499f096c4933786124ead0a825756fc53 unchanged since 71b1b5f)
 
 ## Outcome And Constraints

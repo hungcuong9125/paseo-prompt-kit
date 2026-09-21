@@ -10,6 +10,8 @@ Lead-only and never combined with code commits.
 
 ## Current index
 
+- `DLF-011` — Release 0.1.0 prep ACCEPTED: RC 94e9a9a (tree 94cfc8f3…), local tag v0.1.0, host loads plugin, browser rows PASS with MultiZen; push/tag left to Human — CLOSED
+- `DLF-010` — Client entry never loaded in the host (default export undefined at snapshot); fix + host-load regression test + re-QA bound into release batch; RC moves off e15d0a6 — ACTIVE
 - `DLF-009` — Human decisions after closeout: license MIT (DEF-004 TAKEN_UP), tag v0.1.0 + npm deferred (DEF-005 TAKEN_UP), MultiZen now reachable from the Lead runtime (DEF-003 stays OPEN until a QA batch) — RECORDED, not yet executed
 - `DLF-008` — Batch paseo-prompt-kit-mvp ACCEPTED at landing 71b1b5f (tree 9fd26b04…); F2 Git-install fix; scanner triage; browser QA BLOCKED (no MultiZen seat) — CLOSED
 - `DLF-007` — pk-UkLWZ.2 ACCEPTED at 32c77c0 (tree 7b1805892aa9b0d875d9cc12ec1bb5afbd51aac7 after merge with .3); pills per agent, guarded rewrite, settings screen — ACTIVE
@@ -156,3 +158,35 @@ Lead-only and never combined with code commits.
 **Reversal condition.** Human changes the license, tag, or publishing decision.
 
 **Supersedes / superseded by.** Takes up DEF-004 and DEF-005; DEF-003 remains open.
+
+### DLF-010 — Client entry load defect found by browser QA; fix bound into the release batch
+
+- Decided at: 2026-09-21
+- Decision owner: Lead (DECISION_NOTICE sent to bf776d78)
+- Packet ID / AIT issue ID: paseo-prompt-kit-release-0.1.0 / pk-OIJLh.3
+- Commit SHA at decision: e15d0a683cdc1041722f8775b09eebf7bf42fdeb
+
+**Production behavior.** `index.client.tsx` default-exports a function declaration so the host's eager module snapshot sees a function; a regression test bundles the entry like the daemon and asserts the export shape; browser rows A–H are re-run live; the full gate re-runs at the fixed tree; the local v0.1.0 tag points at the fixed commit.
+
+**Evidence source.** Peer f57a7628 handback 2026-09-21 ~09:45Z: MultiZen session (22 tools, profile 20def08f-… isRunning=true) — 0 `PromptKit` DOM nodes, Settings → Plugins error `Plugin prompt-kit must default export a function`; bundle sha256 6cb70cb5…; repro script reproduced by Lead (`prompt-kit THROWS`, `fresh-worktrees OK`). Root cause: `export default contribute` re-export of an imported binding vs. host `__copyProps` eager read.
+
+**Human evidence (2026-09-21).** Human reproduced in the Paseo host: https://app.paseo.sh/settings/hosts/srv_nk9P1ozSZzEY/plugins shows `prompt-kit` failed after reload with `Plugin prompt-kit must default export a function`; installed checkout `/Users/hungcuong/.paseo/plugins/prompt-kit/71b1b5f81b1e-bb636f59-ce62-464e-a5a9-d4db5b3b96f8/checkout` (Git install at 71b1b5f). Status: real host FAIL, not UNKNOWN. Release blocked until the entry fix lands, the host reload succeeds, and the affected browser rows are re-verified with real MultiZen evidence.
+
+**Reversal condition.** Host loader changes to lazy getters → the test still passes; no reversal needed.
+
+**Supersedes / superseded by.** Amends DLF-007 (client acceptance was jsdom-only; live load was UNKNOWN and is now FAIL→fixed).
+
+### DLF-011 — Release 0.1.0 preparation accepted; host-load fix evidenced; local tag v0.1.0
+
+- Decided at: 2026-09-21
+- Decision owner: Lead
+- Packet ID / AIT issue ID: paseo-prompt-kit-release-0.1.0 / pk-OIJLh (.1 release files, .2 QA-before, .3 fix + QA-after)
+- Commit SHA at decision: release candidate 94e9a9a3c70f9a68a71017dca80739e221a122b7 (tree 94cfc8f30cb72e9a4d81381e1f33583e16d88c00); local annotated tag `v0.1.0` → 94e9a9a
+
+**Production behavior.** `index.client.tsx` declares `export default function contribute(client)` (body folded from the deleted `client/contribute.tsx`); the host loads the plugin without an evaluation error. `LICENSE` (MIT), `package.json` `license: "MIT"`, README license/attribution present (e15d0a6). `tests/unit/client-entry-host-load.test.ts` bundles the entry with esbuild and evaluates it under the host's eager CommonJS interop, asserting the default export is a function (skips with a reason when no esbuild binary is found). Nothing pushed by agents; `origin/main` is still fcd1a7a.
+
+**Evidence source.** Before: HEAD e15d0a6 / accepted code tree 9fd26b04…, host FAIL (`Plugin prompt-kit must default export a function`, Human-reproduced; repro `artifacts/qa/ui-20260921T092855Z/`). After: regression test RED on old entry (`regression-red.log` REAL_EXIT:1) → GREEN on 94e9a9a (`regression-green.log` REAL_EXIT:0); typecheck 0; gate `artifacts/gates/94cfc8f30cb72e9a4d81381e1f33583e16d88c00.log` REAL_EXIT:0, 14 files / 119 tests, live-daemon 9/9; directory install `running`. MultiZen (profile 20def08f-…), `artifacts/qa/ui-20260921T095604Z/`: (a) Settings → Plugins no error, `evaluationErrors` empty; (b) 1 PromptKit pill, 1 `Improve coding prompt` menuitem (`rowA1-pill-visible.png`); (c) reload → 1 pill (`rowC-after-reload-pill.png`); B rewrite replaced Vietnamese text, user turns 3→3, plugin log `rewrite success durationMs=9183`; C `Write a prompt first.`; D text kept + message; E other agent's Composer untouched; H dedicated model persisted / invalid refused. Row G (theme) dropped by HUMAN_PRIORITY_DIRECTIVE; profile theme left at `auto`. Lead viewed screenshots `rowA1-pill-visible.png`, `rowB-menu-visual.png`, `rowC-reload-menu-single.png`, `rowA0-settings-plugins-no-error.png`.
+
+**Reversal condition.** Human reports the pushed tag/branch differ from 94e9a9a, or a host release changes the interop loader → new DLF.
+
+**Supersedes / superseded by.** Closes DLF-010; amends DLF-007 (client acceptance now host-proven).

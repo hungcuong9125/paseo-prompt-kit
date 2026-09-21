@@ -4,16 +4,25 @@ Current-state takeover index. History → `docs/exec-plans/`; decisions → `doc
 
 - Framework revision: bundle delivered 2026-09-21 (protocol v1)
 - Updated at: 2026-09-21 04:05Z
-- Active Lead: claude-lead / claude-fable-5-1 (Lead-of-record, idle after closeout)
+- Active Lead: claude-lead / claude-fable-5-1 (Lead-of-record, idle after release-prep closeout)
 - Repository HEAD: see `git log -1`; branch `main`; origin https://github.com/hungcuong9125/paseo-prompt-kit — landing code 71b1b5f81b1e2c2f37422665267a75dc4f4d92c0 pushed
 - AIT database: initialized (prefix `pk`, `.ait/ait.db`, ignored)
-- AIT graph snapshot: epic pk-UkLWZ CLOSED (.1–.4 closed)
+- AIT graph snapshot: epics pk-UkLWZ and pk-OIJLh CLOSED
 - AIT open: 0 — reconciled 2026-09-21
 - Active AIT issue IDs: none
 - Handoff type: NONE
-- Active Peer disposition: none (all Peers archived)
-- Heartbeat ID: none (cf4d76e8 deleted at closeout)
-- Deferred: 3 open — docs/DEFERRED.md (DEF-004/005 TAKEN_UP by DLF-009)
+- Active Peer disposition: none (f57a7628 archived after handback)
+- Heartbeat ID: none (9e0e898c deleted at closeout)
+- Deferred: 4 open — docs/DEFERRED.md (DEF-001, DEF-002, DEF-006, DEF-007)
+
+## Batch paseo-prompt-kit-release-0.1.0 — ACCEPTED (locally prepared; push is the Human's)
+
+- Packet: docs/exec-plans/done/paseo-prompt-kit-release-0.1.0.md · DLF-009..011.
+- Release candidate 94e9a9a3c70f9a68a71017dca80739e221a122b7 (tree 94cfc8f30cb72e9a4d81381e1f33583e16d88c00); local annotated tag v0.1.0 → 94e9a9a. Gate artifacts/gates/94cfc8f3….log REAL_EXIT:0 (119 tests).
+- Host-load defect DLF-010 fixed (index.client.tsx default export declared); browser QA PASS with MultiZen (artifacts/qa/ui-20260921T095604Z/); repro kept in artifacts/qa/ui-20260921T092855Z/.
+- origin/main = fcd1a7a until the Human pushes. Exact commands in the ACCEPTED capsule (git push origin main; git push origin v0.1.0).
+- Daemon: prompt-kit running from the DIRECTORY install (/Volumes/DataSSD/HomeWork/PLUGIN/paseo-prompt-kit); the earlier Git install (71b1b5f) is broken by DLF-010 — do not reinstall from Git until v0.1.0 is pushed.
+- MultiZen profile 20def08f-… was left running (visible window); theme `auto` untouched.
 
 ## Batch paseo-prompt-kit-mvp — ACCEPTED
 
@@ -33,8 +42,9 @@ Current-state takeover index. History → `docs/exec-plans/`; decisions → `doc
 - `git worktree` and `git push` are denied on the Lead seat: worktrees via Paseo `create_workspace`, pushes via a Peer that holds the main checkout.
 - pi-peer at `low` thinking can degenerate into a prose loop with no tool calls after a mid-task re-prompt (seat 49d1e9f6); replacement at `high` finished cleanly.
 - The managed Git checkout has no `node_modules`: server code may import only host SDK specifiers (`@getpaseo/plugin*`); type-only imports from `@getpaseo/client` break `paseo plugin install <git>` (F2).
-- Browser QA capability arrived after closeout: pi-peer + MultiZen MCP (Human-configured); Claude/Codex peers still lack it.
+- Browser QA capability arrived after closeout: pi-peer + MultiZen MCP (Human-configured); Claude/Codex peers still lack it. Real-host QA then exposed DLF-010: jsdom/source evidence for UI acceptance is not a substitute for the host — a load-path test (bundle + host interop) now guards it.
+- Mid-task re-prompts interrupt the active Pi turn; expect an 'interrupted' event and a fresh turn, not a lost seat.
 
 ## Takeover instructions
 
-- Immediate next action: on the Human's go, open batch `paseo-prompt-kit-release-0.1.0` (LICENSE MIT, package.json license, tag v0.1.0, push; optional browser QA rows from DEF-003). Local HEAD carries one unpushed evidence commit (DLF-009) — push it with the release batch. Next brief starts a new packet; re-read WORKSPACE_PROTOCOL.md, framework/protocol.md, framework/provider-routing.md, this file.
+- Immediate next action: none — wait for the Human's push report (main + v0.1.0), then optionally verify `paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.1.0` in a bounded ops task. Next brief starts a new packet; re-read WORKSPACE_PROTOCOL.md, framework/protocol.md, framework/provider-routing.md, this file.
