@@ -61,7 +61,7 @@ describe("describeReadiness", () => {
     const current = await readiness({}, null as never);
     expect(current.kind).toBe("ready");
     const api = await readiness(
-      { transport: "api", modelMode: "dedicated", apiEndpoints: [ENDPOINT], apiEndpointId: "groq", apiModel: "openai/gpt-oss-20b" },
+      { transport: "api", apiEndpoints: [ENDPOINT], apiEndpointId: "groq", apiModel: "openai/gpt-oss-20b" },
       null as never,
     );
     expect(api.kind).toBe("ready");
@@ -82,7 +82,6 @@ describe("describeReadiness", () => {
   it("describes the API path by endpoint and model, or by mapped providers", async () => {
     const dedicated = await readiness({
       transport: "api",
-      modelMode: "dedicated",
       apiEndpoints: [ENDPOINT],
       apiEndpointId: "groq",
       apiModel: "openai/gpt-oss-20b",

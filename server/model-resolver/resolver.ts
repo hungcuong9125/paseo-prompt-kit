@@ -73,7 +73,7 @@ function unsupported(provider: string): { ok: false; error: RewriteError } {
 
 const AGENT_GONE = "The current agent is no longer available.";
 const NO_AGENT_YET =
-  "This Composer has no agent yet, so there is no current model to use. Choose a dedicated model or the API transport in PromptKit settings, or send the first message and use the PromptKit pill.";
+  "This Composer has no agent yet, so there is no current model to use. Choose a dedicated model or Direct API in PromptKit settings, or send the first message and use the PromptKit pill.";
 
 /** Path 1: the agent's own provider CLI, with the model the Composer shows. */
 function resolveCurrentCli(agent: AgentModelSnapshot, settings: PromptKitSettings): ResolvedTarget {
@@ -130,21 +130,18 @@ async function resolveDedicatedCli(
   };
 }
 
-/** Path 3: API endpoint. A provider mapping (agent's model) wins over the dedicated endpoint+model. */
+/** Path 3: API endpoint. A mapped provider sends its agent's model; otherwise the selected endpoint and model. `modelMode` is not read. */
 function resolveApi(agent: AgentModelSnapshot | null, settings: PromptKitSettings): ResolvedTarget {
   const mappedEndpointId = agent === null ? undefined : settings.apiEndpointByProvider[agent.provider];
   const viaProviderMapping = mappedEndpointId !== undefined;
-  if (!viaProviderMapping && settings.modelMode !== "dedicated") {
-    return invalidSelection(
-      agent === null
-        ? NO_AGENT_YET
-        : "An API transport needs a dedicated model, or an endpoint mapped to this agent's provider.",
-    );
-  }
 
   const endpointId = viaProviderMapping ? mappedEndpointId : settings.apiEndpointId;
   if (endpointId === null) {
-    return invalidSelection("No API endpoint is selected in PromptKit settings.");
+    return invalidSelection(
+      agent === null
+        ? "No API endpoint is selected in PromptKit settings."
+        : `No API endpoint is selected in PromptKit settings, and provider "${agent.provider}" is not mapped to one.`,
+    );
   }
   const endpoint = settings.apiEndpoints.find((candidate) => candidate.id === endpointId);
   if (endpoint === undefined) {
@@ -178,7 +175,6 @@ function resolveApi(agent: AgentModelSnapshot | null, settings: PromptKitSetting
   };
 }
 
-
 export async function resolveTarget(
   paseo: PaseoApi,
   agentId: string | null,
@@ -186,8 +182,8 @@ export async function resolveTarget(
 ): Promise<ResolvedTarget> {
   // Draft Composer: only agent-dependent paths refuse.
   if (agentId === null) {
-    if (settings.modelMode !== "dedicated") return invalidSelection(NO_AGENT_YET);
     if (settings.transport === "api") return resolveApi(null, settings);
+    if (settings.modelMode !== "dedicated") return invalidSelection(NO_AGENT_YET);
     return resolveDedicatedCli(paseo, settings, undefined);
   }
 

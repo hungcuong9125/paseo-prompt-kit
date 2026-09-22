@@ -3,14 +3,7 @@ import type { PromptKitSettings } from "../../shared/settings.js";
 
 type Providers = ProviderCatalogOutput["providers"];
 
-/**
- * Null when the selection may run; otherwise the user-facing reason it may not.
- *
- * `transport: "api"` is validated on its own terms: an endpoint must exist, and
- * the model must be either the agent's own (when an endpoint is mapped to the
- * agent's provider) or an explicitly chosen API model. A CLI provider selection
- * is irrelevant on that path, so it is not checked.
- */
+/** Null when the selection may run; otherwise the user-facing reason. The API path ignores the CLI fields. */
 export function validateDedicatedSelection(
   settings: PromptKitSettings,
   providers: Providers,
@@ -33,18 +26,9 @@ export function validateDedicatedSelection(
   return null;
 }
 
-/**
- * The API path, checked without a network call so a misconfiguration is caught
- * before the Composer text is touched.
- *
- * A provider mapping satisfies the model requirement on its own: the agent's own
- * model is sent, so no dedicated model has to be chosen.
- */
+/** API path, no network call. Mappings alone may run; a selected endpoint must be complete. */
 function validateApiSelection(settings: PromptKitSettings): string | null {
   const mapped = Object.keys(settings.apiEndpointByProvider).length > 0;
-  if (!mapped && settings.modelMode !== "dedicated") {
-    return "An API transport needs a dedicated model, or an endpoint mapped to a provider.";
-  }
   const endpointId = settings.apiEndpointId;
   if (endpointId === null) {
     return mapped
@@ -53,7 +37,6 @@ function validateApiSelection(settings: PromptKitSettings): string | null {
   }
   const endpoint = settings.apiEndpoints.find((candidate) => candidate.id === endpointId);
   if (endpoint === undefined) return `No API endpoint is configured with the id "${endpointId}".`;
-  if (settings.modelMode !== "dedicated") return null;
   const model = settings.apiModel;
   if (model === null) return "Select an API model.";
   if (endpoint.models.length > 0 && !endpoint.models.includes(model)) {

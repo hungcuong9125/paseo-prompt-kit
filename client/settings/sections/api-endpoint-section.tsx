@@ -240,30 +240,28 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test }: Api
               onPress={() => void runTest(selected)}
             />
 
-            {values.modelMode === "dedicated" ? (
-              selected.models.length > 0 ? (
-                <SettingsSelect
-                  label="Model"
-                  hint="Which model the rewrite asks this endpoint for."
-                  error={values.apiModel === null ? "Choose a model." : null}
-                  value={values.apiModel ?? NONE}
-                  options={[{ label: "Select a model", value: NONE }, ...modelOptions]}
-                  disabled={disabled}
-                  onValueChange={(apiModel) => patch({ apiModel: apiModel === NONE ? null : apiModel })}
-                />
-              ) : (
-                <SettingsInput
-                  key={`${epoch}-${selected.id}-apiModel`}
-                  label="Model"
-                  hint="This endpoint has not listed its models. Press Test to fill the list, or type the id."
-                  error={values.apiModel === null ? "Choose a model." : null}
-                  initialValue={values.apiModel ?? ""}
-                  placeholder="gemini-2.5-flash"
-                  disabled={disabled}
-                  onChangeText={(model) => patch({ apiModel: model.trim() === "" ? null : model.trim() })}
-                />
-              )
-            ) : null}
+            {selected.models.length > 0 ? (
+              <SettingsSelect
+                label="Model"
+                hint="Which model the rewrite asks this endpoint for. A provider mapped under Advanced sends its own model instead."
+                error={values.apiModel === null ? "Choose a model." : null}
+                value={values.apiModel ?? NONE}
+                options={[{ label: "Select a model", value: NONE }, ...modelOptions]}
+                disabled={disabled}
+                onValueChange={(apiModel) => patch({ apiModel: apiModel === NONE ? null : apiModel })}
+              />
+            ) : (
+              <SettingsInput
+                key={`${epoch}-${selected.id}-apiModel`}
+                label="Model"
+                hint="This endpoint has not listed its models. Press Test to fill the list, or type the id."
+                error={values.apiModel === null ? "Choose a model." : null}
+                initialValue={values.apiModel ?? ""}
+                placeholder="gemini-2.5-flash"
+                disabled={disabled}
+                onChangeText={(model) => patch({ apiModel: model.trim() === "" ? null : model.trim() })}
+              />
+            )}
 
             <SettingsAction
               label="Remove endpoint"

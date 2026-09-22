@@ -224,11 +224,22 @@ describe("status bar", () => {
     expect(statusText(view)).toContain("no PromptKit pill");
   });
 
-  it("refuses the API transport on the current model until a provider is mapped", async () => {
+  it("refuses the API transport until an endpoint is chosen or a provider is mapped", async () => {
     holder.state = readyState({ transport: "api" });
     const view = await render();
     expect(statusTitle(view)).toContain("Not ready · Direct API");
-    expect(statusText(view)).toContain("endpoint mapped to a provider");
+    expect(statusText(view)).toContain("Add an API endpoint");
+  });
+
+  // Model source is a Provider CLI choice; Direct API picks its model under API endpoint.
+  it("shows Model source only for Provider CLI and the endpoint's Model for Direct API", async () => {
+    holder.state = readyState({ transport: "api", modelMode: "current", apiEndpointId: "groq", apiEndpoints: [GROQ] });
+    const view = await render();
+    expect(view.querySelector('select[data-label="Model source"]')).toBeNull();
+    expect(select(view, "Model")).toBeTruthy();
+
+    await choose(view, "Transport", "cli");
+    expect(select(view, "Model source")).toBeTruthy();
   });
 });
 
@@ -317,8 +328,8 @@ describe("draft, save and discard", () => {
 });
 
 describe("API endpoint section", () => {
-  it("adds a preset by choosing it and asks for a model on the dedicated path", async () => {
-    holder.state = readyState({ transport: "api", modelMode: "dedicated" });
+  it("adds a preset by choosing it and asks for its model", async () => {
+    holder.state = readyState({ transport: "api" });
     holder.save.mockResolvedValue(true);
     const view = await render();
     expect(statusText(view)).toContain("Add an API endpoint");
@@ -343,7 +354,6 @@ describe("API endpoint section", () => {
   it("writes the model list a successful test returns into the draft", async () => {
     holder.state = readyState({
       transport: "api",
-      modelMode: "dedicated",
       apiEndpointId: "groq",
       apiEndpoints: [{ ...GROQ, models: [] }],
     });
@@ -363,7 +373,6 @@ describe("API endpoint section", () => {
   it("keeps a field typed during a test instead of overwriting it with the test result", async () => {
     holder.state = readyState({
       transport: "api",
-      modelMode: "dedicated",
       apiEndpointId: "groq",
       apiEndpoints: [{ ...GROQ, models: [] }],
     });
@@ -387,7 +396,7 @@ describe("API endpoint section", () => {
   });
 
   it("blocks Save while a custom endpoint has no usable base URL", async () => {
-    holder.state = readyState({ transport: "api", modelMode: "dedicated" });
+    holder.state = readyState({ transport: "api" });
     const view = await render();
     await choose(view, "Endpoint", "__custom__");
     expect(statusTitle(view)).toBe("Cannot save yet");
@@ -400,6 +409,7 @@ describe("API endpoint section", () => {
     holder.state = readyState({
       transport: "api",
       apiEndpointId: "groq",
+      apiModel: "openai/gpt-oss-20b",
       apiEndpoints: [GROQ],
       apiEndpointByProvider: { openai: "groq" },
     });
@@ -409,7 +419,7 @@ describe("API endpoint section", () => {
     await pressAction(view, "Remove endpoint");
     expect(statusTitle(view)).not.toBe("Cannot save yet");
     // Nothing is left to send an API rewrite through, and the bar says so.
-    expect(statusText(view)).toContain("endpoint mapped to a provider");
+    expect(statusText(view)).toContain("Add an API endpoint");
   });
 });
 

@@ -29,6 +29,11 @@
 - Minimum Paseo version raised to `>=0.9.0` (`paseo-plugin.json`), required for the mobile sheet
   and the `/rewrite` command.
 - Settings menu entry renamed from "PromptKit" to "Settings".
+- `Model source` is now a Provider CLI setting only. Direct API always shows a **Model** row in
+  the API endpoint section and ignores `modelMode`; a provider mapped under Advanced still
+  sends its agent's own model.
+- Rewrite engine rows: the hint stops short of the dropdown, so the text and the control read
+  as two separate columns on wide layouts.
 
 ### Fixed
 

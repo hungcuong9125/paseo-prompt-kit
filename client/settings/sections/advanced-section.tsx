@@ -99,7 +99,7 @@ export function AdvancedSection({ theme, values, providers, disabled, epoch, pat
           ) : (
             <ProviderMapCard
               title="Endpoint per provider"
-              hint="When you press the pill in an agent of a mapped provider, that agent's own model is sent to the endpoint over HTTP instead of through its CLI. A mapped provider needs no dedicated model."
+              hint="When you press the pill in an agent of a mapped provider, that agent's own model is sent to the endpoint over HTTP instead of through its CLI. A mapped provider ignores the Model chosen under API endpoint."
               providers={providers}
               map={values.apiEndpointByProvider}
               targets={values.apiEndpoints.map((endpoint) => ({ label: endpoint.label, value: endpoint.id }))}

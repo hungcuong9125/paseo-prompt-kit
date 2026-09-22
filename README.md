@@ -9,7 +9,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes.
 ## Three ways to run it
 
 - **The pill** — write your prompt, press `PromptKit`. The text is rewritten in place; a leading `/rewrite ` left in the text is ignored. Available once the agent exists, so on a new seat it appears after the first message.
-- **`/rewrite <prompt>`** — type the command with the prompt after it and press Enter. Paseo empties the Composer and hands the text to PromptKit, which puts the `/rewrite …` line straight back, dims it with a light sweep while it works, and then replaces it with the rewrite. A failed rewrite leaves your line in place. Available immediately, including on a new seat before its first message. Because no agent exists yet on a draft, `/rewrite` cannot use `Current agent model`; choose `Dedicated model` or `Direct API` in Settings, or use the pill once the agent exists.
+- **`/rewrite <prompt>`** — type the command with the prompt after it and press Enter. Paseo empties the Composer and hands the text to PromptKit, which puts the `/rewrite …` line straight back, dims it with a light sweep while it works, and then replaces it with the rewrite. A failed rewrite leaves your line in place. Available immediately, including on a new seat before its first message. Because no agent exists yet on a draft, `/rewrite` cannot use `Current agent model`; choose `Dedicated model` or `Direct API` with a selected endpoint and model in Settings, or use the pill once the agent exists.
 - **The PromptKit sheet** (mobile) — write in the Composer as usual and press the pill. A sheet slides up already holding your text and rewrites it at once. Press **Rewrite** again until it reads right, then **Send**: the message goes to the agent, the Composer is cleared, the sheet closes. **✕** closes the sheet and leaves the Composer untouched.
 
 No path sends the message on its own. You review the result and send it yourself.
@@ -61,16 +61,16 @@ Open it from Paseo Settings → Plugins → the `…` menu on `prompt-kit` → *
 The screen reads top to bottom in setup order:
 
 1. **Actions** — one switch per bundled action. One enabled action makes the pill a direct button; two or more make it a menu; none hides the pill. A change here reaches the pill when the agent re-opens or the plugin reloads.
-2. **Rewrite engine** — the two independent choices below. Every other section appears only when these two need it.
+2. **Rewrite engine** — Transport, Model source (Provider CLI only) and Output language. Every other section appears only when these need it.
 3. **Dedicated model** (CLI + Dedicated) or **API endpoint** (Direct API).
 4. **Advanced** (collapsed) — timeout, secrets directory, and the two per-provider overrides.
 
 ### Transport
 
-- `Provider CLI` (default) — the provider's own CLI runs the rewrite headlessly. The model comes from the next setting.
-- `Direct API` — PromptKit posts to an endpoint you configure. No CLI is started.
+- `Provider CLI` (default) — the provider's own CLI runs the rewrite headlessly. The model comes from **Model source**.
+- `Direct API` — PromptKit posts to an endpoint you configure. No CLI is started, and there is no Model source: the model is chosen in the **API endpoint** section.
 
-### Model source
+### Model source (Provider CLI only)
 
 - `Current agent model` — the model the Composer's model control is showing for the agent whose pill you pressed. PromptKit reads the same value Paseo does (the provider session's runtime model first, then the configured model), so what you see is what runs.
 - `Dedicated model` — a provider, model and thinking option you pick from the daemon's provider catalog, whatever the agent itself runs.
@@ -85,20 +85,20 @@ The screen reads top to bottom in setup order:
 |---|---|---|
 | `Provider CLI` | `Current agent model` | The agent's own provider CLI with the model the Composer shows |
 | `Provider CLI` | `Dedicated model` | The dedicated provider's CLI with the model you picked |
-| `Direct API` | either | An HTTP request to the endpoint you configured |
+| `Direct API` | — | An HTTP request to the endpoint and model chosen under **API endpoint** |
 
-On `Direct API` the model has two sources. If you map a provider to an endpoint under **Advanced → Endpoint per provider**, the agent's own model is sent — this is how you point a provider such as `opencode` at your own OpenAI-compatible endpoint. Otherwise pick `Dedicated model` and choose a model on the endpoint.
+On `Direct API`, an agent whose provider is mapped under **Advanced → Endpoint per provider** sends its own model to that endpoint instead — this is how you point a provider such as `opencode` at your own OpenAI-compatible endpoint. Every other agent uses the endpoint and model from the **API endpoint** section; with no endpoint selected, only mapped providers can rewrite.
 
 ### API endpoint
 
-Choose a preset (Groq, OpenAI, Anthropic, Google Gemini, OpenRouter, Local server) or a custom endpoint, fill in the base URL and the **name** of the key variable, and press **Test**. A successful test fills the model list from the endpoint; the rewrite refuses a model outside that list. Save is blocked while the endpoint cannot work (for example an empty base URL), with the reason in the status bar.
+Choose a preset (Groq, OpenAI, Anthropic, Google Gemini, OpenRouter, Local server) or a custom endpoint, fill in the base URL and the **name** of the key variable, and press **Test**. A successful test fills the **Model** list from the endpoint; the rewrite refuses a model outside that list. Save is blocked while the endpoint cannot work (for example an empty base URL), with the reason in the status bar.
 
 ### Advanced
 
 - `Timeout (ms)`: how long a rewrite may run, default `90000`, allowed range `1000`–`600000`. The daemon caps one plugin call at 30 s, so the screen notes when a budget above that cannot be reached.
 - `Secrets directory` (Direct API): where `secrets.json` lives. Empty means `<PASEO_HOME>/plugin-settings/prompt-kit`.
 - `CLI per provider` (Provider CLI): lists only the providers you have overridden, plus an Add row. A profile named after its CLI (`pi-peer`, `codex-lead`) resolves on its own and needs no entry; an unresolved provider is refused, never guessed.
-- `Endpoint per provider` (Direct API): lists only mapped providers, plus an Add row. Pressing the pill in an agent of a mapped provider sends that agent's own model to the endpoint over HTTP. A mapped provider needs no dedicated model.
+- `Endpoint per provider` (Direct API): lists only mapped providers, plus an Add row. Pressing the pill in an agent of a mapped provider sends that agent's own model to the endpoint over HTTP. A mapped provider ignores the Model chosen under API endpoint.
 
 Settings are host-scoped and persist across plugin reload.
 
@@ -169,7 +169,6 @@ Example — the Groq endpoint from the settings document:
 ```json
 {
   "transport": "api",
-  "modelMode": "dedicated",
   "apiEndpointId": "groq",
   "apiModel": "openai/gpt-oss-20b",
   "apiEndpoints": [

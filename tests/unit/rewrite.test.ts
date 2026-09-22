@@ -535,7 +535,6 @@ describe("runRewrite: api transport", () => {
       harness,
       {
         transport: "api",
-        modelMode: "current",
         apiEndpoints: [{ ...GROQ_ENDPOINT, models: [] }],
         apiEndpointByProvider: { opencode: "groq" },
       },
@@ -557,7 +556,6 @@ describe("runRewrite: api transport", () => {
       harness,
       {
         transport: "api",
-        modelMode: "current",
         apiEndpoints: [{ ...GROQ_ENDPOINT, models: [] }],
         apiEndpointByProvider: { grok: "groq" },
       },
@@ -658,13 +656,29 @@ describe("runRewrite: api transport", () => {
     expect(calls).toEqual([]);
   });
 
-  // The two axes are independent, but not every combination is meaningful: with
-  // no provider mapping there is no model to borrow, so `current + api` is refused.
-  it("refuses the api transport with a current model and no provider mapping", async () => {
+  // Model source is a CLI setting: the API path uses the selected endpoint's model whatever modelMode says.
+  it("uses the selected endpoint and model on the api transport whatever modelMode says", async () => {
+    const harness = createRewriteHarness({});
+    const { output, calls } = await rewriteApi(
+      harness,
+      {
+        transport: "api",
+        modelMode: "current",
+        apiEndpoints: [GROQ_ENDPOINT],
+        apiEndpointId: "groq",
+        apiModel: "openai/gpt-oss-20b",
+      },
+      { body: OK_BODY, env: { GROQ_API_KEY: "sk-test" } },
+    );
+    expect(output.status).toBe("ok");
+    expect(JSON.parse(calls[0]!.body).model).toBe("openai/gpt-oss-20b");
+    expect(harness.spawned).toEqual([]);
+  });
+
+  it("refuses the api transport when an unmapped agent has no API model selected", async () => {
     const harness = createRewriteHarness({});
     const { output, calls } = await rewriteApi(harness, {
       transport: "api",
-      modelMode: "current",
       apiEndpoints: [GROQ_ENDPOINT],
       apiEndpointId: "groq",
     });

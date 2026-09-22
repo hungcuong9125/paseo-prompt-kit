@@ -94,7 +94,7 @@ function ReadyScreen({ settings, theme, layout }: { settings: ReadySettings } & 
         reload={catalogs.reloadActions}
       />
 
-      <EngineSection values={values} disabled={disabled} patch={draft.patch} />
+      <EngineSection theme={theme} compact={layout.compact} values={values} disabled={disabled} patch={draft.patch} />
 
       {values.transport === "cli" && values.modelMode === "dedicated" ? (
         <DedicatedModelSection

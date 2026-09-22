@@ -94,7 +94,7 @@ server/                          The daemon-side contribution
     handler.ts                     The `prompt-kit.rewrite` RPC: resolves the action, logs no content.
     output-validator.ts            Rejects preface/refusal/commentary/lost literals.
   model-resolver/                Decides the provider/model/thinking option and transport for a request
-    resolver.ts                    Three paths: current-CLI, dedicated-CLI, API. Fails closed.
+    resolver.ts                    Three paths: current-CLI, dedicated-CLI, API (mapped provider or selected endpoint). Fails closed.
     provider-catalog.ts            Reads the daemon catalog + availability state.
   transports/                    How a prompt reaches a model
     cli/                           family.ts (4 CLIs), process.ts (spawn, kill tree), runner.ts (scratch dir)
@@ -170,11 +170,14 @@ on the client (`client/actions/enabled.ts`).
 
 ## 6. Settings (host-scoped, version 1)
 
-Two independent axes decide the run path: `transport` (`cli`|`api`) × `modelMode`
-(`current`|`dedicated`). The remaining fields follow from these two:
+`transport` (`cli`|`api`) decides the run path. `modelMode` (`current`|`dedicated`) belongs to
+the CLI transport only; the API transport never reads it. The remaining fields follow:
 
-- CLI: `dedicatedProvider/Model/ThinkingOptionId`, `providerCli` (per-provider family override).
-- API: `apiEndpoints[]`, `apiEndpointId`, `apiModel`, `apiEndpointByProvider`, `secretsFile`.
+- CLI: `modelMode`, `dedicatedProvider/Model/ThinkingOptionId`, `providerCli` (per-provider
+  family override).
+- API: `apiEndpoints[]`, `apiEndpointId` + `apiModel` (the model for any agent whose provider
+  is not mapped), `apiEndpointByProvider` (a mapped provider sends its agent's own model),
+  `secretsFile`.
 - Shared: `timeoutMs` (`TIMEOUT_MS.min..max`, default 90,000; the host caps the RPC at 30s —
   DEF-008), `actionEnabled`, `outputLanguage` (`source` or a loaded id; an unknown id ⇒
   `invalid_selection`).

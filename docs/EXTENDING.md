@@ -130,8 +130,8 @@ path) a line in the status bar.
 
 UI primitives: use the host kit (`SettingsSection/Card/Row/Switch/Select/Input/Action`) for
 every row; `client/settings/ui/` holds only `Button`, `Notice`, `StatusBar` for what sits
-outside a row. Don't add a bare `Text` to a section — put the words in a row's `hint`/`error`
-or a section's `info`.
+outside a row. Don't add a bare `Text` to a section — put the words in a row's `hint`/`error` or a
+section's `info`.
 
 ---
 

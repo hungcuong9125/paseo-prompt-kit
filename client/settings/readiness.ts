@@ -23,14 +23,10 @@ function pathLabel(values: PromptKitSettings): string {
   const transport = values.transport === "api" ? "Direct API" : "Provider CLI";
   if (values.transport === "api") {
     const mapped = Object.keys(values.apiEndpointByProvider).length;
-    if (values.modelMode === "dedicated") {
-      const endpoint = values.apiEndpointId ?? "no endpoint";
-      const model = values.apiModel ?? "no model";
-      return `${transport} · ${endpoint} · ${model}`;
-    }
-    return mapped > 0
-      ? `${transport} · agent model via ${mapped} mapped provider${mapped === 1 ? "" : "s"}`
-      : `${transport} · current agent model`;
+    const viaMapping = `agent model via ${mapped} mapped provider${mapped === 1 ? "" : "s"}`;
+    if (values.apiEndpointId === null) return `${transport} · ${mapped > 0 ? viaMapping : "no endpoint"}`;
+    const selected = `${transport} · ${values.apiEndpointId} · ${values.apiModel ?? "no model"}`;
+    return mapped > 0 ? `${selected} · ${viaMapping}` : selected;
   }
   if (values.modelMode === "dedicated") {
     const provider = values.dedicatedProvider ?? "no provider";
@@ -72,9 +68,9 @@ export function describeReadiness(input: ReadinessInput): Readiness {
       kind: "ready",
       path,
       detail:
-        values.modelMode === "dedicated"
+        values.apiEndpointId !== null
           ? "One HTTP request to the selected endpoint. No CLI is started."
-          : "Each mapped provider's agent model is sent to its endpoint.",
+          : "Each mapped provider's agent model is sent to its endpoint; other providers are refused.",
     };
   }
   return {

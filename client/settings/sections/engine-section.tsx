@@ -1,10 +1,14 @@
-import { SettingsCard, SettingsSection, SettingsSelect } from "@getpaseo/plugin/client/ui";
+import type { PluginTheme } from "@getpaseo/plugin";
+import { SettingsCard, SettingsSection } from "@getpaseo/plugin/client/ui";
 import { listLanguages } from "../../../shared/language-registry/registry.js";
 import { SOURCE_LANGUAGE } from "../../../shared/language-registry/schema.js";
 import type { PromptKitSettings } from "../../../shared/settings.js";
 import type { SettingsPatch } from "../draft.js";
+import { SplitSelect } from "../ui/split-select.js";
 
 export interface EngineSectionProps {
+  theme: PluginTheme;
+  compact: boolean;
   values: PromptKitSettings;
   disabled: boolean;
   patch(update: SettingsPatch): void;
@@ -36,15 +40,17 @@ const LANGUAGE_OPTIONS = [
   ...listLanguages().map((language) => ({ label: language.label, value: language.id })),
 ] as const;
 
-/** Transport × model source × output language. Other sections depend on the first two. */
-export function EngineSection({ values, disabled, patch }: EngineSectionProps) {
+/** Transport, the CLI's model source, and output language. Model source exists only for Provider CLI. */
+export function EngineSection({ theme, compact, values, disabled, patch }: EngineSectionProps) {
   return (
     <SettingsSection
       title="Rewrite engine"
-      info="Transport answers how the model is reached; Model source answers which model; Output language answers what language the rewrite is written in. The sections below change with the first two."
+      info="Transport answers how the model is reached. On Provider CLI, Model source answers which model; on Direct API the model is chosen under API endpoint. Output language answers what language the rewrite is written in."
     >
       <SettingsCard>
-        <SettingsSelect
+        <SplitSelect
+          theme={theme}
+          compact={compact}
           label="Transport"
           hint={TRANSPORT_HINT[values.transport]}
           value={values.transport}
@@ -52,17 +58,23 @@ export function EngineSection({ values, disabled, patch }: EngineSectionProps) {
           disabled={disabled}
           onValueChange={(transport) => patch({ transport: transport === "api" ? "api" : "cli" })}
         />
-        <SettingsSelect
-          label="Model source"
-          hint={MODEL_HINT[values.modelMode]}
-          value={values.modelMode}
-          options={MODEL_OPTIONS}
-          disabled={disabled}
-          onValueChange={(modelMode) =>
-            patch({ modelMode: modelMode === "dedicated" ? "dedicated" : "current" })
-          }
-        />
-        <SettingsSelect
+        {values.transport === "cli" ? (
+          <SplitSelect
+            theme={theme}
+            compact={compact}
+            label="Model source"
+            hint={MODEL_HINT[values.modelMode]}
+            value={values.modelMode}
+            options={MODEL_OPTIONS}
+            disabled={disabled}
+            onValueChange={(modelMode) =>
+              patch({ modelMode: modelMode === "dedicated" ? "dedicated" : "current" })
+            }
+          />
+        ) : null}
+        <SplitSelect
+          theme={theme}
+          compact={compact}
           label="Output language"
           hint={
             values.outputLanguage === SOURCE_LANGUAGE

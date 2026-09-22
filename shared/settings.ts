@@ -4,13 +4,13 @@ import { apiEndpointSchema } from "./api-protocol.js";
 import { CLI_FAMILY_IDS } from "./cli-families.js";
 import { LANGUAGE_ID_PATTERN, SOURCE_LANGUAGE } from "./language-registry/schema.js";
 
+/** Which model the CLI transport runs. The API transport ignores it. */
 export const modelModeSchema = z.enum(["current", "dedicated"]);
 
 /**
- * How the resolved model is reached. `cli` spawns the provider's own CLI in a
- * scratch directory; `api` posts to a configured endpoint. The two are separate
- * axes on purpose: `modelMode` answers *which* model, `transport` answers *how*,
- * so a new combination does not need a new branch.
+ * How the model is reached. `cli` spawns the provider's CLI and takes its model
+ * from `modelMode`; `api` posts to `apiEndpointId` with `apiModel`, or to a
+ * provider's mapped endpoint with that agent's own model.
  */
 export const transportSchema = z.enum(["cli", "api"]);
 
@@ -46,7 +46,7 @@ export const promptKitSettingsSchema = z.object({
   providerCli: z.record(z.string(), z.enum(CLI_FAMILY_IDS)).default({}),
   /** The API endpoints this host can reach. Key values are never stored here. */
   apiEndpoints: z.array(apiEndpointSchema).default([]),
-  /** Which endpoint `transport: "api"` uses in the dedicated flow. */
+  /** The endpoint `transport: "api"` uses for an agent whose provider is not mapped. */
   apiEndpointId: z.string().min(1).nullable().default(null),
   /** The model id sent to that endpoint. */
   apiModel: z.string().min(1).nullable().default(null),

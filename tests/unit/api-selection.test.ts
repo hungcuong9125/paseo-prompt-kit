@@ -98,17 +98,16 @@ describe("validateDedicatedSelection: cli transport", () => {
 });
 
 describe("validateDedicatedSelection: api transport", () => {
-  it("refuses a current model with no provider mapping", async () => {
-    const settings = await values({ transport: "api", modelMode: "current" });
-    expect(validateDedicatedSelection(settings, CATALOG)).toBe(
-      "An API transport needs a dedicated model, or an endpoint mapped to a provider.",
-    );
+  // Model source belongs to the CLI; the API path reads its model from the endpoint section.
+  it("ignores modelMode on the api transport", async () => {
+    const complete = { transport: "api", apiEndpoints: [ENDPOINT], apiEndpointId: "groq", apiModel: "openai/gpt-oss-20b" };
+    expect(validateDedicatedSelection(await values({ ...complete, modelMode: "current" }), CATALOG)).toBeNull();
+    expect(validateDedicatedSelection(await values({ ...complete, modelMode: "dedicated" }), CATALOG)).toBeNull();
   });
 
-  it("accepts a provider mapping without a dedicated model", async () => {
+  it("accepts a provider mapping with no endpoint selected", async () => {
     const settings = await values({
       transport: "api",
-      modelMode: "current",
       apiEndpoints: [ENDPOINT],
       apiEndpointByProvider: { opencode: "groq" },
     });
@@ -116,7 +115,7 @@ describe("validateDedicatedSelection: api transport", () => {
   });
 
   it("asks for an endpoint when none is selected", async () => {
-    const settings = await values({ transport: "api", modelMode: "dedicated" });
+    const settings = await values({ transport: "api" });
     expect(validateDedicatedSelection(settings, CATALOG)).toBe(
       "Add an API endpoint and select it before rewriting over the API.",
     );
