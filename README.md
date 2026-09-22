@@ -49,7 +49,7 @@ paseo plugin ls
 `--ref` chooses the initial branch, tag, or commit once; later `paseo plugin update prompt-kit` follows the remote's default HEAD. Pin a release instead of tracking `main` by giving `--ref` a tag:
 
 ```bash
-paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.3.0
+paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.3.1
 ```
 
 `paseo plugin ls` reports the installed commit.
@@ -63,7 +63,7 @@ The screen reads top to bottom in setup order:
 1. **Actions** — one switch per bundled action. One enabled action makes the pill a direct button; two or more make it a menu; none hides the pill. A change here reaches the pill when the agent re-opens or the plugin reloads.
 2. **Rewrite engine** — Transport, Model source (Provider CLI only) and Output language. Every other section appears only when these need it.
 3. **Dedicated model** (CLI + Dedicated) or **API endpoint** (Direct API).
-4. **Advanced** (collapsed) — timeout, secrets directory, and the two per-provider overrides.
+4. **Advanced** (collapsed) — timeout and the two per-provider overrides.
 
 ### Transport
 
@@ -91,12 +91,11 @@ On `Direct API`, an agent whose provider is mapped under **Advanced → Endpoint
 
 ### API endpoint
 
-Choose a preset (Groq, OpenAI, Anthropic, Google Gemini, OpenRouter, Local server) or a custom endpoint, fill in the base URL and the **name** of the key variable, and press **Test**. A successful test fills the **Model** list from the endpoint; the rewrite refuses a model outside that list. Save is blocked while the endpoint cannot work (for example an empty base URL), with the reason in the status bar.
+Choose a preset (OpenAI, Anthropic, Google Gemini, OpenRouter, Local server) or a custom endpoint, fill in the base URL, pick a **Key source** (see [API keys](#api-keys)), and press **Test**. A successful test fills the **Model** list from the endpoint; the rewrite refuses a model outside that list. Save is blocked while the endpoint cannot work (for example an empty base URL), with the reason in the status bar.
 
 ### Advanced
 
 - `Timeout (ms)`: how long a rewrite may run, default `90000`, allowed range `1000`–`600000`. The daemon caps one plugin call at 30 s, so the screen notes when a budget above that cannot be reached.
-- `Secrets directory` (Direct API): where `secrets.json` lives. Empty means `<PASEO_HOME>/plugin-settings/prompt-kit`.
 - `CLI per provider` (Provider CLI): lists only the providers you have overridden, plus an Add row. A profile named after its CLI (`pi-peer`, `codex-lead`) resolves on its own and needs no entry; an unresolved provider is refused, never guessed.
 - `Endpoint per provider` (Direct API): lists only mapped providers, plus an Add row. Pressing the pill in an agent of a mapped provider sends that agent's own model to the endpoint over HTTP. A mapped provider ignores the Model chosen under API endpoint.
 
@@ -104,18 +103,17 @@ Settings are host-scoped and persist across plugin reload.
 
 ## API keys
 
-An API key is **never** stored in PromptKit's settings document. That document is read by the client — including the Paseo Web UI — so a key placed there would leave your machine. Instead an endpoint stores only the **name** of the variable that holds its key (`apiKeyEnv`), and the value is read on the daemon side, at request time, in this order:
+An API key is **never** stored in PromptKit's settings document. That document is read by the client — including the Paseo Web UI — so a key placed there would leave your machine. Instead each endpoint picks one **Key source** in the API endpoint section, and the daemon reads the value at request time from that source only. There is no fallback: a key missing from the chosen source fails closed with `missing_api_key`, the message names the variable and the place it looked, and the Composer text is untouched.
 
-1. **An environment variable** with that name. The plugin server is a child of the daemon, so it inherits the daemon's environment. This is the right source when the daemon was started from a shell.
-2. **`secrets.json`** next to the plugin's settings file:
+| Key source | Rows shown | Where the value is read |
+|---|---|---|
+| `Environment variable` (default) | Key variable | The daemon's environment variable with that name. The plugin server inherits the daemon's environment, so this suits a daemon started from a shell. |
+| `secrets.json` | Key variable, Secrets directory, API key (optional) | The entry with that name under `apiKeys` in `<Secrets directory>/secrets.json`. |
+| `No key` | — | Nothing. For a local server (vLLM, llama.cpp, LM Studio). |
 
-   ```
-   <PASEO_HOME>/plugin-settings/prompt-kit/secrets.json
-   ```
+**Secrets directory** is shared by every endpoint that uses `secrets.json`. It must be an absolute path or start with `~/`. Empty means `<PASEO_HOME>/plugin-settings/prompt-kit`; `PASEO_HOME` defaults to `~/.paseo`, so on macOS the default file is `~/.paseo/plugin-settings/prompt-kit/secrets.json`.
 
-   `PASEO_HOME` defaults to `~/.paseo`. On macOS the default path is `~/.paseo/plugin-settings/prompt-kit/secrets.json`. Set the `secretsFile` setting to a directory path to override it (useful when the daemon runs with a non-default `PASEO_HOME`).
-
-3. If neither has a value, the rewrite fails closed with `missing_api_key` and the Composer text is untouched. Nothing is sent.
+After a successful **Test**, the Connection row says which source the key came from.
 
 ### Why the file exists at all
 
@@ -123,34 +121,49 @@ On macOS, launching Paseo from Finder gives the daemon **no shell environment**,
 
 ### `secrets.json` format
 
+One file holds every key: one entry per key under `apiKeys`, named whatever you like. Each endpoint whose Key source is `secrets.json` points at one entry through its **Key variable**, so several endpoints — or two accounts of one vendor, e.g. `GEMINI_WORK` and `GEMINI_PERSONAL` — share the file. Values must be strings; any other value is ignored.
+
 ```json
 {
   "version": 1,
   "apiKeys": {
-    "GROQ_API_KEY": "gsk_...",
+    "OPENAI_API_KEY": "sk-...",
     "ANTHROPIC_API_KEY": "sk-ant-...",
     "GEMINI_API_KEY": "AIza..."
   }
 }
 ```
 
-Create it with owner-only permissions:
+Start from the template in this repository and keep it owner-only:
 
 ```bash
 mkdir -p ~/.paseo/plugin-settings/prompt-kit
 chmod 700 ~/.paseo/plugin-settings/prompt-kit
-cat > ~/.paseo/plugin-settings/prompt-kit/secrets.json <<'EOF'
-{ "version": 1, "apiKeys": { "GROQ_API_KEY": "gsk_replace_me" } }
-EOF
+cp docs/templates/secrets.template.json ~/.paseo/plugin-settings/prompt-kit/secrets.json
 chmod 600 ~/.paseo/plugin-settings/prompt-kit/secrets.json
 ```
 
+Then replace each `replace_me`, delete the entries you do not use, and set the matching endpoints' Key source to `secrets.json`.
+
+### Storing a key from Settings (convenience, least preferred)
+
+> [!WARNING]
+> Typing a key into the **API key** field sends the secret from the Paseo app to the daemon once, over the same connection Paseo uses. When you use Paseo Web or a client on another machine, the key crosses that link. Anyone who can open your Paseo settings can also overwrite or remove stored keys. Use this only on a machine and connection you trust.
+
+Prefer, in this order:
+
+1. **An environment variable** of the daemon (Key source `Environment variable`) — nothing leaves the daemon's machine and no file holds the key.
+2. **Editing `secrets.json` yourself** on the daemon's machine, as above — the key never passes through the Paseo app.
+3. **The API key field** — only when neither of the above is practical.
+
+With Key source `secrets.json`, the API endpoint section shows an **API key** field (masked) and a **Store key** row. **Save** writes the value under the endpoint's Key variable in `secrets.json`: other entries and fields are kept, the directory is created `0700` and the file written `0600` through a temporary file and a rename, and a malformed file is refused rather than overwritten. The field is cleared after saving. The key is write-only: the screen only says whether a value is stored, and **Remove stored key** deletes that one entry. The value never enters the settings document, a log, or an RPC answer. Two clients saving at the same moment can overwrite each other's change.
+
 ### What PromptKit guarantees about keys
 
-- The value is never written to the settings document, never returned by any RPC, and never written to a log or an error message. A failure names the **variable** (`No value for "GROQ_API_KEY"`), not the value.
+- The value is never written to the settings document, never returned by any RPC, and never written to a log or an error message. A failure names the **variable** (`The environment variable "GEMINI_API_KEY" is not set`), not the value.
 - The key is read at request time and used for that one request only. It is not cached to disk.
-- PromptKit never writes `secrets.json`. You create and own that file.
-- An endpoint with an empty `apiKeyEnv` needs no key. That is valid for a local server (vLLM, llama.cpp, LM Studio), which is why it is allowed rather than treated as an error.
+- PromptKit writes `secrets.json` only when you press **Save** or **Remove** in the API key rows, and only the one entry named by the endpoint's Key variable. It never reads a value back to the app.
+- An endpoint whose Key source is `No key` sends no credential. That is valid for a local server (vLLM, llama.cpp, LM Studio), which is why it is allowed rather than treated as an error.
 
 ### Endpoint configuration
 
@@ -160,36 +173,37 @@ Each endpoint is one of three protocols. Adding a vendor is a settings edit, not
 
 | Protocol | Request | Works with |
 |---|---|---|
-| `openai` | `POST <baseUrl>/chat/completions`, `Authorization: Bearer` | OpenAI, **Groq**, OpenRouter, LiteLLM, vLLM, llama.cpp, LM Studio, Together, Fireworks, most gateways |
+| `openai` | `POST <baseUrl>/chat/completions`, `Authorization: Bearer` | OpenAI, OpenRouter, LiteLLM, vLLM, llama.cpp, LM Studio, Together, Fireworks, Groq, most gateways |
 | `anthropic` | `POST <baseUrl>/v1/messages`, `x-api-key` | Anthropic, z.ai, Alibaba/Qwen, Anthropic-compatible gateways |
 | `gemini` | `POST <baseUrl>/v1beta/models/<model>:generateContent`, `x-goog-api-key` | Google AI Studio, Vertex |
 
-Example — the Groq endpoint from the settings document:
+Example — a Google Gemini endpoint with `gemini-2.5-flash-lite`, from the settings document:
 
 ```json
 {
   "transport": "api",
-  "apiEndpointId": "groq",
-  "apiModel": "openai/gpt-oss-20b",
+  "apiEndpointId": "gemini",
+  "apiModel": "gemini-2.5-flash-lite",
   "apiEndpoints": [
     {
-      "id": "groq",
-      "label": "Groq",
-      "protocol": "openai",
-      "baseUrl": "https://api.groq.com/openai/v1",
-      "apiKeyEnv": "GROQ_API_KEY",
-      "models": ["openai/gpt-oss-20b"]
+      "id": "gemini",
+      "label": "Google Gemini",
+      "protocol": "gemini",
+      "baseUrl": "https://generativelanguage.googleapis.com",
+      "keySource": "env",
+      "apiKeyEnv": "GEMINI_API_KEY",
+      "models": ["gemini-2.5-flash-lite"]
     }
   ]
 }
 ```
 
-Example — point one provider at your own endpoint, so it never pays a CLI cold start:
+Example — point one provider at an endpoint, so it never pays a CLI cold start:
 
 ```json
 {
   "transport": "api",
-  "apiEndpointByProvider": { "opencode": "groq" }
+  "apiEndpointByProvider": { "opencode": "openrouter" }
 }
 ```
 
@@ -199,7 +213,7 @@ An endpoint that lists `models` restricts the choice to that list, and a model o
 
 | Code | Meaning |
 |---|---|
-| `missing_api_key` | Neither the environment nor `secrets.json` has a value for the endpoint's `apiKeyEnv` |
+| `missing_api_key` | The endpoint's Key source has no value for its key variable, `secrets.json` is missing or malformed, or the secrets directory is not absolute |
 | `api_endpoint_unknown` | The selected or mapped endpoint id is not defined in `apiEndpoints` |
 | `api_http_error` | The endpoint answered a non-2xx status, or was unreachable |
 | `api_bad_response` | The answer was not JSON, or carried no text |

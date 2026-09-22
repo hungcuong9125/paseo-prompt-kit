@@ -14,6 +14,8 @@ const holder = vi.hoisted(() => ({
   listProviders: vi.fn(),
   listActions: vi.fn(),
   testEndpoint: vi.fn(),
+  keyStatus: vi.fn(),
+  writeKey: vi.fn(),
 }));
 
 vi.mock("@getpaseo/plugin/client", () => ({
@@ -21,6 +23,8 @@ vi.mock("@getpaseo/plugin/client", () => ({
   useRpc: (contract: { name: string }) => {
     if (contract.name === "prompt-kit.providers") return holder.listProviders;
     if (contract.name === "prompt-kit.api.test") return holder.testEndpoint;
+    if (contract.name === "prompt-kit.secrets.status") return holder.keyStatus;
+    if (contract.name === "prompt-kit.secrets.write") return holder.writeKey;
     return holder.listActions;
   },
 }));
@@ -84,13 +88,14 @@ const actionCatalog = {
   ],
 };
 
-const GROQ = {
-  id: "groq",
-  label: "Groq",
-  protocol: "openai",
-  baseUrl: "https://api.groq.com/openai/v1",
-  apiKeyEnv: "GROQ_API_KEY",
-  models: ["openai/gpt-oss-20b"],
+const GEMINI = {
+  id: "gemini",
+  label: "Google Gemini",
+  protocol: "gemini",
+  baseUrl: "https://generativelanguage.googleapis.com",
+  keySource: "env",
+  apiKeyEnv: "GEMINI_API_KEY",
+  models: ["gemini-2.5-flash-lite"],
 };
 
 function readyState(values: Record<string, unknown>): Record<string, unknown> {
@@ -189,6 +194,9 @@ afterEach(() => {
   holder.listProviders.mockReset();
   holder.listActions.mockReset();
   holder.testEndpoint.mockReset();
+  holder.keyStatus.mockReset();
+  holder.keyStatus.mockResolvedValue({ status: "ok", stored: false });
+  holder.writeKey.mockReset();
 });
 
 describe("status bar", () => {
@@ -233,7 +241,7 @@ describe("status bar", () => {
 
   // Model source is a Provider CLI choice; Direct API picks its model under API endpoint.
   it("shows Model source only for Provider CLI and the endpoint's Model for Direct API", async () => {
-    holder.state = readyState({ transport: "api", modelMode: "current", apiEndpointId: "groq", apiEndpoints: [GROQ] });
+    holder.state = readyState({ transport: "api", modelMode: "current", apiEndpointId: "gemini", apiEndpoints: [GEMINI] });
     const view = await render();
     expect(view.querySelector('select[data-label="Model source"]')).toBeNull();
     expect(select(view, "Model")).toBeTruthy();
@@ -334,36 +342,36 @@ describe("API endpoint section", () => {
     const view = await render();
     expect(statusText(view)).toContain("Add an API endpoint");
 
-    await choose(view, "Endpoint", "groq");
+    await choose(view, "Endpoint", "gemini");
     expect(view.querySelector<HTMLInputElement>('input[data-label="Base URL"]')?.value).toBe(
-      "https://api.groq.com/openai/v1",
+      "https://generativelanguage.googleapis.com",
     );
     expect(statusText(view)).toContain("Select an API model.");
 
-    await type(view, "Model", "openai/gpt-oss-20b");
-    expect(statusTitle(view)).toBe("Ready · Direct API · groq · openai/gpt-oss-20b");
+    await type(view, "Model", "gemini-2.5-flash-lite");
+    expect(statusTitle(view)).toBe("Ready · Direct API · gemini · gemini-2.5-flash-lite");
 
     await press(view, "prompt-kit-save");
     expect(holder.save.mock.calls[0]?.[0]).toMatchObject({
-      apiEndpointId: "groq",
-      apiModel: "openai/gpt-oss-20b",
-      apiEndpoints: [expect.objectContaining({ id: "groq", apiKeyEnv: "GROQ_API_KEY" })],
+      apiEndpointId: "gemini",
+      apiModel: "gemini-2.5-flash-lite",
+      apiEndpoints: [expect.objectContaining({ id: "gemini", apiKeyEnv: "GEMINI_API_KEY" })],
     });
   });
 
   it("writes the model list a successful test returns into the draft", async () => {
     holder.state = readyState({
       transport: "api",
-      apiEndpointId: "groq",
-      apiEndpoints: [{ ...GROQ, models: [] }],
+      apiEndpointId: "gemini",
+      apiEndpoints: [{ ...GEMINI, models: [] }],
     });
     holder.testEndpoint.mockResolvedValue({ status: "ok", models: ["a-model", "b-model"] });
     const view = await render();
 
     await pressAction(view, "Connection");
     expect(holder.testEndpoint).toHaveBeenCalledWith({
-      endpoint: expect.objectContaining({ id: "groq" }),
-      secretsFile: null,
+      endpoint: expect.objectContaining({ id: "gemini" }),
+      secretsDir: null,
     });
     const model = select(view, "Model");
     expect(Array.from(model.options, (option) => option.value)).toEqual(["", "a-model", "b-model"]);
@@ -373,8 +381,8 @@ describe("API endpoint section", () => {
   it("keeps a field typed during a test instead of overwriting it with the test result", async () => {
     holder.state = readyState({
       transport: "api",
-      apiEndpointId: "groq",
-      apiEndpoints: [{ ...GROQ, models: [] }],
+      apiEndpointId: "gemini",
+      apiEndpoints: [{ ...GEMINI, models: [] }],
     });
     let finish: (value: unknown) => void = () => {};
     holder.testEndpoint.mockReturnValue(new Promise((resolve) => (finish = resolve)));
@@ -382,7 +390,7 @@ describe("API endpoint section", () => {
     const view = await render();
 
     await pressAction(view, "Connection");
-    await type(view, "Key variable", "MY_GROQ_KEY");
+    await type(view, "Key variable", "MY_GEMINI_KEY");
     await act(async () => {
       finish({ status: "ok", models: ["a-model"] });
     });
@@ -391,7 +399,7 @@ describe("API endpoint section", () => {
     await choose(view, "Model", "a-model");
     await press(view, "prompt-kit-save");
     expect(holder.save.mock.calls[0]?.[0]).toMatchObject({
-      apiEndpoints: [expect.objectContaining({ apiKeyEnv: "MY_GROQ_KEY", models: ["a-model"] })],
+      apiEndpoints: [expect.objectContaining({ apiKeyEnv: "MY_GEMINI_KEY", models: ["a-model"] })],
     });
   });
 
@@ -402,16 +410,72 @@ describe("API endpoint section", () => {
     expect(statusTitle(view)).toBe("Cannot save yet");
     expect(statusText(view)).toContain("base URL");
     await type(view, "Base URL", "http://127.0.0.1:8080/v1");
+    expect(statusText(view)).toContain("key variable");
+    await choose(view, "Key source", "none");
     expect(statusTitle(view)).not.toBe("Cannot save yet");
+  });
+
+  // The key goes to the daemon through its own RPC and never into the settings document.
+  it("stores a typed key write-only and keeps it out of the saved settings", async () => {
+    holder.state = readyState({
+      transport: "api",
+      apiEndpointId: "gemini",
+      apiEndpoints: [{ ...GEMINI, keySource: "secrets_file" }],
+    });
+    holder.writeKey.mockResolvedValue({ status: "ok" });
+    holder.save.mockResolvedValue(true);
+    const view = await render();
+    expect(view.querySelector('[data-row="API key"]')?.textContent).toContain("Prefer an environment variable");
+
+    await type(view, "API key", "AIza-secret");
+    holder.keyStatus.mockResolvedValue({ status: "ok", stored: true });
+    await pressAction(view, "Store key");
+    expect(holder.writeKey).toHaveBeenCalledWith({ secretsDir: null, name: "GEMINI_API_KEY", value: "AIza-secret" });
+    expect(view.querySelector<HTMLInputElement>('input[data-label="API key"]')?.value).toBe("");
+    expect(view.querySelector('[data-row="Remove stored key"]')).not.toBeNull();
+
+    await pressAction(view, "Remove stored key");
+    expect(holder.writeKey).toHaveBeenLastCalledWith({ secretsDir: null, name: "GEMINI_API_KEY", value: null });
+
+    await choose(view, "Key source", "env");
+    await press(view, "prompt-kit-save");
+    expect(JSON.stringify(holder.save.mock.calls[0]?.[0])).not.toContain("AIza-secret");
+  });
+
+  // One key source per endpoint; the secrets directory lives with it, not under Advanced.
+  it("shows the rows of the chosen key source and saves the choice", async () => {
+    holder.state = readyState({ transport: "api", apiEndpointId: "gemini", apiEndpoints: [GEMINI] });
+    holder.save.mockResolvedValue(true);
+    const view = await render();
+    expect(view.querySelector('input[data-label="Key variable"]')).not.toBeNull();
+    expect(view.querySelector('input[data-label="Secrets directory"]')).toBeNull();
+
+    await choose(view, "Key source", "secrets_file");
+    expect(view.querySelector('input[data-label="Secrets directory"]')).not.toBeNull();
+    await type(view, "Secrets directory", "relative/keys");
+    expect(statusText(view)).toContain("absolute path");
+    await type(view, "Secrets directory", "~/keys");
+
+    await choose(view, "Key source", "none");
+    expect(view.querySelector('input[data-label="Key variable"]')).toBeNull();
+    await choose(view, "Key source", "secrets_file");
+    await press(view, "prompt-kit-advanced-toggle");
+    expect(view.querySelectorAll('input[data-label="Secrets directory"]').length).toBe(1);
+
+    await press(view, "prompt-kit-save");
+    expect(holder.save.mock.calls[0]?.[0]).toMatchObject({
+      secretsDir: "~/keys",
+      apiEndpoints: [expect.objectContaining({ id: "gemini", keySource: "secrets_file" })],
+    });
   });
 
   it("drops a provider mapping that pointed at a removed endpoint", async () => {
     holder.state = readyState({
       transport: "api",
-      apiEndpointId: "groq",
-      apiModel: "openai/gpt-oss-20b",
-      apiEndpoints: [GROQ],
-      apiEndpointByProvider: { openai: "groq" },
+      apiEndpointId: "gemini",
+      apiModel: "gemini-2.5-flash-lite",
+      apiEndpoints: [GEMINI],
+      apiEndpointByProvider: { openai: "gemini" },
     });
     holder.save.mockResolvedValue(true);
     const view = await render();
@@ -461,8 +525,8 @@ describe("advanced overrides", () => {
   it("removes a mapping from its own row", async () => {
     holder.state = readyState({
       transport: "api",
-      apiEndpoints: [GROQ],
-      apiEndpointByProvider: { "pi-peer": "groq" },
+      apiEndpoints: [GEMINI],
+      apiEndpointByProvider: { "pi-peer": "gemini" },
     });
     holder.save.mockResolvedValue(true);
     holder.listActions.mockResolvedValue(actionCatalog);
@@ -477,7 +541,7 @@ describe("advanced overrides", () => {
     const view = container;
 
     await press(view, "prompt-kit-advanced-toggle");
-    expect(select(view, "Pi peer").value).toBe("groq");
+    expect(select(view, "Pi peer").value).toBe("gemini");
     expect(view.querySelector('select[data-label="Mystery"]')).toBeNull();
     await choose(view, "Pi peer", "__remove__");
     expect(view.querySelector('select[data-label="Pi peer"]')).toBeNull();

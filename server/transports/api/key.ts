@@ -1,38 +1,31 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import type { ApiKeySource } from "../../../shared/api-protocol.js";
 
 /**
- * Resolves the key an API endpoint needs, without ever returning it to a caller
- * that could log or serialize it by accident.
+ * Resolves an endpoint's key from the one source it names. No source falls back to
+ * another: a key missing where the user said it is, is an error.
  *
- * A key lives in exactly two places, checked in this order:
- *
- * 1. the environment variable named by `apiKeyEnv`. The plugin server runs as a
- *    child of the daemon, so it inherits the daemon's environment. This is the
- *    right source when the daemon was started from a shell.
- * 2. `<secretsDir>/secrets.json`, mode 0600. Needed because Paseo.app launched
- *    from Finder inherits no shell environment, so a key exported in `.zshrc`
- *    never reaches the daemon.
- *
- * It is deliberately *not* a third place: the settings document travels to the
- * client (`settingsRpc.read`), so a key stored there would leave the machine.
- * `apiKeyEnv` holds the name, never the value.
- *
- * Nothing here logs, throws with, or returns a key except `resolveApiKey`, whose
- * result the caller must not put into a message.
+ * The settings document never holds a key, because it travels to the client. Nothing
+ * here logs, throws with, or returns a key except `resolveApiKey`.
  */
 
-export interface SecretsFile {
-  readonly version: number;
-  readonly apiKeys: Readonly<Record<string, string>>;
-}
-
-export type ApiKeyLookupFailure = "no_key_configured" | "missing_key" | "unreadable_secrets";
+export type ApiKeyLookupFailure =
+  | "missing_env"
+  | "missing_secrets_file"
+  | "missing_secrets_entry"
+  | "unreadable_secrets"
+  | "invalid_secrets_dir"
+  | "no_key_name";
 
 export type ApiKeyLookup =
-  | { readonly ok: true; readonly key: string; readonly source: "env" | "secrets_file" }
+  | { readonly ok: true; readonly key: string; readonly source: ApiKeySource }
   | { readonly ok: false; readonly reason: ApiKeyLookupFailure };
+
+type SecretsRead =
+  | { readonly ok: true; readonly apiKeys: Readonly<Record<string, string>> }
+  | { readonly ok: false; readonly reason: "missing_secrets_file" | "unreadable_secrets" };
 
 /** `$PASEO_HOME/plugin-settings/prompt-kit`, the directory the daemon stores settings in. */
 export function defaultSecretsDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -41,27 +34,25 @@ export function defaultSecretsDir(env: NodeJS.ProcessEnv = process.env): string 
   return path.join(root, "plugin-settings", "prompt-kit");
 }
 
-export function secretsFilePath(
+/** Absolute directory for `secretsDir`, `~/` expanded; null when the value is relative. */
+export function resolveSecretsDir(
   secretsDir: string | null,
   env: NodeJS.ProcessEnv = process.env,
-): string {
-  return path.join(secretsDir ?? defaultSecretsDir(env), "secrets.json");
+): string | null {
+  if (secretsDir === null) return defaultSecretsDir(env);
+  const value = secretsDir.trim();
+  if (value === "~" || value.startsWith("~/")) return path.join(homedir(), value.slice(1));
+  return path.isAbsolute(value) ? value : null;
 }
 
-/**
- * Reads `secrets.json`. A missing file is not an error — it only means this host
- * uses environment variables — but a present yet unreadable or malformed file is
- * reported, because silently ignoring it would turn a typo into `missing_key`
- * and send the user looking in the wrong place.
- */
-export async function readSecretsFile(filePath: string): Promise<ApiKeyLookup | SecretsFile> {
+/** Missing and malformed files are distinct reasons, so the message points at the right fix. */
+export async function readSecretsFile(filePath: string): Promise<SecretsRead> {
   let raw: string;
   try {
     raw = await readFile(filePath, "utf8");
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") return { ok: false, reason: "no_key_configured" };
-    return { ok: false, reason: "unreadable_secrets" };
+    return { ok: false, reason: code === "ENOENT" ? "missing_secrets_file" : "unreadable_secrets" };
   }
   let parsed: unknown;
   try {
@@ -69,56 +60,36 @@ export async function readSecretsFile(filePath: string): Promise<ApiKeyLookup | 
   } catch {
     return { ok: false, reason: "unreadable_secrets" };
   }
-  if (parsed === null || typeof parsed !== "object") {
-    return { ok: false, reason: "unreadable_secrets" };
-  }
-  const apiKeys = (parsed as { apiKeys?: unknown }).apiKeys;
-  if (apiKeys === null || typeof apiKeys !== "object") {
-    return { ok: false, reason: "unreadable_secrets" };
-  }
+  const apiKeys = (parsed as { apiKeys?: unknown } | null)?.apiKeys;
+  if (apiKeys === null || typeof apiKeys !== "object") return { ok: false, reason: "unreadable_secrets" };
   const entries: Record<string, string> = {};
   for (const [name, value] of Object.entries(apiKeys as Record<string, unknown>)) {
     if (typeof value === "string") entries[name] = value;
   }
-  return { version: 1, apiKeys: entries };
+  return { ok: true, apiKeys: entries };
 }
 
-function isLookup(value: ApiKeyLookup | SecretsFile): value is ApiKeyLookup {
-  return "ok" in value;
-}
-
-/**
- * The key for one endpoint, or a reason it is absent.
- *
- * An endpoint with no `apiKeyEnv` needs no key at all: a local server (vLLM,
- * llama.cpp, LM Studio) is a legitimate endpoint. That case returns an empty key
- * rather than failing, and the protocol module decides whether to send a header.
- */
+/** The key for one endpoint from its own `keySource`, or the reason it is absent. */
 export async function resolveApiKey(input: {
+  readonly keySource: ApiKeySource;
   readonly apiKeyEnv: string;
   readonly secretsDir: string | null;
   readonly env?: NodeJS.ProcessEnv;
 }): Promise<ApiKeyLookup> {
+  if (input.keySource === "none") return { ok: true, key: "", source: "none" };
   const name = input.apiKeyEnv.trim();
-  if (name === "") return { ok: true, key: "", source: "env" };
-
+  if (name === "") return { ok: false, reason: "no_key_name" };
   const env = input.env ?? process.env;
-  const fromEnv = env[name];
-  if (typeof fromEnv === "string" && fromEnv.trim() !== "") {
-    return { ok: true, key: fromEnv.trim(), source: "env" };
+
+  if (input.keySource === "env") {
+    const value = env[name]?.trim();
+    return value ? { ok: true, key: value, source: "env" } : { ok: false, reason: "missing_env" };
   }
 
-  const secrets = await readSecretsFile(secretsFilePath(input.secretsDir, env));
-  if (isLookup(secrets)) {
-    if (secrets.ok) return secrets;
-    // Missing file → missing key; unreadable file keeps its own reason.
-    return secrets.reason === "unreadable_secrets"
-      ? secrets
-      : { ok: false, reason: "missing_key" };
-  }
-  const value = secrets.apiKeys[name];
-  if (typeof value === "string" && value.trim() !== "") {
-    return { ok: true, key: value.trim(), source: "secrets_file" };
-  }
-  return { ok: false, reason: "missing_key" };
+  const dir = resolveSecretsDir(input.secretsDir, env);
+  if (dir === null) return { ok: false, reason: "invalid_secrets_dir" };
+  const secrets = await readSecretsFile(path.join(dir, "secrets.json"));
+  if (!secrets.ok) return secrets;
+  const value = secrets.apiKeys[name]?.trim();
+  return value ? { ok: true, key: value, source: "secrets_file" } : { ok: false, reason: "missing_secrets_entry" };
 }

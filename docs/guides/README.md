@@ -8,6 +8,7 @@ Architecture and module boundaries: `docs/CORE.md`. Overview of every extension 
 |---|---|---|---|
 | Add a prompt option (Action) to the pill menu | [action-packs.md](action-packs.md) | `action-pack.template.json` | No — one JSON + one barrel line |
 | Add an output language to Settings | [output-languages.md](output-languages.md) | `output-language.template.json` | No — one JSON + one barrel line |
+| Store API keys for endpoints whose Key source is `secrets.json` | `../../README.md` → API keys | `secrets.template.json` | No — copy, fill in, `chmod 600` |
 | Add an API protocol, CLI family, or settings field | `../EXTENDING.md` §2–4 | `api-protocol.template.ts.md`, `cli-family.template.ts.md`, `settings-section.template.tsx.md` | Yes |
 
 After any change: `npm run gate` green, then `paseo plugin reload prompt-kit` and check on a

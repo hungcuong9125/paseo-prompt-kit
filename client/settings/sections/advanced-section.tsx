@@ -56,17 +56,6 @@ export function AdvancedSection({ theme, values, providers, disabled, epoch, pat
                 patch({ timeoutMs: Number.isFinite(parsed) ? parsed : Number.NaN });
               }}
             />
-            {values.transport === "api" ? (
-              <SettingsInput
-                key={`${epoch}-secrets`}
-                label="Secrets directory"
-                hint="Directory holding secrets.json. Empty means <PASEO_HOME>/plugin-settings/prompt-kit."
-                initialValue={values.secretsFile ?? ""}
-                placeholder="/Users/me/.paseo/plugin-settings/prompt-kit"
-                disabled={disabled}
-                onChangeText={(text) => patch({ secretsFile: text.trim() === "" ? null : text.trim() })}
-              />
-            ) : null}
           </SettingsCard>
 
           {values.transport === "cli" ? (

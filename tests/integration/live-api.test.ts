@@ -34,6 +34,7 @@ const ENDPOINTS: readonly ApiEndpoint[] = [
     label: "OpenAI-compatible",
     protocol: "openai",
     baseUrl: "https://api.groq.com/openai/v1",
+    keySource: "env",
     apiKeyEnv: "GROQ_API_KEY",
     models: ["openai/gpt-oss-20b"],
   },
@@ -42,6 +43,7 @@ const ENDPOINTS: readonly ApiEndpoint[] = [
     label: "Anthropic",
     protocol: "anthropic",
     baseUrl: "https://api.anthropic.com",
+    keySource: "env",
     apiKeyEnv: "ANTHROPIC_API_KEY",
     models: ["claude-haiku-4-5"],
   },
@@ -50,6 +52,7 @@ const ENDPOINTS: readonly ApiEndpoint[] = [
     label: "Google Gemini",
     protocol: "gemini",
     baseUrl: "https://generativelanguage.googleapis.com",
+    keySource: "env",
     apiKeyEnv: "GEMINI_API_KEY",
     // A stable model: a preview model is intermittently 503 under load, which
     // would make the row flaky for a reason that has nothing to do with PromptKit.
@@ -170,7 +173,7 @@ async function rewriteWith(settings: Record<string, unknown>): Promise<RewriteRe
       apiEndpointId: null,
       apiModel: null,
       apiEndpointByProvider: {},
-      secretsFile: secretsDir,
+      secretsDir,
       timeoutMs: 60_000,
       actionEnabled: {},
       ...settings,

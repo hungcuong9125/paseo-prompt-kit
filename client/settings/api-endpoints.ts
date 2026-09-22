@@ -1,4 +1,4 @@
-import type { ApiEndpoint, ApiProtocolId } from "../../shared/api-protocol.js";
+import type { ApiEndpoint, ApiKeySource, ApiProtocolId } from "../../shared/api-protocol.js";
 
 /**
  * Endpoint presets, so the common cases are one click instead of a form.
@@ -13,6 +13,7 @@ export interface EndpointPreset {
   readonly label: string;
   readonly protocol: ApiProtocolId;
   readonly baseUrl: string;
+  readonly keySource: ApiKeySource;
   readonly apiKeyEnv: string;
   /** A short note shown next to the preset in the picker. */
   readonly note: string;
@@ -20,18 +21,11 @@ export interface EndpointPreset {
 
 export const ENDPOINT_PRESETS: readonly EndpointPreset[] = [
   {
-    id: "groq",
-    label: "Groq",
-    protocol: "openai",
-    baseUrl: "https://api.groq.com/openai/v1",
-    apiKeyEnv: "GROQ_API_KEY",
-    note: "OpenAI-compatible, very fast",
-  },
-  {
     id: "openai",
     label: "OpenAI",
     protocol: "openai",
     baseUrl: "https://api.openai.com/v1",
+    keySource: "env",
     apiKeyEnv: "OPENAI_API_KEY",
     note: "Chat Completions",
   },
@@ -40,6 +34,7 @@ export const ENDPOINT_PRESETS: readonly EndpointPreset[] = [
     label: "Anthropic",
     protocol: "anthropic",
     baseUrl: "https://api.anthropic.com",
+    keySource: "env",
     apiKeyEnv: "ANTHROPIC_API_KEY",
     note: "Messages API",
   },
@@ -48,6 +43,7 @@ export const ENDPOINT_PRESETS: readonly EndpointPreset[] = [
     label: "Google Gemini",
     protocol: "gemini",
     baseUrl: "https://generativelanguage.googleapis.com",
+    keySource: "env",
     apiKeyEnv: "GEMINI_API_KEY",
     note: "AI Studio",
   },
@@ -56,6 +52,7 @@ export const ENDPOINT_PRESETS: readonly EndpointPreset[] = [
     label: "OpenRouter",
     protocol: "openai",
     baseUrl: "https://openrouter.ai/api/v1",
+    keySource: "env",
     apiKeyEnv: "OPENROUTER_API_KEY",
     note: "Many providers, one key",
   },
@@ -64,10 +61,23 @@ export const ENDPOINT_PRESETS: readonly EndpointPreset[] = [
     label: "Local server",
     protocol: "openai",
     baseUrl: "http://127.0.0.1:1234/v1",
+    keySource: "none",
     apiKeyEnv: "",
     note: "LM Studio, vLLM, llama.cpp — no key",
   },
 ];
+
+export const KEY_SOURCE_OPTIONS = [
+  { label: "Environment variable", value: "env" },
+  { label: "secrets.json", value: "secrets_file" },
+  { label: "No key", value: "none" },
+] as const;
+
+/** A secrets directory the daemon can resolve: absolute, or under `~/`. */
+export function isUsableSecretsDir(value: string): boolean {
+  const text = value.trim();
+  return text === "~" || text.startsWith("~/") || text.startsWith("/") || /^[A-Za-z]:[\\/]/.test(text);
+}
 
 export const PROTOCOL_OPTIONS = [
   { label: "OpenAI-compatible", value: "openai" },
@@ -81,6 +91,7 @@ export function endpointFromPreset(preset: EndpointPreset): ApiEndpoint {
     label: preset.label,
     protocol: preset.protocol,
     baseUrl: preset.baseUrl,
+    keySource: preset.keySource,
     apiKeyEnv: preset.apiKeyEnv,
     models: [],
   };
@@ -107,6 +118,9 @@ export function validateEndpoint(
   if (endpoint.label.trim() === "") return "A label is required.";
   if (!/^https?:\/\/.+/.test(endpoint.baseUrl.trim())) {
     return "The base URL must start with http:// or https://.";
+  }
+  if (endpoint.keySource !== "none" && endpoint.apiKeyEnv.trim() === "") {
+    return "Enter the key variable, or set Key source to No key.";
   }
   return null;
 }

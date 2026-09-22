@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -5,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { anthropicProtocol } from "../../server/transports/api/anthropic.js";
 import { geminiProtocol } from "../../server/transports/api/gemini.js";
 import { openAiProtocol } from "../../server/transports/api/openai.js";
-import { resolveApiKey, secretsFilePath } from "../../server/transports/api/key.js";
+import { resolveApiKey, resolveSecretsDir } from "../../server/transports/api/key.js";
 import { runApiRewrite, testApiEndpoint } from "../../server/transports/api/runner.js";
 
 const CALL = {
@@ -145,42 +146,46 @@ describe("api key resolution", () => {
     return dir;
   }
 
-  it("reads the key from the named environment variable first", async () => {
+  // One source per endpoint: a value in the other source must never be used.
+  it("reads only the environment when the source is env", async () => {
     const dir = await secretsDirWith(JSON.stringify({ apiKeys: { GROQ_API_KEY: "from-file" } }));
-    const result = await resolveApiKey({
-      apiKeyEnv: "GROQ_API_KEY",
-      secretsDir: dir,
-      env: { GROQ_API_KEY: "from-env" },
-    });
-    expect(result).toEqual({ ok: true, key: "from-env", source: "env" });
+    const hit = await resolveApiKey({ keySource: "env", apiKeyEnv: "GROQ_API_KEY", secretsDir: dir, env: { GROQ_API_KEY: "from-env" } });
+    expect(hit).toEqual({ ok: true, key: "from-env", source: "env" });
+    const miss = await resolveApiKey({ keySource: "env", apiKeyEnv: "GROQ_API_KEY", secretsDir: dir, env: {} });
+    expect(miss).toEqual({ ok: false, reason: "missing_env" });
   });
 
-  it("falls back to secrets.json when the environment has no value", async () => {
+  it("reads only secrets.json when the source is secrets_file", async () => {
     const dir = await secretsDirWith(JSON.stringify({ apiKeys: { GROQ_API_KEY: "from-file" } }));
-    const result = await resolveApiKey({ apiKeyEnv: "GROQ_API_KEY", secretsDir: dir, env: {} });
-    expect(result).toEqual({ ok: true, key: "from-file", source: "secrets_file" });
+    const hit = await resolveApiKey({ keySource: "secrets_file", apiKeyEnv: "GROQ_API_KEY", secretsDir: dir, env: { GROQ_API_KEY: "from-env" } });
+    expect(hit).toEqual({ ok: true, key: "from-file", source: "secrets_file" });
+    const miss = await resolveApiKey({ keySource: "secrets_file", apiKeyEnv: "OTHER_KEY", secretsDir: dir, env: { OTHER_KEY: "from-env" } });
+    expect(miss).toEqual({ ok: false, reason: "missing_secrets_entry" });
   });
 
-  it("treats an endpoint with no key name as needing no key", async () => {
-    const result = await resolveApiKey({ apiKeyEnv: "", secretsDir: null, env: {} });
-    expect(result).toEqual({ ok: true, key: "", source: "env" });
+  it("sends no key when the source is none, whatever the name says", async () => {
+    const result = await resolveApiKey({ keySource: "none", apiKeyEnv: "GROQ_API_KEY", secretsDir: null, env: { GROQ_API_KEY: "x" } });
+    expect(result).toEqual({ ok: true, key: "", source: "none" });
   });
 
-  // The failure has to be distinguishable: a missing variable and an unreadable
-  // file send the user to different places.
-  it("reports a missing key when neither source has a value", async () => {
-    const result = await resolveApiKey({ apiKeyEnv: "ABSENT_KEY", secretsDir: null, env: {} });
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("expected failure");
-    expect(result.reason).toBe("missing_key");
+  it("refuses a keyed source with no key name", async () => {
+    const result = await resolveApiKey({ keySource: "env", apiKeyEnv: " ", secretsDir: null, env: {} });
+    expect(result).toEqual({ ok: false, reason: "no_key_name" });
   });
 
-  it("reports an unreadable secrets file rather than a missing key", async () => {
+  it("tells a missing secrets.json apart from an unreadable one", async () => {
+    const empty = await mkdtemp(path.join(tmpdir(), "prompt-kit-secrets-"));
+    created.push(empty);
+    const missing = await resolveApiKey({ keySource: "secrets_file", apiKeyEnv: "GROQ_API_KEY", secretsDir: empty, env: {} });
+    expect(missing).toEqual({ ok: false, reason: "missing_secrets_file" });
     const dir = await secretsDirWith("{ this is not json");
-    const result = await resolveApiKey({ apiKeyEnv: "GROQ_API_KEY", secretsDir: dir, env: {} });
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("expected failure");
-    expect(result.reason).toBe("unreadable_secrets");
+    const broken = await resolveApiKey({ keySource: "secrets_file", apiKeyEnv: "GROQ_API_KEY", secretsDir: dir, env: {} });
+    expect(broken).toEqual({ ok: false, reason: "unreadable_secrets" });
+  });
+
+  it("refuses a relative secrets directory", async () => {
+    const result = await resolveApiKey({ keySource: "secrets_file", apiKeyEnv: "GROQ_API_KEY", secretsDir: "keys", env: {} });
+    expect(result).toEqual({ ok: false, reason: "invalid_secrets_dir" });
   });
 
   // The two failures send the user to different places, so the message a
@@ -195,6 +200,7 @@ describe("api key resolution", () => {
           label: "Groq",
           protocol: "openai",
           baseUrl: "https://api.groq.com/openai/v1",
+          keySource: "secrets_file",
           apiKeyEnv: "GROQ_API_KEY",
           models: [],
         },
@@ -210,23 +216,21 @@ describe("api key resolution", () => {
     if (result.ok) throw new Error("expected failure");
     expect(result.code).toBe("missing_api_key");
     expect(result.message).toContain("secrets.json exists but could not be read");
-    expect(result.message).not.toContain("add it to secrets.json");
+    expect(result.message).not.toContain("has no value");
     expect(fetch).not.toHaveBeenCalled();
   });
 
   it("ignores a non-string entry instead of sending it as a header", async () => {
     const dir = await secretsDirWith(JSON.stringify({ apiKeys: { GROQ_API_KEY: 12345 } }));
-    const result = await resolveApiKey({ apiKeyEnv: "GROQ_API_KEY", secretsDir: dir, env: {} });
-    expect(result.ok).toBe(false);
+    const result = await resolveApiKey({ keySource: "secrets_file", apiKeyEnv: "GROQ_API_KEY", secretsDir: dir, env: {} });
+    expect(result).toEqual({ ok: false, reason: "missing_secrets_entry" });
   });
 
-  it("defaults the secrets path under PASEO_HOME and honours an override", () => {
-    expect(secretsFilePath(null, { PASEO_HOME: "/tmp/home" })).toBe(
-      "/tmp/home/plugin-settings/prompt-kit/secrets.json",
-    );
-    expect(secretsFilePath("/custom/dir", { PASEO_HOME: "/tmp/home" })).toBe(
-      "/custom/dir/secrets.json",
-    );
+  it("defaults the secrets directory under PASEO_HOME, expands ~/ and keeps an absolute path", () => {
+    expect(resolveSecretsDir(null, { PASEO_HOME: "/tmp/home" })).toBe("/tmp/home/plugin-settings/prompt-kit");
+    expect(resolveSecretsDir("~/keys", {})).toBe(path.join(homedir(), "keys"));
+    expect(resolveSecretsDir("/custom/dir", {})).toBe("/custom/dir");
+    expect(resolveSecretsDir("relative/dir", {})).toBeNull();
   });
 });
 
@@ -236,6 +240,7 @@ describe("api endpoint test", () => {
     label: "Gemini",
     protocol: "gemini" as const,
     baseUrl: "https://generativelanguage.googleapis.com",
+    keySource: "env" as const,
     apiKeyEnv: "GEMINI_API_KEY",
     models: [],
   };
@@ -321,7 +326,7 @@ describe("api endpoint test", () => {
   // A keyless local server is a legitimate endpoint, so no key must not fail.
   it("tests a keyless endpoint without a credential header", async () => {
     const { impl, calls } = stubFetch({ body: { data: [{ id: "local-model" }] } });
-    const local = { ...ENDPOINT, protocol: "openai" as const, baseUrl: "http://127.0.0.1:1234/v1", apiKeyEnv: "" };
+    const local = { ...ENDPOINT, protocol: "openai" as const, baseUrl: "http://127.0.0.1:1234/v1", keySource: "none" as const, apiKeyEnv: "" };
     const result = await testApiEndpoint(
       { endpoint: local, secretsDir: null, timeoutMs: 5_000 },
       { fetch: impl, env: {} },

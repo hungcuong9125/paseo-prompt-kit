@@ -60,6 +60,7 @@ describe("validateEndpoint", () => {
     label: "Groq",
     protocol: "openai" as const,
     baseUrl: "https://api.groq.com/openai/v1",
+    keySource: "env" as const,
     apiKeyEnv: "GROQ_API_KEY",
     models: [],
   };
@@ -102,5 +103,11 @@ describe("validateEndpoint", () => {
     expect(
       validateEndpoint({ ...valid, baseUrl: "http://127.0.0.1:1234/v1" }, [], null),
     ).toBeNull();
+  });
+
+  it("requires a key variable unless the key source is none", () => {
+    expect(validateEndpoint({ ...valid, apiKeyEnv: "" }, [], null)).toContain("key variable");
+    expect(validateEndpoint({ ...valid, keySource: "secrets_file", apiKeyEnv: "" }, [], null)).toContain("key variable");
+    expect(validateEndpoint({ ...valid, keySource: "none", apiKeyEnv: "" }, [], null)).toBeNull();
   });
 });

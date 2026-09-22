@@ -11,11 +11,14 @@ import type { ApiTestOutput } from "../../../shared/rpc.js";
 import type { PromptKitSettings } from "../../../shared/settings.js";
 import {
   ENDPOINT_PRESETS,
+  KEY_SOURCE_OPTIONS,
   PROTOCOL_OPTIONS,
   endpointFromPreset,
+  isUsableSecretsDir,
   validateEndpoint,
 } from "../api-endpoints.js";
 import type { SettingsPatch } from "../draft.js";
+import { StoredKeyRows, type StoredKeyRowsProps } from "./stored-key-rows.js";
 
 export interface ApiEndpointSectionProps {
   values: PromptKitSettings;
@@ -24,7 +27,9 @@ export interface ApiEndpointSectionProps {
   epoch: number;
   patch(update: SettingsPatch): void;
   /** Runs the real key lookup and model list against one endpoint. */
-  test(endpoint: ApiEndpoint, secretsFile: string | null): Promise<ApiTestOutput>;
+  test(endpoint: ApiEndpoint, secretsDir: string | null): Promise<ApiTestOutput>;
+  keyStatus: StoredKeyRowsProps["status"];
+  writeKey: StoredKeyRowsProps["write"];
 }
 
 type TestState =
@@ -55,7 +60,7 @@ function withEndpoint(
 }
 
 /** Pick endpoint → fill details → Test → pick model. One picker for presets and custom entries. */
-export function ApiEndpointSection({ values, disabled, epoch, patch, test }: ApiEndpointSectionProps) {
+export function ApiEndpointSection({ values, disabled, epoch, patch, test, keyStatus, writeKey }: ApiEndpointSectionProps) {
   const [tests, setTests] = useState<Readonly<Record<string, TestState>>>({});
 
   const selected = values.apiEndpoints.find((endpoint) => endpoint.id === values.apiEndpointId) ?? null;
@@ -103,6 +108,7 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test }: Api
               label: "Custom endpoint",
               protocol: "openai" as ApiProtocolId,
               baseUrl: "https://",
+              keySource: "env" as const,
               apiKeyEnv: "",
               models: [],
             },
@@ -143,7 +149,7 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test }: Api
   const runTest = async (endpoint: ApiEndpoint) => {
     setTests((previous) => ({ ...previous, [endpoint.id]: { kind: "running" } }));
     try {
-      const output = await test(endpoint, values.secretsFile);
+      const output = await test(endpoint, values.secretsDir);
       if (output.status === "ok") {
         setTests((previous) => ({ ...previous, [endpoint.id]: { kind: "ok", models: output.models.length } }));
         // Test fills the model list; an empty answer leaves it alone.
@@ -171,11 +177,23 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test }: Api
         ? "Reachable, but the endpoint lists no models. Type the model id below."
         : `Reachable. ${testState.models} models are now in the model list below.`
       : "Asks the endpoint which models it offers, with the same key lookup a rewrite uses.";
+  const keyFound =
+    selected === null || testState.kind !== "ok"
+      ? ""
+      : selected.keySource === "none"
+        ? " No key was sent."
+        : selected.keySource === "env"
+          ? ` Key read from the environment variable ${selected.apiKeyEnv.trim()}.`
+          : ` Key read from secrets.json (${selected.apiKeyEnv.trim()}).`;
+  const secretsDirError =
+    values.secretsDir !== null && !isUsableSecretsDir(values.secretsDir)
+      ? "Must be an absolute path or start with ~/."
+      : null;
 
   return (
     <SettingsSection
       title="API endpoint"
-      info="The key itself is never stored here, because this document reaches your browser. Store the name of the variable that holds it, and put the value in the daemon's environment or in secrets.json. See README, “API keys”."
+      info="The key itself is never stored here, because this document reaches your browser. Choose where the daemon reads it — an environment variable or secrets.json — and store only its name. See README, “API keys”."
     >
       <SettingsCard>
         <SettingsSelect
@@ -218,22 +236,67 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test }: Api
               label="Base URL"
               error={problem !== null && problem.includes("base URL") ? problem : null}
               initialValue={selected.baseUrl}
-              placeholder="https://api.groq.com/openai/v1"
+              placeholder="https://api.openai.com/v1"
               disabled={disabled}
               onChangeText={(baseUrl) => edit({ baseUrl })}
             />
-            <SettingsInput
-              key={`${epoch}-${selected.id}-key`}
-              label="Key variable"
-              hint="The name of the variable, not the key. Leave empty for a local server."
-              initialValue={selected.apiKeyEnv}
-              placeholder="GROQ_API_KEY"
+            <SettingsSelect
+              key={`${selected.id}-keySource`}
+              label="Key source"
+              hint={
+                selected.keySource === "env"
+                  ? "An environment variable of the Paseo daemon. Paseo launched from Finder has no shell variables."
+                  : selected.keySource === "secrets_file"
+                    ? "An entry in secrets.json on the daemon's machine. Works however Paseo was started."
+                    : "Send no key. For a local server such as LM Studio, vLLM or llama.cpp."
+              }
+              value={selected.keySource}
+              options={KEY_SOURCE_OPTIONS}
               disabled={disabled}
-              onChangeText={(apiKeyEnv) => edit({ apiKeyEnv })}
+              onValueChange={(keySource) =>
+                edit({ keySource: keySource === "secrets_file" || keySource === "none" ? keySource : "env" })
+              }
             />
+            {selected.keySource === "none" ? null : (
+              <SettingsInput
+                key={`${epoch}-${selected.id}-key`}
+                label="Key variable"
+                hint={
+                  selected.keySource === "env"
+                    ? "Name of the environment variable, not the key."
+                    : "Name of the entry under apiKeys in secrets.json, not the key."
+                }
+                error={selected.apiKeyEnv.trim() === "" ? "Enter the key variable." : null}
+                initialValue={selected.apiKeyEnv}
+                placeholder="GEMINI_API_KEY"
+                disabled={disabled}
+                onChangeText={(apiKeyEnv) => edit({ apiKeyEnv })}
+              />
+            )}
+            {selected.keySource === "secrets_file" ? (
+              <SettingsInput
+                key={`${epoch}-secretsDir`}
+                label="Secrets directory"
+                hint="Folder holding secrets.json, shared by every endpoint that uses it. Empty means <PASEO_HOME>/plugin-settings/prompt-kit."
+                error={secretsDirError}
+                initialValue={values.secretsDir ?? ""}
+                placeholder="~/.paseo/plugin-settings/prompt-kit"
+                disabled={disabled}
+                onChangeText={(text) => patch({ secretsDir: text.trim() === "" ? null : text.trim() })}
+              />
+            ) : null}
+            {selected.keySource === "secrets_file" && secretsDirError === null ? (
+              <StoredKeyRows
+                name={selected.apiKeyEnv}
+                secretsDir={values.secretsDir}
+                disabled={disabled}
+                status={keyStatus}
+                write={writeKey}
+              />
+            ) : null}
             <SettingsAction
               label="Connection"
-              hint={testHint}
+              hint={`${testHint}${keyFound}`}
               error={testState.kind === "error" ? testState.message : null}
               actionLabel={testState.kind === "running" ? "Testing…" : "Test"}
               disabled={disabled || problem !== null || testState.kind === "running"}
@@ -257,7 +320,7 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test }: Api
                 hint="This endpoint has not listed its models. Press Test to fill the list, or type the id."
                 error={values.apiModel === null ? "Choose a model." : null}
                 initialValue={values.apiModel ?? ""}
-                placeholder="gemini-2.5-flash"
+                placeholder="gemini-2.5-flash-lite"
                 disabled={disabled}
                 onChangeText={(model) => patch({ apiModel: model.trim() === "" ? null : model.trim() })}
               />

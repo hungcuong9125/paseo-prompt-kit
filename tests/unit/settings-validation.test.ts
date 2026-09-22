@@ -13,6 +13,7 @@ const ENDPOINT = {
   label: "Groq",
   protocol: "openai" as const,
   baseUrl: "https://api.groq.com/openai/v1",
+  keySource: "env" as const,
   apiKeyEnv: "GROQ_API_KEY",
   models: [],
 };

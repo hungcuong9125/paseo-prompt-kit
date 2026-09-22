@@ -51,7 +51,7 @@ export async function runRewrite(
             systemPrompt: request.systemPrompt,
             taskPrompt: request.taskPrompt,
             timeoutMs,
-            secretsDir: settings.secretsFile,
+            secretsDir: settings.secretsDir,
           },
           {
             ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),

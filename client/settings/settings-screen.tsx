@@ -6,6 +6,8 @@ import {
   actionsListRpc,
   apiTestRpc,
   providerCatalogRpc,
+  secretsStatusRpc,
+  secretsWriteRpc,
   type ActionSummary,
   type ProviderCatalogOutput,
 } from "../../shared/rpc.js";
@@ -64,6 +66,8 @@ function ReadyScreen({ settings, theme, layout }: { settings: ReadySettings } & 
   const draft = useSettingsDraft(settings);
   const catalogs = useCatalogs();
   const testEndpoint = useRpc(apiTestRpc);
+  const keyStatus = useRpc(secretsStatusRpc);
+  const writeKey = useRpc(secretsWriteRpc);
   const { values } = draft;
   const disabled = draft.saving;
 
@@ -113,7 +117,9 @@ function ReadyScreen({ settings, theme, layout }: { settings: ReadySettings } & 
           disabled={disabled}
           epoch={draft.epoch}
           patch={draft.patch}
-          test={(endpoint, secretsFile) => testEndpoint({ endpoint, secretsFile })}
+          test={(endpoint, secretsDir) => testEndpoint({ endpoint, secretsDir })}
+          keyStatus={keyStatus}
+          writeKey={writeKey}
         />
       ) : null}
 

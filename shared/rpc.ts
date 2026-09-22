@@ -121,7 +121,7 @@ export const apiTestRpc = defineRpc({
   name: "prompt-kit.api.test",
   input: z.object({
     endpoint: apiEndpointSchema,
-    secretsFile: z.string().min(1).nullable(),
+    secretsDir: z.string().min(1).nullable(),
   }),
   output: z.discriminatedUnion("status", [
     z.object({
@@ -132,6 +132,38 @@ export const apiTestRpc = defineRpc({
       status: z.literal("error"),
       error: rewriteErrorSchema,
     }),
+  ]),
+});
+
+const secretsResultSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("ok") }),
+  z.object({ status: z.literal("error"), message: z.string() }),
+]);
+
+/**
+ * Stores one secrets.json entry on the daemon (`value`), or removes it (`null`).
+ * Write-only: no RPC ever returns a key value.
+ */
+export const secretsWriteRpc = defineRpc({
+  name: "prompt-kit.secrets.write",
+  input: z.object({
+    secretsDir: z.string().min(1).nullable(),
+    name: z.string().min(1).max(120),
+    value: z.string().trim().min(1).max(4_096).nullable(),
+  }),
+  output: secretsResultSchema,
+});
+
+/** Whether secrets.json holds a value for `name`; the answer is a boolean, never the value. */
+export const secretsStatusRpc = defineRpc({
+  name: "prompt-kit.secrets.status",
+  input: z.object({
+    secretsDir: z.string().min(1).nullable(),
+    name: z.string().min(1).max(120),
+  }),
+  output: z.discriminatedUnion("status", [
+    z.object({ status: z.literal("ok"), stored: z.boolean() }),
+    z.object({ status: z.literal("error"), message: z.string() }),
   ]),
 });
 

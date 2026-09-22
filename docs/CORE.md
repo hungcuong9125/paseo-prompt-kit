@@ -35,7 +35,7 @@ directory read at runtime.
 
 ```text
 index.client.tsx                 Registers pills, the /rewrite command, panel and Settings screen; no DOM → pill opens a sheet.
-index.server.ts                  Registers settings and the four RPCs; the daemon's composition root.
+index.server.ts                  Registers settings and the six RPCs; the daemon's composition root.
 
 shared/                          Contract shared by both bundles
   packs/                         ★ ACTION PACKS — plain data, one JSON per action
@@ -52,7 +52,7 @@ shared/                          Contract shared by both bundles
     wrapper.ts                     Core's injection boundary: <task>/<user_prompt> + escaping;
                                    inserts "Output language: …" into <task> when an output language is set.
   settings.ts                    Host-scoped settings schema + the TIMEOUT_MS constants.
-  rpc.ts                         The four RPC contracts: rewrite, actions.list, providers, api.test.
+  rpc.ts                         The six RPC contracts: rewrite, actions.list, providers, api.test, secrets.write, secrets.status.
   api-protocol.ts                The list of API protocols and the schema for one endpoint.
   cli-families.ts                The list of CLI families + the rule for inferring a family from a provider id.
   protected-literals.ts          Extracts literals that must survive a rewrite unchanged.
@@ -98,7 +98,7 @@ server/                          The daemon-side contribution
     provider-catalog.ts            Reads the daemon catalog + availability state.
   transports/                    How a prompt reaches a model
     cli/                           family.ts (4 CLIs), process.ts (spawn, kill tree), runner.ts (scratch dir)
-    api/                           protocol.ts (interface), openai/anthropic/gemini.ts, key.ts, runner.ts
+    api/                           protocol.ts (interface), openai/anthropic/gemini.ts, key.ts (read), secrets-store.ts (write-only), runner.ts
   log.ts                         Logging that never carries a prompt or an output.
   paseo-types.ts                 Paseo types inferred from the server SDK (never imports the client package).
 ```
@@ -161,7 +161,9 @@ untrusted data.
 | `prompt-kit.rewrite` | `actionId` (regex), `agentId` (null on a draft), `workspaceId`, `originalPrompt` ≤ 50,000, `settings` (a snapshot; host 0.8.0 doesn't let the server read settings) | `ok{rewrittenPrompt, model, durationMs}` or `error{code, message}` |
 | `prompt-kit.actions.list` | `{}` | loaded, valid actions, **before** settings are applied |
 | `prompt-kit.providers` | `cwd?` | daemon catalog + `available` |
-| `prompt-kit.api.test` | one endpoint + `secretsFile` | a model list or a coded error |
+| `prompt-kit.api.test` | one endpoint + `secretsDir` | a model list or a coded error |
+| `prompt-kit.secrets.write` | `secretsDir`, entry `name`, `value` (null removes) | `ok` or an error message; never a key |
+| `prompt-kit.secrets.status` | `secretsDir`, entry `name` | `stored: boolean` or an error message; never a key |
 
 The pill menu is built from `actions.list`, no static import. The enabled set `E` is computed
 on the client (`client/actions/enabled.ts`).
@@ -177,7 +179,8 @@ the CLI transport only; the API transport never reads it. The remaining fields f
   family override).
 - API: `apiEndpoints[]`, `apiEndpointId` + `apiModel` (the model for any agent whose provider
   is not mapped), `apiEndpointByProvider` (a mapped provider sends its agent's own model),
-  `secretsFile`.
+  `secretsDir` (shared by endpoints whose `keySource` is `secrets_file`). Each endpoint reads its
+  key from exactly one `keySource`: `env`, `secrets_file` or `none`; there is no fallback.
 - Shared: `timeoutMs` (`TIMEOUT_MS.min..max`, default 90,000; the host caps the RPC at 30s —
   DEF-008), `actionEnabled`, `outputLanguage` (`source` or a loaded id; an unknown id ⇒
   `invalid_selection`).

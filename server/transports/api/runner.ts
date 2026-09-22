@@ -24,15 +24,23 @@ const PROTOCOLS: Readonly<Record<ApiProtocolId, ApiProtocol>> = {
   gemini: geminiProtocol,
 };
 
-/** Names the variable, never the value; an unreadable secrets.json is its own message. */
+/** Names the variable and where it was looked for, never the value. */
 function describeMissingKey(endpoint: ApiEndpoint, reason: ApiKeyLookupFailure): string {
   const name = endpoint.apiKeyEnv.trim();
-  if (reason === "unreadable_secrets") {
-    return `secrets.json exists but could not be read as { "apiKeys": { ... } }; fix the file before "${name}" can be looked up.`;
+  switch (reason) {
+    case "no_key_name":
+      return `Endpoint "${endpoint.id}" has no key variable. Enter one, or set Key source to No key.`;
+    case "missing_env":
+      return `The environment variable "${name}" is not set for the Paseo daemon.`;
+    case "missing_secrets_file":
+      return `secrets.json was not found in the secrets directory, so "${name}" cannot be read.`;
+    case "missing_secrets_entry":
+      return `secrets.json has no value for "${name}".`;
+    case "unreadable_secrets":
+      return `secrets.json exists but could not be read as { "apiKeys": { ... } }; fix the file before "${name}" can be looked up.`;
+    case "invalid_secrets_dir":
+      return "The secrets directory must be an absolute path or start with ~/.";
   }
-  return name === ""
-    ? `Endpoint "${endpoint.id}" has no key configured.`
-    : `No value for "${name}". Set the environment variable or add it to secrets.json.`;
 }
 
 export type ApiRewriteFailureCode =
@@ -113,6 +121,7 @@ export async function testApiEndpoint(
   }
 
   const key = await resolveApiKey({
+    keySource: input.endpoint.keySource,
     apiKeyEnv: input.endpoint.apiKeyEnv,
     secretsDir: input.secretsDir,
     ...(dependencies.env === undefined ? {} : { env: dependencies.env }),
@@ -182,6 +191,7 @@ export async function runApiRewrite(
   }
 
   const key = await resolveApiKey({
+    keySource: input.endpoint.keySource,
     apiKeyEnv: input.endpoint.apiKeyEnv,
     secretsDir: input.secretsDir,
     ...(dependencies.env === undefined ? {} : { env: dependencies.env }),

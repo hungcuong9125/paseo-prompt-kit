@@ -1,5 +1,5 @@
 import { TIMEOUT_MS, type PromptKitSettings } from "../../shared/settings.js";
-import { validateEndpoint } from "./api-endpoints.js";
+import { isUsableSecretsDir, validateEndpoint } from "./api-endpoints.js";
 
 /** Why the draft cannot be saved, or null. Bounds come from the schema constants. */
 export function findSaveProblem(values: PromptKitSettings): string | null {
@@ -14,6 +14,10 @@ export function findSaveProblem(values: PromptKitSettings): string | null {
   for (const endpoint of values.apiEndpoints) {
     const problem = validateEndpoint(endpoint, values.apiEndpoints, endpoint.id);
     if (problem !== null) return `Endpoint "${endpoint.label || endpoint.id}": ${problem}`;
+  }
+
+  if (values.secretsDir !== null && !isUsableSecretsDir(values.secretsDir)) {
+    return "The secrets directory must be an absolute path or start with ~/.";
   }
 
   const ids = new Set(values.apiEndpoints.map((endpoint) => endpoint.id));

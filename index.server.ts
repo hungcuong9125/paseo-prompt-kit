@@ -6,12 +6,15 @@ import {
   apiTestRpc,
   providerCatalogRpc,
   rewriteRpc,
+  secretsStatusRpc,
+  secretsWriteRpc,
   type ActionsListOutput,
   type ApiTestOutput,
   type ProviderCatalogOutput,
 } from "./shared/rpc.js";
 import { promptKitSettings } from "./shared/settings.js";
 import { testApiEndpoint } from "./server/transports/api/runner.js";
+import { hasApiKey, writeApiKey } from "./server/transports/api/secrets-store.js";
 import { readProviderCatalog } from "./server/model-resolver/provider-catalog.js";
 import { createRewriteHandler, type RewriteHandlerDependencies } from "./server/rewrite-engine/handler.js";
 import { pluginLog } from "./server/log.js";
@@ -66,7 +69,7 @@ export default function contribute(
   // "test passed" means the same thing a rewrite would find.
   server.handle(apiTestRpc, async (input) => {
     const result = await testApiEndpoint(
-      { endpoint: input.endpoint, secretsDir: input.secretsFile, timeoutMs: 15_000 },
+      { endpoint: input.endpoint, secretsDir: input.secretsDir, timeoutMs: 15_000 },
       dependencies.fetch === undefined && dependencies.env === undefined
         ? {}
         : {
@@ -81,6 +84,26 @@ export default function contribute(
       } satisfies ApiTestOutput;
     }
     return { status: "ok", models: [...result.models] } satisfies ApiTestOutput;
+  });
+
+  // Write-only key storage for the settings screen; the value is never logged or returned.
+  server.handle(secretsWriteRpc, async (input) => {
+    const result = await writeApiKey({
+      secretsDir: input.secretsDir,
+      name: input.name,
+      value: input.value,
+      ...(dependencies.env === undefined ? {} : { env: dependencies.env }),
+    });
+    return result.ok ? { status: "ok" as const } : { status: "error" as const, message: result.message };
+  });
+
+  server.handle(secretsStatusRpc, async (input) => {
+    const result = await hasApiKey({
+      secretsDir: input.secretsDir,
+      name: input.name,
+      ...(dependencies.env === undefined ? {} : { env: dependencies.env }),
+    });
+    return result.ok ? { status: "ok" as const, stored: result.stored } : { status: "error" as const, message: result.message };
   });
 
   return () => {};

@@ -3,7 +3,7 @@ import { at, authHeaders, joinUrl, stringFieldAt, type ApiCall, type ApiHttpRequ
 /**
  * The OpenAI Chat Completions protocol.
  *
- * One entry covers far more than OpenAI: Groq, OpenRouter, LiteLLM, vLLM,
+ * One entry covers far more than OpenAI: OpenRouter, LiteLLM, vLLM,
  * llama.cpp, LM Studio, Together, Fireworks and most internal gateways all speak
  * this shape, so each of them is a `baseUrl` in settings rather than a module.
  *

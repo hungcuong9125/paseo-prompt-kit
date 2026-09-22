@@ -19,7 +19,7 @@ describe("prompt kit settings", () => {
       apiEndpointId: null,
       apiModel: null,
       apiEndpointByProvider: {},
-      secretsFile: null,
+      secretsDir: null,
       timeoutMs: 90_000,
       actionEnabled: {},
       outputLanguage: "source",

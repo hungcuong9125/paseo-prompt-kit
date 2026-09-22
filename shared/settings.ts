@@ -58,10 +58,10 @@ export const promptKitSettingsSchema = z.object({
    */
   apiEndpointByProvider: z.record(z.string(), z.string().min(1)).default({}),
   /**
-   * Directory holding `secrets.json`, or null for `<PASEO_HOME>/plugin-settings/prompt-kit`.
-   * A daemon started with a non-default `PASEO_HOME` still reads its own secrets.
+   * Directory holding `secrets.json` for every endpoint whose key source is `secrets_file`,
+   * or null for `<PASEO_HOME>/plugin-settings/prompt-kit`. Absolute or `~/`-prefixed.
    */
-  secretsFile: z.string().min(1).nullable().default(null),
+  secretsDir: z.string().min(1).nullable().default(null),
   timeoutMs: z.number().int().min(TIMEOUT_MS.min).max(TIMEOUT_MS.max).default(TIMEOUT_MS.default),
   /**
    * Per-action user toggle, keyed by action id. An id absent here falls back to
