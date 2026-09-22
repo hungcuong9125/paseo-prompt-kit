@@ -21,23 +21,23 @@ General rules (from `AGENTS.md`):
 
 Full guide: `docs/guides/action-packs.md`.
 
-**Result:** a new entry in the pill menu, running through the same path as `coding`, **no
+**Result:** a new entry in the pill menu, running through the same path as `general`, **no
 TypeScript edits**.
 
 1. Copy the template `docs/templates/action-pack.template.json` to `shared/packs/<id>.json`.
    `id` matches `^[a-z][a-z0-9-]*$` and matches the file name.
 2. Fill in `title`, `description`, `icon` (a Lucide icon name, e.g. `Image`, `FileText`,
    `Search`).
-3. Write `system` (role + rules) and `task` (a short paragraph stating the output clearly).
-   **Do not** wrap `<task>` / `<user_prompt>` yourself: Core wraps and escapes them
-   (`shared/action-registry/wrapper.ts`). If the prompt needs to preserve the user's language
-   or technical literals, say so in `system` — the validator checks protected literals
-   regardless of what the pack says.
+3. Write `system` (what the action changes, and its rules) and `task` (a short paragraph
+   stating the output clearly). **Do not** restate Core's rewrite contract
+   (`shared/action-registry/rewrite-contract.ts`: author's voice, injection boundary, literals,
+   language, output shape) and do not wrap `<task>` / `<draft>` yourself: Core prepends the
+   contract and wraps and escapes the draft (`shared/action-registry/wrapper.ts`).
 4. Add one line to `shared/packs/index.ts`:
 
    ```ts
    import image from "../packs/image.json";
-   export const bundledPacks: readonly unknown[] = [coding, image];
+   export const bundledPacks: readonly unknown[] = [general, brief, image];
    ```
 
 5. Verify:

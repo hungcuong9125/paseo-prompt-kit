@@ -42,7 +42,7 @@ describe("runRewrite: current model", () => {
     const run = harness.spawned[0]!;
     expect(run.stdin).toBeNull();
     for (const arg of run.args) expect(arg).not.toContain("fix the bug");
-    for (const arg of run.args) expect(arg).not.toContain("<user_prompt>");
+    for (const arg of run.args) expect(arg).not.toContain("<draft>");
   });
 
   it("runs the CLI in an empty scratch directory, not the workspace", async () => {
@@ -226,7 +226,7 @@ describe("runRewrite: output language", () => {
     const handler = createRewriteHandler({ spawn: harness.spawn });
     const output = await handler(
       {
-        actionId: "coding",
+        actionId: "general",
         agentId: "agent-1",
         workspaceId: "ws-1",
         originalPrompt: "fix it",
@@ -251,7 +251,7 @@ describe("runRewrite: output language", () => {
     const handler = createRewriteHandler({ spawn: harness.spawn });
     const output = await handler(
       {
-        actionId: "coding",
+        actionId: "general",
         agentId: "agent-1",
         workspaceId: "ws-1",
         originalPrompt: "fix it",
@@ -262,7 +262,29 @@ describe("runRewrite: output language", () => {
     expect(output.status).toBe("ok");
     const stdin = harness.spawned[0]?.stdin ?? "";
     expect(stdin).toContain(`Output language: ${language.instruction}`);
-    expect(stdin.indexOf("Output language:")).toBeLessThan(stdin.indexOf("<user_prompt>"));
+    expect(stdin.indexOf("Output language:")).toBeLessThan(stdin.indexOf("<draft>"));
+  });
+
+  // Fails if the handler sends the pack's rules without Core's rewrite contract.
+  it("gives the CLI the contract and the pack's rules as its system prompt", async () => {
+    const { createRewriteHandler } = await import("../../server/rewrite-engine/handler.js");
+    const { resolveAction } = await import("../../shared/action-registry/registry.js");
+    const { buildSystemPrompt } = await import("../../shared/action-registry/rewrite-contract.js");
+    const harness = createRewriteHarness({
+      agent: { provider: "claude", runtimeInfo: { provider: "claude" } },
+    });
+    const handler = createRewriteHandler({ spawn: harness.spawn });
+    await handler(
+      {
+        actionId: "general",
+        agentId: "agent-1",
+        workspaceId: "ws-1",
+        originalPrompt: "fix it",
+        settings: await settings({}),
+      },
+      { paseo: harness.paseo } as never,
+    );
+    expect(harness.spawned[0]?.args).toContain(buildSystemPrompt(resolveAction("general")!));
   });
 });
 

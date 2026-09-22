@@ -1,6 +1,6 @@
 # PromptKit
 
-PromptKit is a Paseo plugin (id `prompt-kit`) that rewrites the prompt in your Composer. It adds one `PromptKit` pill to the Composer's track bar and a `/rewrite <prompt>` slash command; the bundled action is `Improve coding prompt`. Running it rewrites the current Composer text in place, keeps the user's language and every protected literal (URLs, absolute paths, shell commands, code blocks, model names, tool names), restores focus, and never sends the prompt. You review the result and send it yourself.
+PromptKit is a Paseo plugin (id `prompt-kit`) that rewrites the prompt in your Composer. It adds one `PromptKit` pill to the Composer's track bar and a `/rewrite <prompt>` slash command; the default action is `Improve prompt`. Running it rewrites the current Composer text in place, in your own voice (first person, speaking to the agent), keeps your language and every protected literal (URLs, absolute paths, shell commands, code blocks, model names, tool names), restores focus, and never sends the prompt. You review the result and send it yourself.
 
 Rewriting has three paths, chosen in Settings. The default runs the selected model through the provider's own CLI, headlessly, in a temporary directory — no Paseo agent, no tab, no archive. Your primary conversation never receives a rewrite turn and never changes provider or session. The third path posts straight to an API you configure (OpenAI, Anthropic, Google Gemini, Cloudflare Workers AI, or anything speaking one of those protocols) when a CLI cold start is too slow or no CLI exists.
 
@@ -49,7 +49,7 @@ paseo plugin ls
 `--ref` chooses the initial branch, tag, or commit once; later `paseo plugin update prompt-kit` follows the remote's default HEAD. Pin a release instead of tracking `main` by giving `--ref` a tag:
 
 ```bash
-paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.4.0
+paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.5.0
 ```
 
 `paseo plugin ls` reports the installed commit.
@@ -230,7 +230,7 @@ Every one of these leaves the Composer text untouched.
 - Requires Paseo `>=0.9.0`. Because text access depends on the Composer DOM (or, on mobile, the React tree), a Paseo UI change can break it even when the public plugin SDK is compatible.
 - No auto-send. PromptKit only replaces the Composer text; you send the message.
 - PromptKit refuses to replace text you edited while a rewrite was running, and refuses when more than one Composer (or none) is visible.
-- One bundled action in this version: `Improve coding prompt`. Adding another is one JSON file — see `docs/EXTENDING.md`.
+- Two bundled actions: `Improve prompt` (on by default) turns the draft into a clear instruction the agent can act on — the concrete action, each constraint made checkable, the working steps for that kind of task (find the cause first, follow the codebase's existing way, keep the change scoped), and when it is done; `Execution brief` (off by default, turn it on in Settings → Actions) gives the same as labelled parts: goal, context, constraints, approach, done when. Neither invents files, numbers, requirements or decisions the draft does not contain. Both write as you, speaking to the agent — never about "the user". Adding another action is one JSON file — see `docs/EXTENDING.md`.
 - The API transport does not stream: it makes one request and waits for the whole answer. A slow endpoint can exceed the daemon's 30-second plugin-call cap, in which case the host reports a timeout before PromptKit's own `Timeout (ms)` can fire.
 - No OAuth or token refresh: an endpoint uses a static key. A provider that needs an interactive login is better served by the CLI transport.
 

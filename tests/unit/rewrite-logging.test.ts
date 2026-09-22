@@ -111,7 +111,7 @@ describe("the registered rewrite handler", () => {
 
     const output = await handler!(
       {
-        actionId: "coding",
+        actionId: "general",
         agentId: "agent-1",
         workspaceId: "wks_1",
         originalPrompt: PROMPT,

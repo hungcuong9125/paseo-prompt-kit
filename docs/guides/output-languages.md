@@ -72,10 +72,11 @@ literal intact.
   inserts nothing; a loaded id ⇒ its `instruction`; an unknown id ⇒ the rewrite is rejected
   (`invalid_selection`).
 - `shared/action-registry/wrapper.ts` inserts `Output language: <instruction>` **inside**
-  `<task>`, never inside `<user_prompt>`, so the user's prompt can never forge it.
-- The `coding` pack carries the sentence *"Preserve the user's language unless the task names
-  an output language"*. A new pack should carry the same sentence (see
-  [action-packs.md](action-packs.md)).
+  `<task>`, never inside `<draft>`, so the draft can never forge it.
+- Core's rewrite contract (`shared/action-registry/rewrite-contract.ts`) tells every action to
+  keep the draft's language unless the task names an output language; packs don't repeat it.
+- Write `instruction` about "the message" and "the author", never "the user": a translation
+  must stay in the author's own voice.
 - If settings hold an id that's no longer loaded (you deleted the file), the status bar reports
   *No output language is loaded with the id "…"* and rewrite is blocked until you pick another
   one.

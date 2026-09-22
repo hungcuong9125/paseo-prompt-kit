@@ -40,7 +40,8 @@ index.server.ts                  Registers settings and the six RPCs; the daemon
 shared/                          Contract shared by both bundles
   packs/                         ★ ACTION PACKS — plain data, one JSON per action
     index.ts                       Static barrel: the list of bundled packs.
-    coding.json                    The built-in `coding` pack, on the same path as any other pack.
+    general.json                   The default `general` pack: a clear, executable instruction with done criteria, no invented facts.
+    brief.json                     The opt-in `brief` pack: the same, as labelled goal / context / constraints / approach / done.
   languages/                     ★ OUTPUT LANGUAGES — plain data, one JSON per language
     index.ts                       Static barrel; `source` (keep the original language) is the built-in default.
     en.json, vi.json
@@ -49,7 +50,8 @@ shared/                          Contract shared by both bundles
     schema.ts                      The Action Pack v1 contract (zod strict) + ACTION_ID_PATTERN.
     loader.ts                      Turns the barrel into a registry; a broken pack is rejected on its own.
     registry.ts                    The one live registry; listActions / resolveAction.
-    wrapper.ts                     Core's injection boundary: <task>/<user_prompt> + escaping;
+    rewrite-contract.ts            Core's rewrite contract (author's voice, boundary, output), placed ahead of every pack's system text.
+    wrapper.ts                     Core's injection boundary: <task>/<draft> + escaping;
                                    inserts "Output language: …" into <task> when an output language is set.
   settings.ts                    Host-scoped settings schema + the TIMEOUT_MS constants.
   rpc.ts                         The six RPC contracts: rewrite, actions.list, providers, api.test, secrets.write, secrets.status.
@@ -119,7 +121,7 @@ pill press
        └─ rpc prompt-kit.rewrite ──────────────────────────────────────────────┐
                                                                                ▼
                                             handler: resolveAction(actionId) ← unknown_action
-                                                     buildTaskPrompt (Core's wrapper)
+                                                     buildSystemPrompt (contract + pack) + buildTaskPrompt (wrapper)
                                             engine:  resolveTarget ──► resolver (3 paths)
                                                      transports/cli | transports/api
                                                      output-validator (protected literals)
@@ -144,14 +146,17 @@ A pack is **data**: JSON, no code, no file paths. Strict schema in
 | `title`, `description`, `icon` | non-empty strings; `icon` is a Lucide name, a wrong name renders blank |
 | `context.mode` | `"prompt-only"` |
 | `output.mode` | `"replace-composer"` |
-| `system`, `task` | instruction text, ≤ 50,000 characters; must **not** wrap itself in `<task>`/`<user_prompt>` |
+| `system`, `task` | instruction text, ≤ 50,000 characters; must **not** wrap itself in `<task>`/`<draft>` |
 
 Fails closed: a broken pack ⇒ absent from `actions.list`, logs `action packs rejected`, other
 packs keep working, no default action.
 
-The injection boundary belongs to Core (`wrapper.ts`); packs must not wrap themselves. Prompt
-text inside a pack is content **the plugin author** wrote, unlike `<user_prompt>`, which is
-untrusted data.
+The rewrite contract and the injection boundary belong to Core (`rewrite-contract.ts`,
+`wrapper.ts`); packs must not restate or wrap them. The contract fixes the voice for every
+action: the output is sent as the author's own words, so it keeps the author's first person,
+speaks to the agent directly, and never narrates "the user". A pack's `system` holds only what
+its action changes. Prompt text inside a pack is content **the plugin author** wrote, unlike
+`<draft>`, which is untrusted data.
 
 ---
 
@@ -229,6 +234,6 @@ There are five named extension points, each one directory and one registration s
    different endpoint, model, or transport.
 3. A prompt never enters `argv` or a log; a key never enters settings, logs, RPC, or an error
    message.
-4. One registry, one schema version, one rewrite path. No separate branch for `coding`.
+4. One registry, one schema version, one rewrite path. No separate branch for any pack.
 5. Client and server meet only through `shared/`; the server never imports `@getpaseo/client`.
 </content>

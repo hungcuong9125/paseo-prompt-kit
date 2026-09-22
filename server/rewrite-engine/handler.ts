@@ -1,6 +1,7 @@
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import { buildTaskPrompt } from "../../shared/action-registry/wrapper.js";
 import { resolveAction } from "../../shared/action-registry/registry.js";
+import { buildSystemPrompt } from "../../shared/action-registry/rewrite-contract.js";
 import { resolveLanguage } from "../../shared/language-registry/registry.js";
 import type { RewriteInput, RewriteOutput } from "../../shared/rpc.js";
 import type { CliSpawner } from "../transports/cli/process.js";
@@ -63,7 +64,7 @@ export function createRewriteHandler(dependencies: RewriteHandlerDependencies = 
       {
         agentId: input.agentId,
         workspaceId: input.workspaceId,
-        systemPrompt: action.systemPrompt,
+        systemPrompt: buildSystemPrompt(action),
         originalPrompt: input.originalPrompt,
         taskPrompt: buildTaskPrompt(action, input.originalPrompt, language?.instruction ?? null),
       },

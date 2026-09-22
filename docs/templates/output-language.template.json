@@ -2,5 +2,5 @@
   "schemaVersion": 1,
   "id": "xx",
   "label": "Display name shown in Settings",
-  "instruction": "Write the rewritten prompt in <Language>. Translate the user's prose; keep every technical literal (paths, URLs, commands, code, identifiers, model and tool names) exactly as written."
+  "instruction": "Write the message in <Language>: translate every sentence, including verbs and connecting words from another language, in the author's own voice. Established technical terms (UI, session, API, ...) may stay as they are; keep every technical literal (paths, URLs, commands, code, identifiers, model and tool names) exactly as written."
 }

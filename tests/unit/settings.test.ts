@@ -38,9 +38,9 @@ describe("prompt kit settings", () => {
 
   it("treats an absent action toggle as the pack default and an explicit one as the user's choice", async () => {
     const values = await promptKitSettingsSchema.parseAsync({
-      actionEnabled: { coding: false },
+      actionEnabled: { general: false },
     });
-    expect(values.actionEnabled).toEqual({ coding: false });
+    expect(values.actionEnabled).toEqual({ general: false });
     // A key the document does not carry is absent, not false: the pack's own
     // `enabledByDefault` decides, so a newly added pack needs no migration.
     expect(values.actionEnabled["other"]).toBeUndefined();

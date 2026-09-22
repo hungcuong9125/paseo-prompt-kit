@@ -10,10 +10,10 @@ import type { ActionDefinition } from "./schema.js";
  * reaching the model as top-level instruction text.
  */
 export function escapeWrapperDelimiters(text: string): string {
-  return text.replace(/<(\/?)(user_prompt|task)\b/gi, "&lt;$1$2");
+  return text.replace(/<(\/?)(draft|task)\b/gi, "&lt;$1$2");
 }
 
-/** Builds `<task>` (+ optional output-language line) and the escaped `<user_prompt>`. */
+/** Builds `<task>` (+ optional output-language line) and the escaped `<draft>`. */
 export function buildTaskPrompt(
   definition: ActionDefinition,
   originalPrompt: string,
@@ -24,7 +24,7 @@ export function buildTaskPrompt(
 ${definition.taskInstruction}${language}
 </task>
 
-<user_prompt>
+<draft>
 ${escapeWrapperDelimiters(originalPrompt)}
-</user_prompt>`;
+</draft>`;
 }

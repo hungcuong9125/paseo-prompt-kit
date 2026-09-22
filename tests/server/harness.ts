@@ -160,5 +160,5 @@ export const REWRITE_REQUEST = {
   workspaceId: "wks_1",
   systemPrompt: "SYSTEM",
   originalPrompt: "fix the bug",
-  taskPrompt: "<user_prompt>\nfix the bug\n</user_prompt>",
+  taskPrompt: "<draft>\nfix the bug\n</draft>",
 };

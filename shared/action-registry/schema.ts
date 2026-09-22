@@ -32,9 +32,9 @@ export const actionPackSchema = z.strictObject({
 export type ActionPack = z.output<typeof actionPackSchema>;
 
 /**
- * A pack as the rest of the plugin sees it. The wrapper (`<task>`,
- * `<user_prompt>` and delimiter escaping) belongs to Core, so a definition
- * carries instruction text only.
+ * A pack as the rest of the plugin sees it. The rewrite contract, the wrapper
+ * (`<task>`, `<draft>` and delimiter escaping) belong to Core, so a definition
+ * carries the action's own instruction text only.
  */
 export interface ActionDefinition {
   readonly id: string;

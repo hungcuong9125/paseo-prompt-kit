@@ -45,7 +45,7 @@ const props = {
 } as unknown as PluginButtonContentProps;
 
 const actions = {
-  actions: [{ id: "coding", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I" }],
+  actions: [{ id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I" }],
 };
 
 let root: Root | null = null;

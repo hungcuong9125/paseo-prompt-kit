@@ -78,11 +78,11 @@ const defaults = promptKitSettingsSchema.parse({});
 const actionCatalog = {
   actions: [
     {
-      id: "coding",
+      id: "general",
       version: 1,
       enabledByDefault: true,
-      title: "Improve coding prompt",
-      description: "Rewrite the current request for a coding agent.",
+      title: "Improve prompt",
+      description: "Make the draft clear and ready to act on, in your own voice, without adding facts.",
       icon: "Code2",
     },
   ],
@@ -228,7 +228,7 @@ describe("status bar", () => {
   });
 
   it("explains that a disabled-everything document hides the pill", async () => {
-    holder.state = readyState({ actionEnabled: { coding: false } });
+    holder.state = readyState({ actionEnabled: { general: false } });
     const view = await render();
     expect(statusText(view)).toContain("no PromptKit pill");
   });

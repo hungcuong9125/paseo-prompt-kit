@@ -220,7 +220,7 @@ async function rewrite(
     ...overrides,
   };
   const output = await client!.invokePluginRpc(PLUGIN_ID, "prompt-kit.rewrite", {
-    actionId: "coding",
+    actionId: "general",
     agentId: primaryAgentId,
     workspaceId: primaryWorkspaceId,
     originalPrompt,

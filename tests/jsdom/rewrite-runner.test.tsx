@@ -38,7 +38,7 @@ describe("rewrite runner", () => {
     const current = runner({
       adapter: adapter({ replaceText: () => false, focus }),
     });
-    await expect(current.run("coding")).rejects.toThrow(
+    await expect(current.run("general")).rejects.toThrow(
       "PromptKit could not find the Composer to update.",
     );
     expect(focus).not.toHaveBeenCalled();
@@ -57,7 +57,7 @@ describe("rewrite runner", () => {
         };
       },
     });
-    await current.run("coding");
+    await current.run("general");
     expect(calls).toEqual(["prompt-kit.rewrite"]);
   });
 
@@ -75,9 +75,9 @@ describe("rewrite runner", () => {
         };
       },
     });
-    await expect(current.run("coding")).rejects.toThrow("daemon offline");
+    await expect(current.run("general")).rejects.toThrow("daemon offline");
     expect(current.isBusy()).toBe(false);
-    await expect(current.run("coding")).resolves.toBeUndefined();
+    await expect(current.run("general")).resolves.toBeUndefined();
     expect(attempts).toBe(2);
   });
 
@@ -91,10 +91,10 @@ describe("rewrite runner", () => {
         return { status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1 };
       }) as never,
     });
-    await current.run("coding");
+    await current.run("general");
     expect(sent).toBe("fix the bug");
     expect(written).toBe("improved");
-    await expect(runner({ adapter: adapter({ readText: () => "/rewrite" }) }).run("coding")).rejects.toThrow(
+    await expect(runner({ adapter: adapter({ readText: () => "/rewrite" }) }).run("general")).rejects.toThrow(
       "Write a prompt first.",
     );
   });

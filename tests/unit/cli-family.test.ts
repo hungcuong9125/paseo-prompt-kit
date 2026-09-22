@@ -37,7 +37,7 @@ describe("CLI families", () => {
       const { args } = argv(family);
       for (const arg of args) {
         expect(arg).not.toContain("fix the bug");
-        expect(arg).not.toContain("<user_prompt>");
+        expect(arg).not.toContain("<draft>");
       }
     }
   });

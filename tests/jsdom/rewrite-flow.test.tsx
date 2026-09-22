@@ -92,7 +92,7 @@ describe("rewrite flow", () => {
     expect(fake.fake.sent).toBe(0);
     expect(rewriteCalls(fake.fake)).toHaveLength(1);
     expect(rewriteCalls(fake.fake)[0]!.input).toMatchObject({
-      actionId: "coding",
+      actionId: "general",
       agentId: "agent-a",
       workspaceId: "ws-1",
       originalPrompt: "  write tests  ",

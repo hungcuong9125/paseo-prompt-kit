@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.5.0 - 2026-09-23
+
+### Added
+
+- **Execution brief** action (off by default): the draft as labelled parts — goal, context,
+  constraints, approach and done when — with labels in the draft's language.
+- A rewrite contract owned by Core, placed ahead of every action's instructions: the rewritten
+  text is sent as the author's own words, so it keeps the author's first person, speaks to the
+  agent directly, keeps the draft's register, and never refers to the author as "the user".
+
+### Changed
+
+- The default action is now `general` (**Improve prompt**) instead of `coding`. It turns the
+  draft into a clear instruction: the concrete action, each constraint made checkable, the
+  working steps for that kind of task (find the cause before changing code, follow how the
+  codebase already does it, keep the change scoped), and how the agent knows it is done. It
+  never invents files, numbers, requirements or decisions, and keeps each constraint at its
+  original strength. A saved `actionEnabled.coding` switch no longer applies.
+- The draft reaches the model inside `<draft>` instead of `<user_prompt>`. The output language
+  instructions translate every sentence, verbs and connecting words included, in the author's
+  own voice, while established technical terms may stay; a mixed-language draft is written in
+  its main language. The rewrite adds no quotation marks the draft did not have.
+- Action packs carry only what their action changes; the injection boundary, literal, language
+  and output rules now live in Core's contract.
+
 ## 0.4.0 - 2026-09-23
 
 ### Added

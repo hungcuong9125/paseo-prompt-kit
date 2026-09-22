@@ -161,7 +161,7 @@ function requireLive(context: { skip: (reason: string) => void }): boolean {
 
 async function rewriteWith(settings: Record<string, unknown>): Promise<RewriteResult> {
   const output = await client!.invokePluginRpc(PLUGIN_ID, "prompt-kit.rewrite", {
-    actionId: "coding",
+    actionId: "general",
     agentId,
     workspaceId,
     originalPrompt: ORIGINAL,

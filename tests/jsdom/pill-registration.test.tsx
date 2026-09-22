@@ -101,7 +101,7 @@ describe("pill shape follows the enabled set E", () => {
     expect(behavior.kind).toBe("action");
     expect(typeof behavior.onPress).toBe("function");
     // The button advertises the action itself, not a generic menu.
-    expect(button(pill).title).toBe("Improve coding prompt");
+    expect(button(pill).title).toBe("Improve prompt");
     cleanup();
   });
 
@@ -118,7 +118,7 @@ describe("pill shape follows the enabled set E", () => {
   });
 
   it("hides the pill when every action is disabled", async () => {
-    const { fake, cleanup } = await mountWith({ actionEnabled: { coding: false } });
+    const { fake, cleanup } = await mountWith({ actionEnabled: { general: false } });
     expect(fake.live()).toHaveLength(0);
     cleanup();
   });
@@ -180,7 +180,7 @@ describe("settings changes are not observed live (SDK 0.8.0 limitation)", () => 
     expect((before.behavior as { kind: string }).kind).toBe("action");
 
     // The user disables the action; nothing pushes that into the pill.
-    values = promptKitSettingsSchema.parse({ actionEnabled: { coding: false } });
+    values = promptKitSettingsSchema.parse({ actionEnabled: { general: false } });
     fake.upsert({ ...agentA });
     await flush();
 
@@ -199,7 +199,7 @@ describe("registry read economy", () => {
       workspaceId: `ws-${index}`,
     }));
     const listActions = vi.fn(async () => [
-      { id: "coding", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I" },
+      { id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I" },
     ]);
     const fake = createFakeClient({
       agents,
