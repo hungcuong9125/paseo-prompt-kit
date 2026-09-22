@@ -1,10 +1,6 @@
 import { z } from "zod";
 
-/**
- * Output language v1. A language is pure data: an id, a label for the settings
- * screen, and the sentence Core appends to the task so the model writes its
- * answer in that language.
- */
+/** Output language v1: id, label, and the instruction Core appends to the task. */
 export const LANGUAGE_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 /** The built-in choice: keep the language the prompt was written in. */

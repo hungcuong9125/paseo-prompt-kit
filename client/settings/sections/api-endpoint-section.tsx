@@ -54,16 +54,7 @@ function withEndpoint(
   return endpoints.map((endpoint) => (endpoint.id === id ? { ...endpoint, ...changes } : endpoint));
 }
 
-/**
- * The whole API block in one flow: pick an endpoint, fill in what it needs,
- * test it, choose a model. The picker lists the presets, every custom endpoint
- * already configured, and one entry that starts a new custom one, so there is
- * exactly one place an endpoint is chosen from.
- *
- * Nothing reaches the settings document until the screen's Save; edits go to
- * the draft through functional patches, so a test result written back after
- * the request cannot overwrite a field typed while it was running.
- */
+/** Pick endpoint → fill details → Test → pick model. One picker for presets and custom entries. */
 export function ApiEndpointSection({ values, disabled, epoch, patch, test }: ApiEndpointSectionProps) {
   const [tests, setTests] = useState<Readonly<Record<string, TestState>>>({});
 
@@ -84,8 +75,7 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test }: Api
 
   const modelOptions = useMemo(() => {
     const declared = (selected?.models ?? []).map((model) => ({ label: model, value: model }));
-    // The chosen model must stay selectable even when the endpoint declares none,
-    // or opening the screen would silently drop the saved choice.
+    // Keep the saved model selectable even if the endpoint no longer lists it.
     if (values.apiModel !== null && !declared.some((option) => option.value === values.apiModel)) {
       return [{ label: values.apiModel, value: values.apiModel }, ...declared];
     }
@@ -144,7 +134,6 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test }: Api
       apiEndpoints: current.apiEndpoints.filter((endpoint) => endpoint.id !== id),
       apiEndpointId: null,
       apiModel: null,
-      // A mapping to a removed endpoint would block the save; drop it here.
       apiEndpointByProvider: Object.fromEntries(
         Object.entries(current.apiEndpointByProvider).filter(([, target]) => target !== id),
       ),
@@ -157,10 +146,7 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test }: Api
       const output = await test(endpoint, values.secretsFile);
       if (output.status === "ok") {
         setTests((previous) => ({ ...previous, [endpoint.id]: { kind: "ok", models: output.models.length } }));
-        // A successful test is how the endpoint's model list is learned, and that
-        // list gates a rewrite, so it is stored rather than typed. An empty answer
-        // is left alone: a server without a model endpoint must not wipe a list
-        // that is already correct.
+        // Test fills the model list; an empty answer leaves it alone.
         if (output.models.length > 0) {
           const models = [...output.models];
           patch((current) => ({ apiEndpoints: withEndpoint(current.apiEndpoints, endpoint.id, { models }) }));

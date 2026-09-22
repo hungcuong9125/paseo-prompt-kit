@@ -20,7 +20,6 @@ const MODEL_OPTIONS = [
   { label: "Dedicated model", value: "dedicated" },
 ] as const;
 
-/** The hint under each control says what the chosen value means, not what the control is. */
 const TRANSPORT_HINT = {
   cli: "The provider's own CLI runs the rewrite headlessly in an empty scratch directory. Needs that CLI on the daemon's PATH.",
   api: "One HTTP request to an endpoint you configure below. Fastest, and works for providers with no CLI. Needs a key.",
@@ -37,11 +36,7 @@ const LANGUAGE_OPTIONS = [
   ...listLanguages().map((language) => ({ label: language.label, value: language.id })),
 ] as const;
 
-/**
- * The two independent choices that decide which rewrite path runs: how the
- * model is reached, and which model it is. Every other section is a
- * consequence of these two values and appears only when they need it.
- */
+/** Transport × model source × output language. Other sections depend on the first two. */
 export function EngineSection({ values, disabled, patch }: EngineSectionProps) {
   return (
     <SettingsSection

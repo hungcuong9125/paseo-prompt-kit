@@ -3,13 +3,16 @@ import { actionsListRpc } from "./shared/rpc.js";
 import { createWebComposerAdapter } from "./client/composer-bridge/web.js";
 import { PLUGIN_ICON } from "./client/icon.js";
 import { createSettingsReader } from "./client/settings/read-settings.js";
+import { registerRewriteCommand } from "./client/commands/rewrite-command.js";
 import { registerAgentPills } from "./client/pills/agent-pills.js";
 import { createRewriteRunner } from "./client/pills/rewrite-runner.js";
 import { PromptKitSettingsScreen } from "./client/settings/settings-screen.js";
+import { createRewriteSheet, locateComposerFromProbe } from "./client/sheet/rewrite-sheet.js";
 
 /**
- * PromptKit's client contribution: one Composer pill per live agent plus the
- * settings screen. Returns a cleanup that removes every registration.
+ * Client contribution: a Composer pill per live agent, the `/rewrite` slash
+ * command, and the settings screen. Without a Composer DOM (native mobile) the
+ * pill is a popover sheet instead of an in-place rewrite.
  */
 // Declared, not re-exported: the host snapshots the CJS export table eagerly, before a
 // module-scope `var` for a re-exported binding would have been assigned.
@@ -25,6 +28,7 @@ export default function contribute(client: PluginClientContext): () => void {
     return output.actions;
   };
 
+  const composerSupported = createWebComposerAdapter().isSupported();
   const removePills = registerAgentPills(
     client,
     (agent, isActive) => {
@@ -38,18 +42,25 @@ export default function contribute(client: PluginClientContext): () => void {
       });
       return (actionId) => runner.run(actionId);
     },
-    { listActions, readSettings },
+    {
+      listActions,
+      readSettings,
+      ...(composerSupported ? {} : { popover: createRewriteSheet(locateComposerFromProbe) }),
+    },
   );
+
+  const removeCommand = registerRewriteCommand(client, { listActions, readSettings });
 
   const removeSettingsScreen = client.addSettingsScreen({
     id: "prompt-kit",
-    title: "PromptKit",
+    title: "Settings",
     icon: PLUGIN_ICON,
     Component: PromptKitSettingsScreen,
   });
 
   return () => {
     removePills();
+    removeCommand();
     removeSettingsScreen();
   };
 }

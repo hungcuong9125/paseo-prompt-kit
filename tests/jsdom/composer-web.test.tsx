@@ -177,3 +177,16 @@ describe("web composer adapter", () => {
     expect(document.activeElement).toBe(field);
   });
 });
+
+describe("composer diagnostics", () => {
+  it("names the topology it found instead of a generic refusal", async () => {
+    const { describeComposerTopology, inspectComposers } = await import("../../client/composer-bridge/dom.js");
+    document.body.replaceChildren();
+    expect(describeComposerTopology(inspectComposers())).toContain("no Composer");
+    const a = mountComposer("a");
+    mountComposer("b");
+    expect(describeComposerTopology(inspectComposers())).toContain("2 visible Composers");
+    a.parentElement!.style.display = "none";
+    expect(inspectComposers().visibleRoots).toBe(1);
+  });
+});

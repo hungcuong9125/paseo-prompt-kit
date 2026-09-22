@@ -1,6 +1,6 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import type { ComposerAdapter } from "../composer-bridge/adapter.js";
-import { providerCatalogRpc, rewriteRpc, type ProviderCatalogOutput, type RewriteInput } from "../../shared/rpc.js";
+import { providerCatalogRpc, rewriteRpc, type RewriteInput } from "../../shared/rpc.js";
 import { promptKitSettingsSchema } from "../../shared/settings.js";
 import type { SettingsRead } from "../settings/read-settings.js";
 import { validateDedicatedSelection } from "../settings/selection.js";
@@ -9,76 +9,115 @@ export interface RewriteRunnerInput {
   adapter: ComposerAdapter;
   rpc: PluginClientContext["rpc"];
   readSettings: () => Promise<SettingsRead>;
-  agentId: string;
+  /** Null when the Composer has no agent yet (a new seat's draft). */
+  agentId: string | null;
   workspaceId: string;
-  /** False once this agent's pill is gone, so a late result is never applied. */
+  /** False once this runner's owner is gone, so a late result is never applied. */
   isActive: () => boolean;
 }
 
 export interface RewriteRunner {
+  /** Pill path: rewrite the Composer's own text in place. */
   run(actionId: string): Promise<void>;
+  /** Slash path: restore `/rewrite <text>` in the emptied Composer, then replace it with the rewrite. */
+  runText(actionId: string, text: string): Promise<void>;
   isBusy(): boolean;
 }
 
-/**
- * The rewrite path. Nothing here sends a message or writes outside the visible
- * Composer; every refusal throws the message the host turns into a toast, and
- * the Composer text is replaced only when it still holds the snapshot taken
- * before the request.
- */
+const SLASH_PREFIX = /^\s*\/rewrite(?:\s+|$)/i;
+
+/** What the host removed from the Composer when it ran the slash command. */
+export function slashLine(text: string): string {
+  return `/rewrite ${text}`;
+}
+
+/** A `/rewrite ` left in front of the prompt is not part of it. */
+export function stripSlashPrefix(text: string): string {
+  return text.replace(SLASH_PREFIX, "");
+}
+
+/** Never sends; writes the Composer only if it still holds what it held before the request. */
 export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
   let busy = false;
 
-  async function run(actionId: string): Promise<void> {
+  async function rewrite(actionId: string, source: string): Promise<string> {
+    const settings = await input.readSettings();
+    if (settings.status === "invalid") throw new Error(settings.error);
+    // API path needs no CLI catalog.
+    if (settings.values.transport === "cli" && settings.values.modelMode === "dedicated") {
+      const catalog = await input.rpc(providerCatalogRpc, {});
+      const selectionError = validateDedicatedSelection(settings.values, catalog.providers);
+      if (selectionError !== null) throw new Error(selectionError);
+    } else if (settings.values.transport === "api") {
+      const selectionError = validateDedicatedSelection(settings.values, []);
+      if (selectionError !== null) throw new Error(selectionError);
+    }
+    if (!input.isActive()) throw new Error("This agent is no longer available.");
+    const request: RewriteInput = {
+      actionId,
+      agentId: input.agentId,
+      workspaceId: input.workspaceId,
+      originalPrompt: source,
+      settings: promptKitSettingsSchema.parse(settings.values),
+    };
+    const output = await input.rpc(rewriteRpc, request);
+    if (output.status === "error") throw new Error(output.error.message);
+    if (!input.isActive()) throw new Error("This agent is no longer available; your text was kept.");
+    return output.rewrittenPrompt;
+  }
+
+  /** Writes `next` only when the Composer still holds `expected`. */
+  function apply(expected: string, next: string, changedMessage: string): void {
+    if (input.adapter.readText() !== expected) throw new Error(changedMessage);
+    if (!input.adapter.replaceText(next)) {
+      throw new Error("PromptKit could not find the Composer to update.");
+    }
+    input.adapter.focus();
+  }
+
+  async function guarded<T>(work: () => Promise<T>): Promise<T> {
     if (busy) throw new Error("PromptKit is already rewriting this prompt.");
-    const source = input.adapter.readText();
-    if (source === null) {
-      throw new Error("PromptKit needs one visible Composer.");
-    }
-    if (source.trim() === "") {
-      throw new Error("Write a prompt first.");
-    }
     busy = true;
     try {
-      const settings = await input.readSettings();
-      if (settings.status === "invalid") throw new Error(settings.error);
-      // The API path needs no provider catalog: its endpoints are in settings, so
-      // asking the daemon for a CLI catalog would be a wasted round trip and would
-      // refuse a valid configuration when the catalog is slow or unavailable.
-      if (settings.values.transport === "cli" && settings.values.modelMode === "dedicated") {
-        const catalog = await input.rpc(providerCatalogRpc, {});
-        const selectionError = validateDedicatedSelection(settings.values, catalog.providers);
-        if (selectionError !== null) throw new Error(selectionError);
-      } else if (settings.values.transport === "api") {
-        const selectionError = validateDedicatedSelection(settings.values, []);
-        if (selectionError !== null) throw new Error(selectionError);
-      }
-      if (!input.isActive()) {
-        throw new Error("This agent is no longer available.");
-      }
-      const request: RewriteInput = {
-        actionId,
-        agentId: input.agentId,
-        workspaceId: input.workspaceId,
-        originalPrompt: source,
-        settings: promptKitSettingsSchema.parse(settings.values),
-      };
-      const output = await input.rpc(rewriteRpc, request);
-      if (output.status === "error") throw new Error(output.error.message);
-      if (!input.isActive()) {
-        throw new Error("This agent is no longer available; your text was kept.");
-      }
-      if (input.adapter.readText() !== source) {
-        throw new Error("The prompt changed while PromptKit was rewriting; your text was kept.");
-      }
-      if (!input.adapter.replaceText(output.rewrittenPrompt)) {
-        throw new Error("PromptKit could not find the Composer to update.");
-      }
-      input.adapter.focus();
+      return await work();
     } finally {
       busy = false;
     }
   }
 
-  return { run, isBusy: () => busy };
+  return {
+    run: (actionId) =>
+      guarded(async () => {
+        const source = input.adapter.readText();
+        if (source === null) throw new Error(input.adapter.describeFailure());
+        const prompt = stripSlashPrefix(source);
+        if (prompt.trim() === "") throw new Error("Write a prompt first.");
+        const endEffect = input.adapter.beginRewriteEffect();
+        try {
+          const rewritten = await rewrite(actionId, prompt);
+          apply(source, rewritten, "The prompt changed while PromptKit was rewriting; your text was kept.");
+        } finally {
+          endEffect();
+        }
+      }),
+    runText: (actionId, text) =>
+      guarded(async () => {
+        if (text.trim() === "") throw new Error("Write a prompt after /rewrite.");
+        const current = input.adapter.readText();
+        if (current === null) throw new Error(input.adapter.describeFailure());
+        // Host emptied the Composer: restore the full line so nothing jumps, dim it, then replace.
+        const restored = slashLine(text);
+        if (current === "" && !input.adapter.replaceText(restored)) {
+          throw new Error("PromptKit could not find the Composer to update.");
+        }
+        const endEffect = input.adapter.beginRewriteEffect();
+        try {
+          const rewritten = await rewrite(actionId, text);
+          apply(restored, rewritten, "The prompt changed while PromptKit was rewriting; your text was kept.");
+        } finally {
+          endEffect();
+        }
+      }),
+    isBusy: () => busy,
+  };
 }

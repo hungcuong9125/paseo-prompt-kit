@@ -14,10 +14,7 @@ export interface ActionsSectionProps {
   reload(): void;
 }
 
-/**
- * Which loaded actions the Composer pill offers. One enabled action makes the
- * pill a direct button, two or more make it a menu, none hides it.
- */
+/** Per-action enable switches. */
 export function ActionsSection({ actions, error, values, disabled, patch, reload }: ActionsSectionProps) {
   return (
     <SettingsSection

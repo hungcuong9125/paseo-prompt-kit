@@ -24,12 +24,7 @@ const PROTOCOLS: Readonly<Record<ApiProtocolId, ApiProtocol>> = {
   gemini: geminiProtocol,
 };
 
-/**
- * Why a key could not be resolved, as a sentence that names the variable and
- * never a value. An unreadable `secrets.json` is its own case: telling the user
- * to "add it to secrets.json" when the file is malformed would send them to fix
- * the wrong thing.
- */
+/** Names the variable, never the value; an unreadable secrets.json is its own message. */
 function describeMissingKey(endpoint: ApiEndpoint, reason: ApiKeyLookupFailure): string {
   const name = endpoint.apiKeyEnv.trim();
   if (reason === "unreadable_secrets") {

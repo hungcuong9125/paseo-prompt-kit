@@ -1,15 +1,7 @@
 import { TIMEOUT_MS, type PromptKitSettings } from "../../shared/settings.js";
 import { validateEndpoint } from "./api-endpoints.js";
 
-/**
- * Why the draft cannot be saved as it stands, or null when it can.
- *
- * The host would refuse an out-of-range or malformed document anyway, but it
- * answers with a schema error. This runs first so the user gets a sentence that
- * names the field, and so an endpoint that cannot work is never written to the
- * document the daemon reads. Every rule here derives from the schema's own
- * bounds; none restates a value the schema does not carry.
- */
+/** Why the draft cannot be saved, or null. Bounds come from the schema constants. */
 export function findSaveProblem(values: PromptKitSettings): string | null {
   if (
     !Number.isInteger(values.timeoutMs) ||
@@ -36,10 +28,7 @@ export function findSaveProblem(values: PromptKitSettings): string | null {
   return null;
 }
 
-/**
- * The timeout's own row-level message: a range error, or a note that the budget
- * is above what the host will wait for. Null when there is nothing to say.
- */
+/** Row message for the timeout: range error, or a note above the host cap. */
 export function describeTimeout(timeoutMs: number): { error: string | null; note: string | null } {
   if (!Number.isInteger(timeoutMs) || timeoutMs < TIMEOUT_MS.min || timeoutMs > TIMEOUT_MS.max) {
     return {

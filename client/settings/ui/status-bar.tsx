@@ -53,11 +53,7 @@ function lines(readiness: Readiness, draft: SettingsDraft, actionsChanged: boole
   return out;
 }
 
-/**
- * The screen's single status area: whether a rewrite would run, over which
- * path, and the Save/Discard pair when there is something to save. One place,
- * at the top, so the user never scrolls to find out why the pill did nothing.
- */
+/** Readiness line plus Save/Discard when dirty. */
 export function StatusBar({ theme, readiness, draft, actionsChanged, compact }: StatusBarProps) {
   return (
     <Notice

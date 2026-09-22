@@ -24,14 +24,7 @@ export interface ProviderMapCardProps {
 const NONE = "";
 const REMOVE = "__remove__";
 
-/**
- * A per-provider map shown as its entries, not as the whole catalog.
- *
- * A Paseo host can carry dozens of provider profiles, and listing every one
- * with "Not mapped" turned a rarely used override into a screen-long table.
- * Only mapped providers get a row; the last row adds one. An unmapped
- * provider costs nothing to look at.
- */
+/** Per-provider map: one row per mapped provider plus an Add row, not the whole catalog. */
 export function ProviderMapCard({
   title,
   hint,
@@ -60,8 +53,6 @@ export function ProviderMapCard({
           error={errorFor?.(providerId, target) ?? null}
           value={target}
           options={[
-            // A saved target that is no longer offered stays visible so the row
-            // shows what the document holds instead of silently picking another.
             ...(targets.some((option) => option.value === target)
               ? []
               : [{ label: `${target} (missing)`, value: target }]),

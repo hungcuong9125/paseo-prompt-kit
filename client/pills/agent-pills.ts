@@ -1,5 +1,7 @@
+import type { ComponentType } from "react";
 import type {
   PluginButton,
+  PluginButtonContentProps,
   PluginButtonMenuEntry,
   PluginButtonRegistration,
   PluginClientContext,
@@ -20,21 +22,18 @@ export interface AgentPillDependencies {
   /** Loaded actions, from `prompt-kit.actions.list`. */
   listActions: () => Promise<readonly ActionSummary[]>;
   readSettings: () => Promise<SettingsRead>;
+  /** When set, the pill opens this popover (host renders it as a bottom sheet on mobile). */
+  popover?: ComponentType<PluginButtonContentProps>;
 }
 
 const PILL_ID = "prompt-kit";
 
-/**
- * Builds the pill for the enabled set `E`.
- *
- * The SDK has no settings-changed event for code outside the React tree, so `E`
- * is read when a pill is registered and a toggle takes effect on the next agent
- * mount or plugin reload. That limitation is recorded, not hidden: the pill is
- * never left in a shape that would run an action the user disabled without
- * knowing, because a stale shape only ever runs an action that was enabled when
- * the pill was built.
- */
-export function pillButton(enabled: readonly ActionSummary[], run: AgentPillRunner): PluginButton {
+/** Pill for the enabled set `E`: one action → button, several → menu, popover → sheet. `E` is read at registration. */
+export function pillButton(
+  enabled: readonly ActionSummary[],
+  run: AgentPillRunner,
+  popover?: ComponentType<PluginButtonContentProps>,
+): PluginButton {
   const first = enabled[0]!;
   const base = {
     title: "PromptKit",
@@ -42,10 +41,11 @@ export function pillButton(enabled: readonly ActionSummary[], run: AgentPillRunn
     label: "PromptKit",
   } as const;
 
+  if (popover !== undefined) {
+    return { ...base, behavior: { kind: "popover", Content: popover } };
+  }
+
   if (enabled.length === 1) {
-    // The icon stays the plugin's, not the action's: the pill and the settings
-    // screen title name the same plugin, so they must not show two different
-    // icons for it. The title still says which action this pill will run.
     return {
       ...base,
       title: first.title,
@@ -133,7 +133,7 @@ export function registerAgentPills(
       id: PILL_ID,
       workspaceId: agent.workspaceId,
       agentId: agent.agentId,
-      button: pillButton(enabled, createRunner(agent, isActive)),
+      button: pillButton(enabled, createRunner(agent, isActive), dependencies.popover),
     });
     entries.set(agent.agentId, { workspaceId: agent.workspaceId, registration });
   }

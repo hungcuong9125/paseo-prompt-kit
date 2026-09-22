@@ -27,6 +27,8 @@ export interface FakeClient {
   client: PluginClientContext;
   pills: FakePill[];
   screens: { id: string; title: string; icon: string; Component: unknown }[];
+  slashCommands: { name: string; context: string; onSubmit(context: unknown): Promise<void> | void }[];
+
   rpcCalls: { method: string; input: unknown }[];
   sent: number;
   live(): FakePill[];
@@ -62,6 +64,7 @@ export function createFakeClient(
 ): FakeClient {
   const pills: FakePill[] = [];
   const screens: { id: string; title: string; icon: string; Component: unknown }[] = [];
+  const slashCommands: FakeClient["slashCommands"] = [];
   const rpcCalls: { method: string; input: unknown }[] = [];
   const handlers = new Set<(update: FakeAgentUpdate) => void>();
   const state = { sent: 0 };
@@ -111,6 +114,13 @@ export function createFakeClient(
     addSettingsScreen(contribution: { id: string; title: string; icon: string; Component: unknown }) {
       screens.push(contribution);
       return () => {};
+    },
+    addSlashCommand(contribution: FakeClient["slashCommands"][number]) {
+      slashCommands.push(contribution);
+      return () => {
+        const index = slashCommands.indexOf(contribution);
+        if (index !== -1) slashCommands.splice(index, 1);
+      };
     },
     rpc: async (contract: { name: string }, input: unknown) => {
       rpcCalls.push({ method: contract.name, input });
@@ -162,6 +172,7 @@ export function createFakeClient(
     client: client as unknown as PluginClientContext,
     pills,
     screens,
+    slashCommands,
     rpcCalls,
     get sent() {
       return state.sent;

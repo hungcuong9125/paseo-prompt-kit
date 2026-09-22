@@ -28,12 +28,7 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * Reads the two daemon-side lists the screen needs once, with a retry for each.
- * The catalog is read on every transport: the CLI transport needs it for the
- * dedicated pickers and the per-provider CLI map, the API transport for the
- * per-provider endpoint map.
- */
+/** Provider catalog and action list, read once with retry. */
 function useCatalogs() {
   const listProviders = useRpc(providerCatalogRpc);
   const listActions = useRpc(actionsListRpc);
@@ -64,11 +59,7 @@ function useCatalogs() {
   return { providers, providersError, reloadProviders, actions, actionsError, reloadActions };
 }
 
-/**
- * The settings screen: a status bar that says whether a rewrite would run and
- * holds Save/Discard, then the sections in the order a first-time setup reads
- * them. Sections that a choice makes irrelevant are not rendered at all.
- */
+/** Status bar, then sections in setup order; irrelevant sections are not rendered. */
 function ReadyScreen({ settings, theme, layout }: { settings: ReadySettings } & PluginSurfaceProps) {
   const draft = useSettingsDraft(settings);
   const catalogs = useCatalogs();

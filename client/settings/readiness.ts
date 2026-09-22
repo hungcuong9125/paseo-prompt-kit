@@ -5,11 +5,7 @@ import { validateDedicatedSelection } from "./selection.js";
 
 type Providers = ProviderCatalogOutput["providers"];
 
-/**
- * The one line at the top of the screen: will pressing the pill rewrite, and
- * over which path? It is computed from the draft, so it describes what the user
- * is about to save, not what is saved.
- */
+/** Status line: would a rewrite run, over which path, and if not why. Computed from the draft. */
 export type Readiness =
   | { kind: "ready"; path: string; detail: string }
   | { kind: "blocked"; path: string; reason: string }

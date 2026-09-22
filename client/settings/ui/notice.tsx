@@ -15,12 +15,7 @@ export interface NoticeProps {
   testID?: string;
 }
 
-/**
- * A bordered card with a colored status dot: the screen's way of saying one
- * thing about its state without a paragraph of prose. Used for readiness and
- * for the unsaved-changes bar; both are the same shape on purpose so the top of
- * the screen reads as one status area.
- */
+/** Bordered card with a status dot, title and short lines. */
 export function Notice({ theme, tone, title, lines = [], trailing, compact, testID }: NoticeProps) {
   const text = useMemo(() => textStyles(theme), [theme]);
   const color = toneColor(theme, tone);

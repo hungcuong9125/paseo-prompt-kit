@@ -163,6 +163,62 @@ describe("runRewrite: current model", () => {
   });
 });
 
+describe("runRewrite: no agent (draft Composer)", () => {
+  const draft = { ...REWRITE_REQUEST, agentId: null };
+
+  it("refuses the current-model path with a message naming the alternatives", async () => {
+    const harness = createRewriteHarness({});
+    const output = await runRewrite(harness.paseo, draft, { settings: await settings(), spawn: harness.spawn });
+    expect(output.status).toBe("error");
+    if (output.status !== "error") throw new Error("expected error");
+    expect(output.error.code).toBe("invalid_selection");
+    expect(output.error.message).toContain("no agent yet");
+    expect(harness.spawned).toEqual([]);
+    expect(harness.mainAgentCalls).toEqual([]);
+  });
+
+  it("runs a dedicated CLI without reading any agent", async () => {
+    const harness = createRewriteHarness({
+      models: [{ provider: "claude", available: true, models: ["claude-haiku-4-5"] }],
+    });
+    const output = await runRewrite(harness.paseo, draft, {
+      settings: await settings({
+        modelMode: "dedicated",
+        dedicatedProvider: "claude",
+        dedicatedModel: "claude-haiku-4-5",
+      }),
+      spawn: harness.spawn,
+    });
+    expect(output.status).toBe("ok");
+    expect(harness.spawned[0]?.command).toBe("claude");
+    expect(harness.mainAgentCalls).toEqual([]);
+  });
+
+  it("ignores provider mappings on the API path and needs the dedicated endpoint", async () => {
+    const harness = createRewriteHarness({});
+    const output = await runRewrite(harness.paseo, draft, {
+      settings: await settings({
+        transport: "api",
+        apiEndpoints: [
+          {
+            id: "groq",
+            label: "Groq",
+            protocol: "openai",
+            baseUrl: "https://api.groq.com/openai/v1",
+            apiKeyEnv: "GROQ_API_KEY",
+            models: [],
+          },
+        ],
+        apiEndpointByProvider: { "pi-peer": "groq" },
+      }),
+      spawn: harness.spawn,
+    });
+    expect(output.status).toBe("error");
+    if (output.status !== "error") throw new Error("expected error");
+    expect(output.error.code).toBe("invalid_selection");
+  });
+});
+
 describe("runRewrite: output language", () => {
   it("refuses an output language id that is not loaded and runs nothing", async () => {
     const { createRewriteHandler } = await import("../../server/rewrite-engine/handler.js");

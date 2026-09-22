@@ -111,10 +111,7 @@ export async function resolveApiKey(input: {
   const secrets = await readSecretsFile(secretsFilePath(input.secretsDir, env));
   if (isLookup(secrets)) {
     if (secrets.ok) return secrets;
-    // A missing file only means this host uses environment variables, so the
-    // name is what the user must fix: report the key as missing. An unreadable
-    // file is a different problem and must keep its own reason, or the user is
-    // told to add a key to a file that cannot be parsed.
+    // Missing file → missing key; unreadable file keeps its own reason.
     return secrets.reason === "unreadable_secrets"
       ? secrets
       : { ok: false, reason: "missing_key" };

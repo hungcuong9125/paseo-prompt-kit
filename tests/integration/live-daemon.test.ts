@@ -239,7 +239,10 @@ async function allAgents(): Promise<{ id: string; cwd: string; createdAt: string
   const rows: { id: string; cwd: string; createdAt: string }[] = [];
   let cursor: string | null = null;
   do {
-    const listed = await client!.fetchAgents({
+    const listed: {
+      entries: { agent: { id: string; cwd: string; createdAt: string } }[];
+      pageInfo?: { hasMore?: boolean; nextCursor?: string | null };
+    } = await client!.fetchAgents({
       filter: {},
       page: cursor === null ? { limit: PAGE_LIMIT } : { limit: PAGE_LIMIT, cursor },
     });

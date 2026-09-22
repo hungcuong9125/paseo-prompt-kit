@@ -20,27 +20,14 @@ export interface SettingsDraft {
   readonly problem: string | null;
   /** True right after a successful save, until the next edit. */
   readonly justSaved: boolean;
-  /**
-   * Increments when the draft is discarded or saved. Uncontrolled inputs key on
-   * it so they re-read their initial value instead of keeping stale text.
-   */
+  /** Bumps on discard/save; uncontrolled inputs key on it. */
   readonly epoch: number;
   patch(update: SettingsPatch): void;
   discard(): void;
   save(): Promise<void>;
 }
 
-/**
- * Local edits on top of the host document, saved in one revision-checked write.
- *
- * Patches are functional so two edits in the same tick compose instead of the
- * later one overwriting the earlier: the endpoint test writes a model list back
- * while the user may be typing in another field of the same endpoint.
- *
- * The revision is taken when the first edit is made and kept until the draft is
- * saved or discarded, so a save from another client shows up as a conflict from
- * the host rather than silently overwriting it.
- */
+/** Draft over the host document; functional patches; revision pinned at first edit. */
 export function useSettingsDraft(settings: ReadySettings): SettingsDraft {
   const [draft, setDraft] = useState<{ values: PromptKitSettings; revision: string } | null>(null);
   const [justSaved, setJustSaved] = useState(false);

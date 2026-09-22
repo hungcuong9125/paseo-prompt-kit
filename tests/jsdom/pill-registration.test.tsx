@@ -229,3 +229,23 @@ describe("registry read economy", () => {
     cleanup();
   });
 });
+
+describe("hosts without a Composer DOM", () => {
+  it("makes the pill a popover sheet instead of an in-place rewrite", async () => {
+    const web = await import("../../client/composer-bridge/web.js");
+    const real = web.createWebComposerAdapter;
+    const spy = vi.spyOn(web, "createWebComposerAdapter").mockImplementation(() => ({
+      ...real(),
+      isSupported: () => false,
+    }));
+    const { fake, cleanup } = await mountWith({}, [agentA]);
+    const behavior = button(fake.live()[0]!).behavior as { kind: string; Content?: unknown };
+    expect(behavior.kind).toBe("popover");
+    // The sheet's header is the plugin name, not the action's title.
+    expect(button(fake.live()[0]!).title).toBe("PromptKit");
+    expect(typeof behavior.Content).toBe("function");
+    expect(fake.rpcCalls.map((call) => call.method)).not.toContain("prompt-kit.rewrite");
+    cleanup();
+    spy.mockRestore();
+  });
+});

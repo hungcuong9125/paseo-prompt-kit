@@ -22,11 +22,7 @@ export interface AdvancedSectionProps {
 
 const NONE = "";
 
-/**
- * Everything a first-time setup does not need: the timeout, the secrets
- * directory, and the two per-provider maps. Collapsed by default so the main
- * flow stays three sections long; the header button opens it.
- */
+/** Timeout, secrets dir, per-provider maps. Collapsed by default. */
 export function AdvancedSection({ theme, values, providers, disabled, epoch, patch }: AdvancedSectionProps) {
   const [open, setOpen] = useState(false);
   const timeout = describeTimeout(values.timeoutMs);
@@ -57,8 +53,6 @@ export function AdvancedSection({ theme, values, providers, disabled, epoch, pat
               disabled={disabled}
               onChangeText={(text) => {
                 const parsed = Number(text.trim());
-                // A blank or non-numeric field is left as a range error, never
-                // silently replaced with a value the user did not type.
                 patch({ timeoutMs: Number.isFinite(parsed) ? parsed : Number.NaN });
               }}
             />

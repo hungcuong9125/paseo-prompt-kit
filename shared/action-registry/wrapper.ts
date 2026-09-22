@@ -13,12 +13,7 @@ export function escapeWrapperDelimiters(text: string): string {
   return text.replace(/<(\/?)(user_prompt|task)\b/gi, "&lt;$1$2");
 }
 
-/**
- * Assembles the task. `languageInstruction` is the output-language sentence
- * from the language registry, or null to keep the prompt's own language; it is
- * placed inside `<task>` so it is instruction text, never part of the untrusted
- * `<user_prompt>` block.
- */
+/** Builds `<task>` (+ optional output-language line) and the escaped `<user_prompt>`. */
 export function buildTaskPrompt(
   definition: ActionDefinition,
   originalPrompt: string,

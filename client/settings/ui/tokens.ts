@@ -1,14 +1,7 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import type { TextStyle } from "react-native";
 
-/**
- * The few visual constants PromptKit's own components share with the host.
- *
- * The host does not export its spacing, radius or font-size scale to plugins,
- * only its colors, so the values below mirror `packages/app/src/styles/theme.ts`
- * (spacing 2/3/4 = 8/12/16, radius lg = 8, font sm/base = 12/14). Keeping them
- * in one place means a host change is one edit here, not a hunt through JSX.
- */
+/** Spacing/radius/font values mirrored from the host theme (not exported to plugins). */
 export const SPACE = { xs: 4, sm: 8, md: 12, lg: 16 } as const;
 export const RADIUS = { md: 6, lg: 8 } as const;
 export const FONT = { sm: 12, base: 14 } as const;

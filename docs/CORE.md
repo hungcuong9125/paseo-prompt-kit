@@ -27,7 +27,7 @@ Hệ quả thứ hai: daemon không bao giờ biết plugin nằm ở đâu trê
 ## 2. Bố cục và trách nhiệm một câu
 
 ```text
-index.client.tsx                 Gắn pill + màn Settings vào host; trả cleanup.
+index.client.tsx                 Gắn pill, lệnh /rewrite, panel và màn Settings; không DOM thì pill mở panel.
 index.server.ts                  Đăng ký settings và bốn RPC; composition root của daemon.
 
 shared/                          Hợp đồng chung cho cả hai bundle
@@ -55,9 +55,14 @@ client/                          Đóng góp phía app
     adapter.ts                     Giao diện trung lập nền tảng.
     dom.ts                         Selector + kiểm tra hiển thị theo chuỗi tổ tiên.
     web.ts                         Cài đặt DOM cho Desktop/Web.
+    fiber.ts                       Native: tìm MessageInputRef của Composer theo agentId qua cây React (replaceText cập nhật cả state).
+    effect.ts                      Hiệu ứng "đang rewrite": mờ ô nhập + vệt sáng quét, gỡ khi xong.
   pills/                         Một pill cho mỗi agent sống và đường rewrite được canh gác
     agent-pills.ts                 Đăng ký/gỡ pill theo thư mục agent; hình pill theo tập E.
-    rewrite-runner.ts              Đọc Composer → RPC → thay text chỉ khi snapshot còn khớp.
+    rewrite-runner.ts              run(): Composer → RPC → thay text nếu snapshot còn khớp;
+                                   runText(): text → RPC → chèn vào Composer nếu còn trống.
+  commands/rewrite-command.ts    Lệnh /rewrite <prompt>, scope workspace (seat mới, agentId null); chỉ Desktop/Web.
+  sheet/rewrite-sheet.tsx        Popover của pill trên mobile: mở là đọc Composer và rewrite ngay; Send gửi + xoá Composer; ✕ giữ nguyên.
   actions/enabled.ts             Tập E: action đã nạp mà người dùng bật.
   icon.ts                        Icon duy nhất của plugin.
   settings/                      Màn Settings (feature folder)
@@ -141,7 +146,7 @@ Ranh giới injection thuộc Core (`wrapper.ts`), pack không được bọc. P
 
 | RPC | Vào | Ra |
 |---|---|---|
-| `prompt-kit.rewrite` | `actionId` (regex), `agentId`, `workspaceId`, `originalPrompt` ≤ 50 000, `settings` (snapshot, host 0.8.0 không cho server đọc settings) | `ok{rewrittenPrompt, model, durationMs}` hoặc `error{code, message}` |
+| `prompt-kit.rewrite` | `actionId` (regex), `agentId` (null trên draft), `workspaceId`, `originalPrompt` ≤ 50 000, `settings` (snapshot, host 0.8.0 không cho server đọc settings) | `ok{rewrittenPrompt, model, durationMs}` hoặc `error{code, message}` |
 | `prompt-kit.actions.list` | `{}` | các action đã nạp hợp lệ, **chưa** áp settings |
 | `prompt-kit.providers` | `cwd?` | catalog daemon + `available` |
 | `prompt-kit.api.test` | một endpoint + `secretsFile` | danh sách model hoặc lỗi có mã |

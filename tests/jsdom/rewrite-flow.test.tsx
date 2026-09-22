@@ -258,7 +258,7 @@ describe("rewrite flow", () => {
     );
     const press = itemPress(fake.fake.live()[0]!);
     unmountComposer();
-    await expect(press()).rejects.toThrow("one visible Composer");
+    await expect(press()).rejects.toThrow("found no Composer");
     fake.cleanup();
   });
 

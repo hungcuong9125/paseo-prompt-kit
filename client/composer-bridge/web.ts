@@ -1,5 +1,6 @@
 import type { ComposerAdapter } from "./adapter.js";
-import { locateComposerField, setNativeValue } from "./dom.js";
+import { describeComposerTopology, inspectComposers, locateComposerField, setNativeValue } from "./dom.js";
+import { startRewriteEffect } from "./effect.js";
 
 export { COMPOSER_INPUT_SELECTOR, COMPOSER_ROOT_SELECTOR, isElementVisible } from "./dom.js";
 
@@ -41,6 +42,17 @@ export function createWebComposerAdapter(): ComposerAdapter {
     focus(): void {
       if (typeof document === "undefined") return;
       locateField()?.focus();
+    },
+    beginRewriteEffect(): () => void {
+      if (typeof document === "undefined") return () => {};
+      const field = locateField();
+      return field ? startRewriteEffect(field) : () => {};
+    },
+    describeFailure(): string {
+      if (typeof document === "undefined") {
+        return "PromptKit can rewrite only on Desktop and Web: the mobile app gives plugins no access to the Composer text.";
+      }
+      return describeComposerTopology(inspectComposers());
     },
   };
 }

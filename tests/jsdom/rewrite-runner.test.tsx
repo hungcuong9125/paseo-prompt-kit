@@ -11,6 +11,8 @@ function adapter(overrides: Partial<ComposerAdapter> = {}): ComposerAdapter {
     readText: () => "original",
     replaceText: () => true,
     focus: () => {},
+    describeFailure: () => "no composer",
+    beginRewriteEffect: () => () => {},
     ...overrides,
   };
 }
@@ -77,5 +79,23 @@ describe("rewrite runner", () => {
     expect(current.isBusy()).toBe(false);
     await expect(current.run("coding")).resolves.toBeUndefined();
     expect(attempts).toBe(2);
+  });
+
+  it("drops a leftover /rewrite prefix before rewriting from the pill", async () => {
+    let sent = "";
+    let written = "";
+    const current = runner({
+      adapter: adapter({ readText: () => "/rewrite   fix the bug", replaceText: (next) => ((written = next), true) }),
+      rpc: (async (contract: { name: string }, value: { originalPrompt?: string }) => {
+        if (contract.name === "prompt-kit.rewrite") sent = value.originalPrompt ?? "";
+        return { status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1 };
+      }) as never,
+    });
+    await current.run("coding");
+    expect(sent).toBe("fix the bug");
+    expect(written).toBe("improved");
+    await expect(runner({ adapter: adapter({ readText: () => "/rewrite" }) }).run("coding")).rejects.toThrow(
+      "Write a prompt first.",
+    );
   });
 });

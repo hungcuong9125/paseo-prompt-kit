@@ -8,7 +8,8 @@ import { runCliRewrite } from "../transports/cli/runner.js";
 import { validateRewriteOutput } from "./output-validator.js";
 
 export interface RewriteRequest {
-  agentId: string;
+  /** Null for a Composer that has no agent yet. */
+  agentId: string | null;
   workspaceId: string;
   systemPrompt: string;
   /** The user's own prompt; protected-literal validation runs against this, not the wrapper. */
@@ -28,15 +29,7 @@ export interface RewriteDependencies {
   env?: NodeJS.ProcessEnv;
 }
 
-/**
- * One rewrite, end to end: resolve the target, run it over its transport, and
- * validate the answer. The engine knows nothing about *which* action is
- * running — the prompts arrive already built — and nothing about how a model
- * was chosen, which is the resolver's job.
- *
- * Fail closed throughout: a refused target, a failed transport, or a rejected
- * answer is a typed error, and the Composer text is never touched by any of them.
- */
+/** resolve target → run transport → validate. Every failure is a typed error. */
 export async function runRewrite(
   paseo: PaseoApi,
   request: RewriteRequest,
@@ -80,8 +73,6 @@ export async function runRewrite(
     return { status: "error", error: { code: generated.code, message: generated.message } };
   }
 
-  // Both transports feed the same validator against the same original prompt, so a
-  // protected literal cannot survive one path and be dropped by the other.
   const validated = validateRewriteOutput({
     originalPrompt: request.originalPrompt,
     output: generated.text,

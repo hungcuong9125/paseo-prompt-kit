@@ -18,11 +18,7 @@ function describeEntry(entry: unknown, index: number): string {
   return `#${index}`;
 }
 
-/**
- * Loads the language barrel. Same contract as the action pack loader: a bad
- * entry is rejected on its own, a duplicate id rejects both, and nothing falls
- * back to another language.
- */
+/** Same contract as the pack loader: bad entry rejected alone, duplicate id rejects both. */
 export function loadLanguageRegistry(entries: readonly unknown[]): LanguageRegistry {
   const parsed: { source: string; language: OutputLanguage }[] = [];
   const rejected: RejectedLanguage[] = [];

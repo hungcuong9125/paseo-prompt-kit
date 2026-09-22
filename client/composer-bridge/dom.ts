@@ -36,6 +36,40 @@ export function isElementVisible(element: Element): boolean {
  * exactly one visible field must be provable; any other topology returns null so
  * the caller refuses instead of rewriting a Composer it cannot identify.
  */
+export interface ComposerTopology {
+  roots: number;
+  visibleRoots: number;
+  fields: number;
+  visibleFields: number;
+}
+
+/** Counts the Composer roots and fields, for diagnostics. */
+export function inspectComposers(root: ParentNode = document): ComposerTopology {
+  const roots = Array.from(root.querySelectorAll(COMPOSER_ROOT_SELECTOR));
+  const visibleRoots = roots.filter(isElementVisible);
+  const fields = visibleRoots.flatMap((entry) =>
+    Array.from(entry.querySelectorAll<HTMLTextAreaElement>(COMPOSER_INPUT_SELECTOR)),
+  );
+  return {
+    roots: roots.length,
+    visibleRoots: visibleRoots.length,
+    fields: fields.length,
+    visibleFields: fields.filter(isElementVisible).length,
+  };
+}
+
+export function describeComposerTopology(topology: ComposerTopology): string {
+  if (topology.roots === 0) return "PromptKit found no Composer on this screen.";
+  if (topology.visibleRoots === 0) {
+    return `PromptKit found ${topology.roots} Composer(s) but none is visible.`;
+  }
+  if (topology.visibleRoots > 1) {
+    return `PromptKit found ${topology.visibleRoots} visible Composers and cannot tell which one to rewrite.`;
+  }
+  if (topology.visibleFields === 0) return "PromptKit found the Composer but not its text field.";
+  return `PromptKit found ${topology.visibleFields} text fields in the Composer.`;
+}
+
 export function locateComposerField(root: ParentNode = document): HTMLTextAreaElement | null {
   const roots = Array.from(root.querySelectorAll(COMPOSER_ROOT_SELECTOR)).filter(isElementVisible);
   if (roots.length !== 1) return null;

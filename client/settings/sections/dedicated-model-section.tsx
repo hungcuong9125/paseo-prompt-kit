@@ -18,11 +18,7 @@ export interface DedicatedModelSectionProps {
 /** Empty string is the "no selection" option; the schema stores null for it. */
 const NONE = "";
 
-/**
- * The dedicated provider, model and thinking option for the CLI transport,
- * checked against the daemon's live catalog. Each row carries its own error so
- * the user sees which of the three to fix, not one message for all of them.
- */
+/** Dedicated provider/model/thinking for the CLI transport, with per-row errors. */
 export function DedicatedModelSection({
   values,
   providers,

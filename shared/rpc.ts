@@ -40,7 +40,8 @@ export const rewriteRpc = defineRpc({
   name: "prompt-kit.rewrite",
   input: z.object({
     actionId: z.string().regex(ACTION_ID_PATTERN),
-    agentId: z.string().min(1),
+    /** Null for a draft Composer with no agent yet. */
+    agentId: z.string().min(1).nullable(),
     workspaceId: z.string().min(1),
     originalPrompt: z.string().min(1).max(50_000),
     settings: promptKitSettingsSchema,

@@ -14,16 +14,7 @@ export const modelModeSchema = z.enum(["current", "dedicated"]);
  */
 export const transportSchema = z.enum(["cli", "api"]);
 
-/**
- * The budget one rewrite may spend, in milliseconds. The settings screen reads
- * the same numbers so its check and the schema cannot disagree.
- *
- * `hostRpcCapMs` is not a PromptKit choice: the daemon rejects any plugin call
- * after 30 s (`@getpaseo/server` `plugins/runtime.ts`, `REQUEST_TIMEOUT_MS`), so
- * a budget above it is accepted but cannot be reached in practice. The screen
- * says so; the schema does not forbid it, because the cap is the host's and may
- * change without a plugin release.
- */
+/** Rewrite budget bounds. `hostRpcCapMs` is the daemon's own 30 s plugin-RPC cap. */
 export const TIMEOUT_MS = {
   min: 1_000,
   max: 600_000,
@@ -78,11 +69,7 @@ export const promptKitSettingsSchema = z.object({
    * settings migration and a removed pack leaves no stale state behind.
    */
   actionEnabled: z.record(z.string(), z.boolean()).default({}),
-  /**
-   * The language the rewritten prompt is written in: `SOURCE_LANGUAGE` keeps
-   * the prompt's own language, any other value must be a loaded entry of
-   * `shared/languages/`. The daemon refuses an id it cannot resolve.
-   */
+  /** `SOURCE_LANGUAGE` or a loaded id from `shared/languages/`. */
   outputLanguage: z.string().regex(LANGUAGE_ID_PATTERN).default(SOURCE_LANGUAGE),
 });
 

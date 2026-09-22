@@ -49,6 +49,12 @@ function wordCount(text: string): number {
   return text.split(/\s+/).filter(Boolean).length;
 }
 
+/** Literals can be whole code blocks; the message needs only enough to recognise them. */
+function clip(value: string, max = 60): string {
+  const flat = value.replace(/\s+/g, " ").trim();
+  return flat.length <= max ? flat : `${flat.slice(0, max - 1)}…`;
+}
+
 function fail(code: RewriteError["code"], message: string): OutputValidation {
   return { ok: false, error: { code, message } };
 }
@@ -116,7 +122,7 @@ export function validateRewriteOutput(input: {
       "protected_literal_loss",
       `The rewrite dropped ${missing.length} protected literal(s): ${missing
         .slice(0, 5)
-        .map((literal) => literal.value)
+        .map((literal) => `${literal.kind.replace("_", " ")} "${clip(literal.value)}"`)
         .join(", ")}`,
     );
   }

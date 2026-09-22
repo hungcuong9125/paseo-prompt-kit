@@ -202,3 +202,40 @@ export const pluginUiMock = {
       createElement("button", { "data-label": label, onClick: onPress, disabled }, actionLabel),
     ),
 };
+
+/** `@getpaseo/plugin/client/react-native`: a DOM textarea and a recording toast. */
+export const toastCalls: { kind: "show" | "error"; message: string }[] = [];
+export const pluginReactNativeMock = {
+  TextInput: ({
+    value,
+    onChangeText,
+    onSubmitEditing,
+    editable,
+    multiline,
+    blurOnSubmit,
+    returnKeyType,
+    placeholderTextColor,
+    ...props
+  }: {
+    value?: string;
+    onChangeText?(text: string): void;
+    onSubmitEditing?(): void;
+    editable?: boolean;
+  } & Record<string, unknown>) =>
+    createElement("textarea", {
+      ...domProps(props),
+      value: value ?? "",
+      disabled: editable === false,
+      onChange: (event: { target: { value: string } }) => onChangeText?.(event.target.value),
+      onKeyDown: (event: { key: string; preventDefault(): void }) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          onSubmitEditing?.();
+        }
+      },
+    }),
+  useToast: () => ({
+    show: (message: string) => toastCalls.push({ kind: "show", message }),
+    error: (message: string) => toastCalls.push({ kind: "error", message }),
+  }),
+};
