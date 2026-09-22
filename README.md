@@ -20,6 +20,22 @@ No path sends the message on its own. You review the result and send it yourself
 - For the CLI transports: a provider/model reachable by the daemon, and that provider's CLI on the daemon's `PATH`.
 - For the API transport: an endpoint URL, a model id, and a key — see [API keys](#api-keys).
 
+## Install from npm (recommended)
+
+PromptKit is published on npm as [`paseo-prompt-kit`](https://www.npmjs.com/package/paseo-prompt-kit). On Paseo 0.9:
+
+```bash
+paseo plugin add npm:paseo-prompt-kit
+paseo plugin ls
+```
+
+Pin a release by adding its version, for example `npm:paseo-prompt-kit@0.5.3`. The plugin id stays `prompt-kit`, so reload and logs use that id:
+
+```bash
+paseo plugin reload prompt-kit
+paseo plugin logs prompt-kit
+```
+
 ## Install from a local directory
 
 ```bash
@@ -49,7 +65,7 @@ paseo plugin ls
 `--ref` chooses the initial branch, tag, or commit once; later `paseo plugin update prompt-kit` follows the remote's default HEAD. Pin a release instead of tracking `main` by giving `--ref` a tag:
 
 ```bash
-paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.5.2
+paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.5.3
 ```
 
 `paseo plugin ls` reports the installed commit.
