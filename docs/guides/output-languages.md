@@ -1,31 +1,32 @@
-# Thêm một ngôn ngữ đầu ra
+# Add an output language
 
-Settings → **Rewrite engine → Output language** quyết định ngôn ngữ của prompt sau khi rewrite:
+Settings → **Rewrite engine → Output language** decides the language of the prompt after it's
+rewritten:
 
-- **Same as the prompt** (mặc định): giữ nguyên ngôn ngữ bạn viết. Không chèn gì thêm.
-- **English**, **Tiếng Việt**, …: phần văn xuôi được dịch sang ngôn ngữ đó; đường dẫn, lệnh,
-  code, tên model/tool giữ nguyên (validator vẫn kiểm tra).
+- **Same as the prompt** (default): keeps the language you wrote in. Nothing extra is inserted.
+- **English**, **Tiếng Việt**, …: the prose is translated into that language; paths, commands,
+  code, and model/tool names stay exactly as written (the validator still checks).
 
-Mỗi ngôn ngữ là **một file JSON** dưới `shared/languages/`. Core nạp, validate, và khi bạn chọn
-nó, chèn câu `instruction` vào khối `<task>` gửi cho model. Thêm ngôn ngữ **không cần sửa
-TypeScript**.
+Each language is **one JSON file** under `shared/languages/`. Core loads it, validates it, and
+when you select it, inserts its `instruction` sentence into the `<task>` block sent to the
+model. Adding a language **needs no TypeScript changes**.
 
-## Bước 1 — Tạo file từ template
+## Step 1 — Create the file from the template
 
 ```bash
 cp docs/templates/output-language.template.json shared/languages/ja.json
 ```
 
-## Bước 2 — Điền nội dung
+## Step 2 — Fill in the fields
 
-| Trường | Ý nghĩa | Ràng buộc |
+| Field | Meaning | Constraint |
 |---|---|---|
-| `schemaVersion` | luôn `1` | |
-| `id` | giá trị lưu trong settings `outputLanguage` | `^[a-z][a-z0-9-]*$`, duy nhất, không được là `source` |
-| `label` | tên hiển thị trong select | ≤ 80 ký tự; viết bằng chính ngôn ngữ đó là dễ nhận nhất |
-| `instruction` | câu Core gửi cho model, **viết bằng tiếng Anh** | ≤ 2 000 ký tự |
+| `schemaVersion` | always `1` | |
+| `id` | the value stored in settings `outputLanguage` | `^[a-z][a-z0-9-]*$`, unique, must not be `source` |
+| `label` | display name in the select | ≤ 80 characters; writing it in that language itself reads clearest |
+| `instruction` | the sentence Core sends to the model, **written in English** | ≤ 2,000 characters |
 
-Ví dụ `shared/languages/ja.json`:
+Example `shared/languages/ja.json`:
 
 ```json
 {
@@ -36,10 +37,10 @@ Ví dụ `shared/languages/ja.json`:
 }
 ```
 
-Giữ vế "keep every technical literal …" trong `instruction`: nếu model dịch cả tên file hay lệnh,
-validator sẽ từ chối rewrite vì mất protected literal.
+Keep the "keep every technical literal …" clause in `instruction`: if the model translates a
+file name or a command too, the validator rejects the rewrite for a lost protected literal.
 
-## Bước 3 — Đăng ký vào barrel
+## Step 3 — Register it in the barrel
 
 `shared/languages/index.ts`:
 
@@ -51,26 +52,31 @@ import ja from "../languages/ja.json";
 export const bundledLanguages: readonly unknown[] = [en, vi, ja];
 ```
 
-Thứ tự trong mảng là thứ tự trong select (sau "Same as the prompt").
+The array's order is the select's order (after "Same as the prompt").
 
-## Bước 4 — Kiểm chứng
+## Step 4 — Verify
 
 ```bash
-npm run gate                      # tests/unit/languages.test.ts nạp barrel thật
+npm run gate                      # tests/unit/languages.test.ts loads the real barrel
 paseo plugin reload prompt-kit
-paseo plugin logs prompt-kit      # KHÔNG được có dòng "output languages rejected"
+paseo plugin logs prompt-kit      # must NOT show an "output languages rejected" line
 ```
 
-Mở Settings → Rewrite engine → Output language: có mục mới. Chọn, Save, rồi bấm pill trong một
-Composer có prompt: kết quả phải ở ngôn ngữ đó và mọi literal còn nguyên.
+Open Settings → Rewrite engine → Output language: a new entry appears. Select it, Save, then
+press the pill in a Composer that has a prompt: the result must be in that language with every
+literal intact.
 
-## Cách Core dùng ngôn ngữ (để hiểu, không cần sửa)
+## How Core uses a language (for understanding, no edits needed)
 
-- `shared/language-registry/` nạp barrel và cung cấp `resolveLanguage(id)`:
-  `source` ⇒ không chèn gì; id đã nạp ⇒ `instruction`; id lạ ⇒ từ chối rewrite (`invalid_selection`).
-- `shared/action-registry/wrapper.ts` chèn `Output language: <instruction>` **bên trong** `<task>`,
-  không bao giờ trong `<user_prompt>`, nên prompt người dùng không thể giả mạo nó.
-- Pack `coding` có câu *"Preserve the user's language unless the task names an output language"*.
-  Pack mới nên có câu tương tự (xem [action-packs.md](action-packs.md)).
-- Settings đang giữ một id không còn được nạp (bạn xoá file) thì status bar báo
-  *No output language is loaded with the id "…"* và rewrite bị chặn cho tới khi chọn lại.
+- `shared/language-registry/` loads the barrel and exposes `resolveLanguage(id)`: `source` ⇒
+  inserts nothing; a loaded id ⇒ its `instruction`; an unknown id ⇒ the rewrite is rejected
+  (`invalid_selection`).
+- `shared/action-registry/wrapper.ts` inserts `Output language: <instruction>` **inside**
+  `<task>`, never inside `<user_prompt>`, so the user's prompt can never forge it.
+- The `coding` pack carries the sentence *"Preserve the user's language unless the task names
+  an output language"*. A new pack should carry the same sentence (see
+  [action-packs.md](action-packs.md)).
+- If settings hold an id that's no longer loaded (you deleted the file), the status bar reports
+  *No output language is loaded with the id "…"* and rewrite is blocked until you pick another
+  one.
+</content>

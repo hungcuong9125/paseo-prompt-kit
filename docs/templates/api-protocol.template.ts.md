@@ -1,7 +1,8 @@
 # Template — `server/transports/api/<protocol>.ts`
 
-Một module protocol sở hữu đúng ba việc: dựng request, đọc answer, liệt kê model.
-Mọi thứ khác (key, timeout, mã lỗi, validator) là của `runner.ts` và không lặp lại ở đây.
+A protocol module owns exactly three things: building the request, reading the answer, listing
+models. Everything else (key, timeout, error codes, validator) belongs to `runner.ts` and must
+not be repeated here.
 
 ```ts
 import {
@@ -16,33 +17,33 @@ import {
 } from "./protocol.js";
 
 /**
- * <Tên vendor> <tên API>.
+ * <Vendor name> <API name>.
  *
- * Ghi ở đây điều khiến protocol này KHÁC ba protocol có sẵn: header xác thực,
- * chỗ đặt system prompt, hình dạng answer. Nếu không có gì khác OpenAI shape,
- * bạn không cần module này — chỉ cần một preset (docs/EXTENDING.md §5).
+ * State here what makes this protocol DIFFERENT from the three existing ones: the auth
+ * header, where the system prompt goes, the answer's shape. If nothing differs from the
+ * OpenAI shape, you don't need this module — just a preset (docs/EXTENDING.md §5).
  */
 export const myProtocol: ApiProtocol = {
-  id: "my-protocol", // thêm vào API_PROTOCOL_IDS (shared/api-protocol.ts)
+  id: "my-protocol", // add to API_PROTOCOL_IDS (shared/api-protocol.ts)
   buildRequest(call: ApiCall): ApiHttpRequest {
     return {
       url: joinUrl(call.baseUrl, "/v1/complete"),
       headers: {
         "content-type": "application/json",
-        // Key rỗng = local server: authHeaders bỏ header thay vì gửi "Bearer ".
+        // Empty key = local server: authHeaders drops the header instead of sending "Bearer ".
         ...authHeaders(call.apiKey, (key) => ({ authorization: `Bearer ${key}` })),
       },
       body: JSON.stringify({
         model: call.model,
         system: call.systemPrompt,
         input: call.taskPrompt,
-        temperature: 0, // rewrite là biến đổi, không phải sáng tác
+        temperature: 0, // rewrite is transformation, not composition
       }),
     };
   },
   parseResponse(payload: unknown): string | null {
     const text = at(payload, "output", 0, "text");
-    return typeof text === "string" ? text : null; // null ⇒ runner báo api_bad_response
+    return typeof text === "string" ? text : null; // null ⇒ the runner reports api_bad_response
   },
   buildModelsRequest(call: ApiModelsCall): ApiHttpRequest {
     return {
@@ -57,5 +58,7 @@ export const myProtocol: ApiProtocol = {
 };
 ```
 
-Đăng ký: `PROTOCOLS` trong `server/transports/api/runner.ts`, `PROTOCOL_OPTIONS` trong
-`client/settings/api-endpoints.ts`. Test theo mẫu `tests/unit/api-protocols.test.ts`.
+Register it: `PROTOCOLS` in `server/transports/api/runner.ts`, `PROTOCOL_OPTIONS` in
+`client/settings/api-endpoints.ts`. Test following the pattern in
+`tests/unit/api-protocols.test.ts`.
+</content>

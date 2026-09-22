@@ -1,127 +1,154 @@
-# Mở rộng PromptKit — thêm ở đâu, thêm thế nào
+# Extending PromptKit — where to add, how to add
 
-Đọc `docs/CORE.md` §2 trước để biết module nào sở hữu việc gì. Hai mở rộng chỉ-dữ-liệu
-(action mới, ngôn ngữ đầu ra mới) có hướng dẫn từng bước trong `docs/guides/`; trang này
-tóm tắt chúng và mô tả các mở rộng cần code, kèm template trong `docs/templates/`. Mỗi công thức
-kết thúc bằng cách kiểm chứng: `npm run gate` phải xanh và, với thay đổi phía
-client, `paseo plugin reload prompt-kit` rồi mở màn Settings.
+Read `docs/CORE.md` §2 first to know which module owns what. The two data-only extensions
+(a new action, a new output language) have step-by-step guides in `docs/guides/`; this page
+summarizes them and describes the extensions that need code, with templates in
+`docs/templates/`. Every recipe ends with verification: `npm run gate` must be green and, for
+client-side changes, `paseo plugin reload prompt-kit` then open the Settings screen.
 
-Quy tắc chung (từ `AGENTS.md`):
+General rules (from `AGENTS.md`):
 
-- Một file một trách nhiệm, nói được bằng một câu không có "và".
-- Không thêm fallback, shim, dual-read, hay nhánh version. Sai thì fail closed.
-- Test âm suy từ hằng số hiện tại (`ACTION_ID_PATTERN`, `TIMEOUT_MS`, `MAX_INSTRUCTION_CHARS`), không nêu tên thứ đã xoá.
-- Thư mục gốc chỉ có `client/`, `server/`, `shared/` — host từ chối mọi thư mục gốc khác.
+- One file, one responsibility, statable in one sentence without "and".
+- No fallback, shim, dual-read, or version branch. Fail closed on error.
+- Negative tests derive from current constants (`ACTION_ID_PATTERN`, `TIMEOUT_MS`,
+  `MAX_INSTRUCTION_CHARS`), never naming something that was deleted.
+- The only legal root directories are `client/`, `server/`, `shared/` — the host rejects any
+  other root directory.
 
 ---
 
-## 1. Thêm một Action (Action Pack)
+## 1. Add an Action (Action Pack)
 
-Hướng dẫn đầy đủ: `docs/guides/action-packs.md`.
+Full guide: `docs/guides/action-packs.md`.
 
-**Kết quả:** một mục mới trong menu pill, chạy qua đúng đường như `coding`, **không sửa TypeScript**.
+**Result:** a new entry in the pill menu, running through the same path as `coding`, **no
+TypeScript edits**.
 
-1. Sao chép template `docs/templates/action-pack.template.json` thành `shared/packs/<id>.json`.
-   `id` khớp `^[a-z][a-z0-9-]*$` và trùng tên file.
-2. Điền `title`, `description`, `icon` (tên icon Lucide, ví dụ `Image`, `FileText`, `Search`).
-3. Viết `system` (vai trò + quy tắc) và `task` (một đoạn ngắn nói rõ đầu ra). **Không** tự bọc
-   `<task>` / `<user_prompt>`: Core bọc và escape (`shared/action-registry/wrapper.ts`).
-   Nếu prompt cần giữ ngôn ngữ người dùng hay literal kỹ thuật, ghi rõ trong `system`
-   — validator vẫn kiểm tra protected literals bất kể pack nói gì.
-4. Thêm một dòng vào `shared/packs/index.ts`:
+1. Copy the template `docs/templates/action-pack.template.json` to `shared/packs/<id>.json`.
+   `id` matches `^[a-z][a-z0-9-]*$` and matches the file name.
+2. Fill in `title`, `description`, `icon` (a Lucide icon name, e.g. `Image`, `FileText`,
+   `Search`).
+3. Write `system` (role + rules) and `task` (a short paragraph stating the output clearly).
+   **Do not** wrap `<task>` / `<user_prompt>` yourself: Core wraps and escapes them
+   (`shared/action-registry/wrapper.ts`). If the prompt needs to preserve the user's language
+   or technical literals, say so in `system` — the validator checks protected literals
+   regardless of what the pack says.
+4. Add one line to `shared/packs/index.ts`:
 
    ```ts
    import image from "../packs/image.json";
    export const bundledPacks: readonly unknown[] = [coding, image];
    ```
 
-5. Kiểm chứng:
-   - `npm run gate` — `tests/unit/actions.test.ts` nạp barrel thật; pack sai schema sẽ hiện trong `listRejectedPacks()`.
-   - `paseo plugin reload prompt-kit` rồi `paseo plugin logs prompt-kit`: không có dòng `action packs rejected`.
-   - Mở Settings → mục **Actions** có switch mới; bật hai action trở lên thì pill thành menu.
+5. Verify:
+   - `npm run gate` — `tests/unit/actions.test.ts` loads the real barrel; a schema-broken pack
+     shows up in `listRejectedPacks()`.
+   - `paseo plugin reload prompt-kit` then `paseo plugin logs prompt-kit`: no
+     `action packs rejected` line.
+   - Open Settings → the **Actions** section has a new switch; enabling two or more actions
+     turns the pill into a menu.
 
-Ràng buộc: `system`/`task` ≤ 50 000 ký tự, `schemaVersion` = 1, `context.mode` = `prompt-only`,
-`output.mode` = `replace-composer`. Trường lạ ⇒ pack bị loại (schema strict).
-
----
-
-## 1b. Thêm một ngôn ngữ đầu ra
-
-Hướng dẫn đầy đủ: `docs/guides/output-languages.md`. Tóm tắt: sao chép
-`docs/templates/output-language.template.json` thành `shared/languages/<id>.json`, thêm một dòng
-vào `shared/languages/index.ts`, `npm run gate`. Core chèn `instruction` vào `<task>`; `source`
-là mặc định built-in, không có file.
-
-## 2. Thêm một protocol API
-
-**Kết quả:** endpoint kiểu mới chọn được trong Settings → API endpoint → Protocol.
-(Chỉ cần khi vendor **không** nói OpenAI/Anthropic/Gemini shape. Vendor mới cùng shape = một preset, xem §5.)
-
-1. Tạo `server/transports/api/<protocol>.ts` theo `docs/templates/api-protocol.template.ts.md`.
-   Một module sở hữu đúng ba việc: dựng request, đọc answer, liệt kê model.
-2. Đăng ký:
-   - `shared/api-protocol.ts`: thêm id vào `API_PROTOCOL_IDS`.
-   - `server/transports/api/runner.ts`: thêm vào `PROTOCOLS`.
-   - `client/settings/api-endpoints.ts`: thêm vào `PROTOCOL_OPTIONS` (nhãn hiển thị).
-3. Test: thêm `describe` vào `tests/unit/api-protocols.test.ts` theo mẫu ba protocol có sẵn
-   (request đúng URL/header/body, parse answer, parse danh sách model, key rỗng ⇒ không gửi header).
-4. `tests/unit/api-endpoints.test.ts` có row "covers all three protocols" — cập nhật tập protocol ở đó.
+Constraints: `system`/`task` ≤ 50,000 characters, `schemaVersion` = 1, `context.mode` =
+`prompt-only`, `output.mode` = `replace-composer`. An unknown field ⇒ the pack is rejected
+(strict schema).
 
 ---
 
-## 3. Thêm một CLI family
+## 1b. Add an output language
 
-**Kết quả:** provider chạy bằng CLI mới rewrite được qua transport `cli`.
+Full guide: `docs/guides/output-languages.md`. Summary: copy
+`docs/templates/output-language.template.json` to `shared/languages/<id>.json`, add one line to
+`shared/languages/index.ts`, `npm run gate`. Core inserts `instruction` into `<task>`; `source`
+is the built-in default, with no file.
 
-1. `shared/cli-families.ts`: thêm id vào `CLI_FAMILY_IDS`. Id này cũng là **tên binary** và
-   là chuỗi mà quy tắc `resolveCliFamilyId` khớp với provider id (`<id>`, `<id>-*`, `*-<id>`).
-2. `server/transports/cli/family.ts`: thêm một `CliFamily` theo `docs/templates/cli-family.template.ts.md`
-   và đưa vào mảng `FAMILIES`. Bắt buộc: prompt đi qua `stdin` hoặc file, **không** qua `argv`;
-   tắt tool/context/session nếu CLI có cờ; parse đúng định dạng JSON của CLI đó.
-3. Test: `tests/unit/cli-family.test.ts` (argv không chứa prompt, cờ đúng, parser đúng),
-   `tests/server/harness.ts` → `stdoutFor()` thêm mẫu stdout của CLI mới.
-4. Probe sống (tuỳ chọn): `npx tsx scripts/probe-cli.ts` với model rẻ (DLF-013).
+## 2. Add an API protocol
 
-Màn Settings → Advanced → "CLI per provider" tự liệt kê family mới vì đọc `CLI_FAMILY_IDS`.
+**Result:** a new endpoint kind selectable in Settings → API endpoint → Protocol.
+(Only needed when the vendor does **not** speak the OpenAI/Anthropic/Gemini shape. A new vendor
+with the same shape is just a preset — see §5.)
+
+1. Create `server/transports/api/<protocol>.ts` following
+   `docs/templates/api-protocol.template.ts.md`. One module owns exactly three things: building
+   the request, reading the answer, listing models.
+2. Register it:
+   - `shared/api-protocol.ts`: add the id to `API_PROTOCOL_IDS`.
+   - `server/transports/api/runner.ts`: add it to `PROTOCOLS`.
+   - `client/settings/api-endpoints.ts`: add it to `PROTOCOL_OPTIONS` (display label).
+3. Test: add a `describe` block to `tests/unit/api-protocols.test.ts` following the pattern of
+   the three existing protocols (correct request URL/header/body, parses the answer, parses the
+   model list, an empty key ⇒ no header sent).
+4. `tests/unit/api-endpoints.test.ts` has a "covers all three protocols" row — update the
+   protocol set there too.
 
 ---
 
-## 4. Thêm một trường settings hoặc một section
+## 3. Add a CLI family
 
-**Kết quả:** trường mới có schema, có UI, có kiểm tra trước khi lưu, và (nếu ảnh hưởng đường chạy) hiện trong status bar.
+**Result:** a provider that runs on a new CLI becomes reachable through the `cli` transport.
 
-1. `shared/settings.ts`: thêm trường với `.default(...)` để `{}` vẫn parse. Không đổi `version`.
-2. Nếu trường quyết định rewrite chạy hay không: sửa `client/settings/selection.ts`
-   (dùng chung với `rewrite-runner`) và `server/model-resolver/resolver.ts` — hai bên phải từ chối cùng một lý do.
+1. `shared/cli-families.ts`: add the id to `CLI_FAMILY_IDS`. This id is also the **binary
+   name** and the string `resolveCliFamilyId` matches against the provider id (`<id>`,
+   `<id>-*`, `*-<id>`).
+2. `server/transports/cli/family.ts`: add a `CliFamily` following
+   `docs/templates/cli-family.template.ts.md` and put it in the `FAMILIES` array. Required: the
+   prompt goes through `stdin` or a file, **never** through `argv`; disable
+   tools/context/session if the CLI has a flag for it; parse that CLI's exact JSON output
+   format.
+3. Test: `tests/unit/cli-family.test.ts` (no prompt in argv, correct flags, correct parser),
+   `tests/server/harness.ts` → add a stdout sample for the new CLI to `stdoutFor()`.
+4. Optional live probe: `npx tsx scripts/probe-cli.ts` with a cheap model (DLF-013).
+
+Settings → Advanced → "CLI per provider" lists the new family automatically because it reads
+`CLI_FAMILY_IDS`.
+
+---
+
+## 4. Add a settings field or a section
+
+**Result:** a new field with a schema, a UI, pre-save validation, and (if it affects the run
+path) a line in the status bar.
+
+1. `shared/settings.ts`: add the field with a `.default(...)` so `{}` still parses. Don't
+   change `version`.
+2. If the field decides whether rewrite can run: update `client/settings/selection.ts` (shared
+   with `rewrite-runner`) and `server/model-resolver/resolver.ts` — both sides must reject for
+   the same reason.
 3. UI:
-   - Trường thuộc section có sẵn → thêm một row vào section đó.
-   - Nhóm mới → tạo `client/settings/sections/<name>-section.tsx` theo
-     `docs/templates/settings-section.template.tsx.md`, rồi mount trong `settings-screen.tsx`
-     đúng vị trí trong thứ tự đọc (Actions → Rewrite engine → section phụ thuộc → Advanced).
-   - Section chỉ hiện khi có nghĩa: điều kiện `values.transport` / `values.modelMode` đặt ở `settings-screen.tsx`.
-4. Giá trị có biên → `client/settings/validation.ts` (`findSaveProblem`) để Save bị chặn với một câu rõ,
-   thay vì lỗi schema từ host.
-5. Test: `tests/unit/settings.test.ts` (default + biên), `tests/unit/settings-validation.test.ts`,
-   `tests/jsdom/settings-screen.test.tsx` (row hiện đúng lúc, Save gửi đúng giá trị).
-6. README §Settings: một dòng cho trường mới.
+   - A field that belongs to an existing section → add a row to that section.
+   - A new group → create `client/settings/sections/<name>-section.tsx` following
+     `docs/templates/settings-section.template.tsx.md`, then mount it in
+     `settings-screen.tsx` at the right spot in reading order (Actions → Rewrite engine →
+     dependent section → Advanced).
+   - A section shows only when it's meaningful: condition on `values.transport` /
+     `values.modelMode` in `settings-screen.tsx`.
+4. A value with bounds → `client/settings/validation.ts` (`findSaveProblem`) so Save is blocked
+   with a clear sentence, instead of a schema error from the host.
+5. Test: `tests/unit/settings.test.ts` (default + bounds), `tests/unit/settings-validation.test.ts`,
+   `tests/jsdom/settings-screen.test.tsx` (row shows at the right time, Save sends the right
+   value).
+6. README §Settings: one line for the new field.
 
-Primitive UI: dùng bộ host (`SettingsSection/Card/Row/Switch/Select/Input/Action`) cho mọi row;
-`client/settings/ui/` chỉ có `Button`, `Notice`, `StatusBar` cho phần nằm ngoài row. Không thêm
-`Text` trần vào section — đưa chữ vào `hint`/`error` của row hoặc `info` của section.
-
----
-
-## 5. Thêm một preset endpoint (không cần code mới)
-
-`client/settings/api-endpoints.ts` → `ENDPOINT_PRESETS`: id, nhãn, protocol, base URL, tên biến key
-mặc định, ghi chú ngắn. `tests/unit/api-endpoints.test.ts` tự kiểm tra preset parse được và id duy nhất.
+UI primitives: use the host kit (`SettingsSection/Card/Row/Switch/Select/Input/Action`) for
+every row; `client/settings/ui/` holds only `Button`, `Notice`, `StatusBar` for what sits
+outside a row. Don't add a bare `Text` to a section — put the words in a row's `hint`/`error`
+or a section's `info`.
 
 ---
 
-## 6. Checklist trước khi commit
+## 5. Add a preset endpoint (no new code)
 
-- [ ] `npm run gate` xanh (typecheck + unit + jsdom + host-load).
-- [ ] `bash framework/tools/file-size-audit.sh`: không file nào vượt band mà không có lý do.
-- [ ] Không identifier/literal đã xoá còn sót trong code, test, fixture (`git diff` để rà).
-- [ ] Thay đổi phía client: đã `paseo plugin reload prompt-kit` và mở Settings/pill trên host thật.
-- [ ] README cập nhật nếu hành vi người dùng thấy được thay đổi.
+`client/settings/api-endpoints.ts` → `ENDPOINT_PRESETS`: id, label, protocol, base URL, default
+key variable name, a short note. `tests/unit/api-endpoints.test.ts` already checks that every
+preset parses and every id is unique.
+
+---
+
+## 6. Checklist before committing
+
+- [ ] `npm run gate` is green (typecheck + unit + jsdom + host-load).
+- [ ] `bash framework/tools/file-size-audit.sh`: no file exceeds its band without a reason.
+- [ ] No deleted identifier/literal left over in code, tests, or fixtures (`git diff` to check).
+- [ ] Client-side change: ran `paseo plugin reload prompt-kit` and opened Settings/the pill on a
+      real host.
+- [ ] README updated if user-visible behavior changed.
+</content>

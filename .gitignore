@@ -1,6 +1,20 @@
-# local research: agent-readable, never published
+# local research and internal workflow: agent-readable, never published
 /docs/IMPELEMENT_PLAN.md
+/docs/DEFERRED.md
+/docs/FEATURE_INTAKE.md
+/docs/PLANS.md
+/docs/catalog.md
+/docs/decision-log.md
+/docs/exec-plans/
+/docs/intents/
+/docs/reviews/
+/WORKSPACE_PROTOCOL.md
+/MEMORY.md
+/framework/
 /upstreams/
+
+# dev-only live probes: need real API keys/CLIs, not part of the build or npm test
+/scripts/
 
 # local runtime state
 /.ait/

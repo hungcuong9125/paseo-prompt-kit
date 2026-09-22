@@ -1,12 +1,15 @@
-# Hướng dẫn mở rộng PromptKit
+# PromptKit extension guides
 
-Mỗi trang là một công thức làm-theo, có template đi kèm trong `docs/templates/`.
-Kiến trúc và ranh giới module: `docs/CORE.md`. Tổng quan mọi điểm mở rộng: `docs/EXTENDING.md`.
+Each page is a follow-along recipe with a matching template in `docs/templates/`.
+Architecture and module boundaries: `docs/CORE.md`. Overview of every extension point:
+`docs/EXTENDING.md`.
 
-| Muốn làm gì | Đọc | Template | Chạm vào code TypeScript? |
+| Want to | Read | Template | Touches TypeScript? |
 |---|---|---|---|
-| Thêm một lựa chọn prompt (Action) vào menu pill | [action-packs.md](action-packs.md) | `action-pack.template.json` | Không — một JSON + một dòng barrel |
-| Thêm một ngôn ngữ đầu ra vào Settings | [output-languages.md](output-languages.md) | `output-language.template.json` | Không — một JSON + một dòng barrel |
-| Thêm protocol API, CLI family, trường settings | `../EXTENDING.md` §2–4 | `api-protocol.template.ts.md`, `cli-family.template.ts.md`, `settings-section.template.tsx.md` | Có |
+| Add a prompt option (Action) to the pill menu | [action-packs.md](action-packs.md) | `action-pack.template.json` | No — one JSON + one barrel line |
+| Add an output language to Settings | [output-languages.md](output-languages.md) | `output-language.template.json` | No — one JSON + one barrel line |
+| Add an API protocol, CLI family, or settings field | `../EXTENDING.md` §2–4 | `api-protocol.template.ts.md`, `cli-family.template.ts.md`, `settings-section.template.tsx.md` | Yes |
 
-Sau mọi thay đổi: `npm run gate` xanh, rồi `paseo plugin reload prompt-kit` và kiểm tra trên host thật.
+After any change: `npm run gate` green, then `paseo plugin reload prompt-kit` and check on a
+real host.
+</content>

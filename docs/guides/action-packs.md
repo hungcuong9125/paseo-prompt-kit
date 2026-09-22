@@ -1,34 +1,35 @@
-# Thêm một lựa chọn prompt (Action Pack)
+# Add a prompt option (Action Pack)
 
-Một Action là một mục trong menu của pill PromptKit, ví dụ "Improve coding prompt".
-Mỗi Action là **một file JSON** dưới `shared/packs/`. Core nạp, validate, và chạy nó
-qua đúng một đường như action built-in `coding`; bạn không sửa engine, validator, RPC hay UI.
+An Action is one entry in the PromptKit pill's menu, e.g. "Improve coding prompt". Each Action
+is **one JSON file** under `shared/packs/`. Core loads, validates, and runs it through the exact
+same path as the built-in `coding` action; you don't touch the engine, validator, RPC, or UI.
 
-## Bước 1 — Tạo file từ template
+## Step 1 — Create the file from the template
 
 ```bash
 cp docs/templates/action-pack.template.json shared/packs/image.json
 ```
 
-Quy tắc đặt tên: `id` khớp `^[a-z][a-z0-9-]*$` và **trùng tên file** (`image.json` ⇒ `"id": "image"`).
+Naming rule: `id` matches `^[a-z][a-z0-9-]*$` and **matches the file name**
+(`image.json` ⇒ `"id": "image"`).
 
-## Bước 2 — Điền nội dung
+## Step 2 — Fill in the fields
 
-| Trường | Ý nghĩa | Ghi chú |
+| Field | Meaning | Notes |
 |---|---|---|
-| `schemaVersion` | luôn `1` | giá trị khác ⇒ pack bị loại |
-| `id` | mã action, dùng trong settings `actionEnabled` | duy nhất; trùng id ⇒ cả hai pack bị loại |
-| `version` | số nguyên dương, chỉ để hiển thị/log | tăng khi đổi prompt |
-| `enabledByDefault` | bật sẵn hay không | người dùng đổi trong Settings → Actions |
-| `title` | tên trong menu pill và Settings | ngắn, dạng động từ: "Improve image prompt" |
-| `description` | một câu dưới switch trong Settings | |
-| `icon` | tên icon Lucide (`Image`, `FileText`, `Search`, `Sparkles`) | sai tên ⇒ icon trống, không lỗi |
-| `context.mode` | `"prompt-only"` | giá trị duy nhất bản này chấp nhận |
-| `output.mode` | `"replace-composer"` | giá trị duy nhất bản này chấp nhận |
-| `system` | vai trò + quy tắc cho model | ≤ 50 000 ký tự |
-| `task` | câu lệnh ngắn nói rõ đầu ra | ≤ 50 000 ký tự |
+| `schemaVersion` | always `1` | any other value ⇒ the pack is rejected |
+| `id` | the action's id, used in settings `actionEnabled` | unique; a duplicate id rejects both packs |
+| `version` | positive integer, display/log only | bump it when the prompt changes |
+| `enabledByDefault` | on by default or not | the user changes this in Settings → Actions |
+| `title` | name in the pill menu and Settings | short, verb-first: "Improve image prompt" |
+| `description` | one sentence under the switch in Settings | |
+| `icon` | a Lucide icon name (`Image`, `FileText`, `Search`, `Sparkles`) | a wrong name ⇒ blank icon, no error |
+| `context.mode` | `"prompt-only"` | the only value this build accepts |
+| `output.mode` | `"replace-composer"` | the only value this build accepts |
+| `system` | role + rules for the model | ≤ 50,000 characters |
+| `task` | a short instruction stating the output | ≤ 50,000 characters |
 
-Ví dụ `shared/packs/image.json`:
+Example `shared/packs/image.json`:
 
 ```json
 {
@@ -46,7 +47,7 @@ Ví dụ `shared/packs/image.json`:
 }
 ```
 
-## Bước 3 — Đăng ký vào barrel
+## Step 3 — Register it in the barrel
 
 `shared/packs/index.ts`:
 
@@ -57,31 +58,36 @@ import image from "../packs/image.json";
 export const bundledPacks: readonly unknown[] = [coding, image];
 ```
 
-Thứ tự trong mảng là thứ tự trong menu và trong Settings.
+The array's order is the menu's order and Settings' order.
 
-## Những gì Core làm hộ bạn (đừng làm lại trong pack)
+## What Core does for you (don't redo it in the pack)
 
-- Bọc `task` và prompt người dùng trong `<task>` / `<user_prompt>` và escape ký tự giả mạo delimiter.
-- Chèn dòng `Output language: …` vào `<task>` khi người dùng chọn ngôn ngữ đầu ra
-  (xem [output-languages.md](output-languages.md)). Vì vậy `system` nên có câu
-  *"Preserve the user's language unless the task names an output language"* như pack `coding`.
-- Kiểm tra protected literals (đường dẫn, URL, lệnh, code, tên model/tool) — mất literal thì
-  rewrite bị từ chối, bất kể pack nói gì.
-- Từ chối answer có preface, refusal, commentary, hay bọc cả câu trả lời trong code fence.
+- Wraps `task` and the user's prompt in `<task>` / `<user_prompt>` and escapes fake delimiter
+  characters.
+- Inserts an `Output language: …` line into `<task>` when the user picks an output language
+  (see [output-languages.md](output-languages.md)). So `system` should carry a sentence like
+  *"Preserve the user's language unless the task names an output language"*, as the `coding`
+  pack does.
+- Checks protected literals (paths, URLs, commands, code, model/tool names) — losing a literal
+  rejects the rewrite, regardless of what the pack says.
+- Rejects an answer that has a preface, a refusal, commentary, or wraps the whole reply in a
+  code fence.
 
-## Bước 4 — Kiểm chứng
+## Step 4 — Verify
 
 ```bash
-npm run gate                      # tests/unit/actions.test.ts nạp barrel thật
+npm run gate                      # tests/unit/actions.test.ts loads the real barrel
 paseo plugin reload prompt-kit
-paseo plugin logs prompt-kit      # KHÔNG được có dòng "action packs rejected"
+paseo plugin logs prompt-kit      # must NOT show an "action packs rejected" line
 ```
 
-Mở Settings → **Actions**: có switch mới. Bật từ hai action trở lên thì pill thành menu.
-Thay đổi ở Actions tới pill khi agent mở lại hoặc plugin reload.
+Open Settings → **Actions**: a new switch appears. Enabling two or more actions turns the pill
+into a menu. Changes to Actions reach the pill when the agent reopens or the plugin reloads.
 
-## Khi pack không xuất hiện
+## When a pack doesn't show up
 
-`paseo plugin logs prompt-kit` ghi `action packs rejected packs=<id hoặc #index>`. Nguyên nhân
-thường gặp: `id` viết hoa hoặc có `_`, `schemaVersion` khác 1, thêm trường ngoài schema, quên dòng
-trong barrel, hai pack cùng `id`. Không có fallback: pack sai thì vắng mặt, các pack khác vẫn chạy.
+`paseo plugin logs prompt-kit` logs `action packs rejected packs=<id or #index>`. Common
+causes: `id` has an uppercase letter or a `_`, `schemaVersion` isn't 1, an extra field outside
+the schema, a missing barrel line, two packs sharing an `id`. There's no fallback: a broken pack
+is simply absent, the others keep running.
+</content>

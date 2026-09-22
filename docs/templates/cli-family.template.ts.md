@@ -1,25 +1,25 @@
-# Template — một `CliFamily` trong `server/transports/cli/family.ts`
+# Template — a `CliFamily` in `server/transports/cli/family.ts`
 
 ```ts
 export const myCliFamily: CliFamily = {
-  id: "mycli", // thêm vào CLI_FAMILY_IDS (shared/cli-families.ts); cũng là tên binary
-  // "stdin" hoặc "file": prompt KHÔNG BAO GIỜ đi qua argv (ps đọc được).
+  id: "mycli", // add to CLI_FAMILY_IDS (shared/cli-families.ts); also the binary name
+  // "stdin" or "file": the prompt NEVER goes through argv (readable via ps).
   promptDelivery: "stdin",
   buildInvocation: (request) => {
     const args = [
       "run",
       "--model", request.model,
       "--system-prompt", request.systemPrompt,
-      // Tắt mọi thứ có thể làm answer lệch khỏi (prompt, model): tool, context
-      // file, session, extension. Liệt kê cờ thật của CLI này.
+      // Disable anything that could pull the answer away from (prompt, model): tool,
+      // context file, session, extension. List this CLI's actual flags.
       "--no-tools",
       "--output", "json",
     ];
     if (request.thinkingOptionId !== null) args.push("--reasoning", request.thinkingOptionId);
-    // Với promptDelivery "file": args.push(`@${request.promptFilePath}`) và throw nếu null.
+    // With promptDelivery "file": args.push(`@${request.promptFilePath}`) and throw if null.
     return { command: "mycli", args };
   },
-  // Trả về câu trả lời cuối cùng từ stdout, hoặc null ⇒ runner báo empty_output.
+  // Returns the final answer from stdout, or null ⇒ the runner reports empty_output.
   parseOutput: (stdout) =>
     lastJsonlText(stdout, (event) =>
       event.type === "final" && typeof event.text === "string" ? event.text : null,
@@ -27,5 +27,6 @@ export const myCliFamily: CliFamily = {
 };
 ```
 
-Thêm vào `FAMILIES`. Test: `tests/unit/cli-family.test.ts` (argv không chứa prompt; cờ; parser)
-và `stdoutFor()` trong `tests/server/harness.ts`.
+Add it to `FAMILIES`. Test: `tests/unit/cli-family.test.ts` (no prompt in argv; flags; parser)
+and `stdoutFor()` in `tests/server/harness.ts`.
+</content>

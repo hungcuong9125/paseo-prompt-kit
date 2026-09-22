@@ -4,11 +4,12 @@ PromptKit is a Paseo plugin (id `prompt-kit`) that rewrites the prompt in your C
 
 Rewriting has three paths, chosen in Settings. The default runs the selected model through the provider's own CLI, headlessly, in a temporary directory — no Paseo agent, no tab, no archive. Your primary conversation never receives a rewrite turn and never changes provider or session. The third path posts straight to an API you configure (Anthropic, OpenAI, Gemini, or anything speaking one of those three protocols) when a CLI cold start is too slow or no CLI exists.
 
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 ## Three ways to run it
 
 - **The pill** — write your prompt, press `PromptKit`. The text is rewritten in place; a leading `/rewrite ` left in the text is ignored. Available once the agent exists, so on a new seat it appears after the first message.
 - **`/rewrite <prompt>`** — type the command with the prompt after it and press Enter. Paseo empties the Composer and hands the text to PromptKit, which puts the `/rewrite …` line straight back, dims it with a light sweep while it works, and then replaces it with the rewrite. A failed rewrite leaves your line in place. Available immediately, including on a new seat before its first message. Because no agent exists yet on a draft, `/rewrite` cannot use `Current agent model`; choose `Dedicated model` or `Direct API` in Settings, or use the pill once the agent exists.
-
 - **The PromptKit sheet** (mobile) — write in the Composer as usual and press the pill. A sheet slides up already holding your text and rewrites it at once. Press **Rewrite** again until it reads right, then **Send**: the message goes to the agent, the Composer is cleared, the sheet closes. **✕** closes the sheet and leaves the Composer untouched.
 
 No path sends the message on its own. You review the result and send it yourself.
@@ -45,7 +46,13 @@ paseo plugin install hungcuong9125/paseo-prompt-kit --ref main
 paseo plugin ls
 ```
 
-`--ref` chooses the initial branch, tag, or commit once; later `paseo plugin update prompt-kit` follows the remote's default HEAD. `paseo plugin ls` reports the installed commit.
+`--ref` chooses the initial branch, tag, or commit once; later `paseo plugin update prompt-kit` follows the remote's default HEAD. Pin a release instead of tracking `main` by giving `--ref` a tag:
+
+```bash
+paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.3.0
+```
+
+`paseo plugin ls` reports the installed commit.
 
 ## Settings
 
@@ -204,7 +211,7 @@ Every one of these leaves the Composer text untouched.
 ## Limitations
 
 - In-place rewriting works on Desktop and Web only: the mobile app renders the Composer as a native text input with no DOM, and Paseo 0.9.0 exposes no plugin API for Composer text. On mobile the `PromptKit` pill opens the **PromptKit sheet** instead (see above); it reads and clears the Composer through the app's React tree rather than the DOM, which a Paseo update can break in the same way. Nothing is copied or sent on its own. `/rewrite` is not available on mobile. On Web, a refusal names what was found (no Composer, none visible, or more than one visible).
-- Requires Paseo `>=0.9.0`. Because text access depends on the Composer DOM, a Paseo UI change can break it even when the public plugin SDK is compatible.
+- Requires Paseo `>=0.9.0`. Because text access depends on the Composer DOM (or, on mobile, the React tree), a Paseo UI change can break it even when the public plugin SDK is compatible.
 - No auto-send. PromptKit only replaces the Composer text; you send the message.
 - PromptKit refuses to replace text you edited while a rewrite was running, and refuses when more than one Composer (or none) is visible.
 - One bundled action in this version: `Improve coding prompt`. Adding another is one JSON file — see `docs/EXTENDING.md`.
@@ -218,3 +225,4 @@ The host compiler accepts only `client/`, `server/` and `shared/` at the root, s
 ## License
 
 MIT — see `LICENSE`. PromptKit contains no copied upstream code. The Composer text access pattern follows [paseo-emoji](https://github.com/YoseptF/paseo-emoji) (MIT); the plugin runs on [Paseo](https://github.com/getpaseo/paseo) (Apache-2.0) through its public plugin SDK.
+</content>
