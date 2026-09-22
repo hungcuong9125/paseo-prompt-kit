@@ -1,7 +1,8 @@
 # Mở rộng PromptKit — thêm ở đâu, thêm thế nào
 
-Đọc `docs/CORE.md` §2 trước để biết module nào sở hữu việc gì. Trang này là các
-công thức làm-theo cho bốn loại mở rộng thường gặp, kèm template. Mỗi công thức
+Đọc `docs/CORE.md` §2 trước để biết module nào sở hữu việc gì. Hai mở rộng chỉ-dữ-liệu
+(action mới, ngôn ngữ đầu ra mới) có hướng dẫn từng bước trong `docs/guides/`; trang này
+tóm tắt chúng và mô tả các mở rộng cần code, kèm template trong `docs/templates/`. Mỗi công thức
 kết thúc bằng cách kiểm chứng: `npm run gate` phải xanh và, với thay đổi phía
 client, `paseo plugin reload prompt-kit` rồi mở màn Settings.
 
@@ -15,6 +16,8 @@ Quy tắc chung (từ `AGENTS.md`):
 ---
 
 ## 1. Thêm một Action (Action Pack)
+
+Hướng dẫn đầy đủ: `docs/guides/action-packs.md`.
 
 **Kết quả:** một mục mới trong menu pill, chạy qua đúng đường như `coding`, **không sửa TypeScript**.
 
@@ -41,6 +44,13 @@ Ràng buộc: `system`/`task` ≤ 50 000 ký tự, `schemaVersion` = 1, `context
 `output.mode` = `replace-composer`. Trường lạ ⇒ pack bị loại (schema strict).
 
 ---
+
+## 1b. Thêm một ngôn ngữ đầu ra
+
+Hướng dẫn đầy đủ: `docs/guides/output-languages.md`. Tóm tắt: sao chép
+`docs/templates/output-language.template.json` thành `shared/languages/<id>.json`, thêm một dòng
+vào `shared/languages/index.ts`, `npm run gate`. Core chèn `instruction` vào `<task>`; `source`
+là mặc định built-in, không có file.
 
 ## 2. Thêm một protocol API
 

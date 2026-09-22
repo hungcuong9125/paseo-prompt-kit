@@ -34,11 +34,16 @@ shared/                          Hợp đồng chung cho cả hai bundle
   packs/                         ★ ACTION PACKS — dữ liệu thuần, một JSON mỗi action
     index.ts                       Barrel tĩnh: danh sách pack được bundle.
     coding.json                    Pack built-in `coding`, đi đúng đường như pack khác.
+  languages/                     ★ NGÔN NGỮ ĐẦU RA — dữ liệu thuần, một JSON mỗi ngôn ngữ
+    index.ts                       Barrel tĩnh; `source` (giữ ngôn ngữ gốc) là mặc định built-in.
+    en.json, vi.json
+  language-registry/             Nạp, validate, tra cứu ngôn ngữ đầu ra (schema/loader/registry)
   action-registry/               Nạp, validate, tra cứu Action Definition
     schema.ts                      Hợp đồng Action Pack v1 (zod strict) + ACTION_ID_PATTERN.
     loader.ts                      Biến barrel thành registry; pack hỏng bị loại riêng lẻ.
     registry.ts                    Registry sống duy nhất; listActions / resolveAction.
-    wrapper.ts                     Ranh giới injection của Core: <task>/<user_prompt> + escape.
+    wrapper.ts                     Ranh giới injection của Core: <task>/<user_prompt> + escape;
+                                   chèn "Output language: …" vào <task> khi có ngôn ngữ đầu ra.
   settings.ts                    Schema settings host-scoped + hằng số TIMEOUT_MS.
   rpc.ts                         Bốn hợp đồng RPC: rewrite, actions.list, providers, api.test.
   api-protocol.ts                Danh sách protocol API và schema một endpoint.
@@ -151,7 +156,7 @@ Hai trục độc lập quyết định đường chạy: `transport` (`cli`|`ap
 
 - CLI: `dedicatedProvider/Model/ThinkingOptionId`, `providerCli` (override family theo provider id).
 - API: `apiEndpoints[]`, `apiEndpointId`, `apiModel`, `apiEndpointByProvider`, `secretsFile`.
-- Chung: `timeoutMs` (`TIMEOUT_MS.min..max`, mặc định 90 000; host cắt RPC ở 30 s — DEF-008), `actionEnabled`.
+- Chung: `timeoutMs` (`TIMEOUT_MS.min..max`, mặc định 90 000; host cắt RPC ở 30 s — DEF-008), `actionEnabled`, `outputLanguage` (`source` hoặc id đã nạp; id lạ ⇒ `invalid_selection`).
 
 Key API **không bao giờ** nằm trong settings (tài liệu này tới browser); chỉ có tên biến, giá trị đọc ở daemon từ env rồi `secrets.json`.
 
@@ -174,11 +179,12 @@ Key API **không bao giờ** nằm trong settings (tài liệu này tới browse
 
 ## 8. Điểm mở rộng
 
-Bốn điểm mở rộng có tên, mỗi điểm một thư mục và một bước đăng ký. Chi tiết và template: `docs/EXTENDING.md`.
+Năm điểm mở rộng có tên, mỗi điểm một thư mục và một bước đăng ký. Chi tiết: `docs/EXTENDING.md`, từng bước cho hai điểm chỉ-dữ-liệu: `docs/guides/`.
 
 | Muốn thêm | Chạm vào | Không chạm |
 |---|---|---|
 | Action mới | `shared/packs/<id>.json` + một dòng `shared/packs/index.ts` | engine, validator, RPC, settings, UI |
+| Ngôn ngữ đầu ra mới | `shared/languages/<id>.json` + một dòng `shared/languages/index.ts` | wrapper, handler, settings, UI |
 | Protocol API mới | `server/transports/api/<protocol>.ts` + `PROTOCOLS` + `API_PROTOCOL_IDS` | resolver, engine |
 | CLI family mới | `server/transports/cli/family.ts` + `CLI_FAMILY_IDS` | resolver, engine |
 | Trường settings mới | `shared/settings.ts` + một section trong `client/settings/sections/` + `readiness/validation` nếu ảnh hưởng đường chạy | các section khác |

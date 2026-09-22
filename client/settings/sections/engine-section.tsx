@@ -1,4 +1,6 @@
 import { SettingsCard, SettingsSection, SettingsSelect } from "@getpaseo/plugin/client/ui";
+import { listLanguages } from "../../../shared/language-registry/registry.js";
+import { SOURCE_LANGUAGE } from "../../../shared/language-registry/schema.js";
 import type { PromptKitSettings } from "../../../shared/settings.js";
 import type { SettingsPatch } from "../draft.js";
 
@@ -29,6 +31,12 @@ const MODEL_HINT = {
   dedicated: "A fixed provider and model, whatever the agent itself runs. Pick them below.",
 } as const;
 
+/** The built-in default first, then every loaded language in barrel order. */
+const LANGUAGE_OPTIONS = [
+  { label: "Same as the prompt", value: SOURCE_LANGUAGE },
+  ...listLanguages().map((language) => ({ label: language.label, value: language.id })),
+] as const;
+
 /**
  * The two independent choices that decide which rewrite path runs: how the
  * model is reached, and which model it is. Every other section is a
@@ -38,7 +46,7 @@ export function EngineSection({ values, disabled, patch }: EngineSectionProps) {
   return (
     <SettingsSection
       title="Rewrite engine"
-      info="Transport answers how the model is reached; Model source answers which model. The sections below change with these two choices."
+      info="Transport answers how the model is reached; Model source answers which model; Output language answers what language the rewrite is written in. The sections below change with the first two."
     >
       <SettingsCard>
         <SettingsSelect
@@ -58,6 +66,27 @@ export function EngineSection({ values, disabled, patch }: EngineSectionProps) {
           onValueChange={(modelMode) =>
             patch({ modelMode: modelMode === "dedicated" ? "dedicated" : "current" })
           }
+        />
+        <SettingsSelect
+          label="Output language"
+          hint={
+            values.outputLanguage === SOURCE_LANGUAGE
+              ? "The rewrite keeps the language the prompt was written in."
+              : "The prose is translated; paths, commands, code and names stay exactly as written."
+          }
+          error={
+            LANGUAGE_OPTIONS.some((option) => option.value === values.outputLanguage)
+              ? null
+              : `"${values.outputLanguage}" is not a loaded language. See docs/guides/output-languages.md.`
+          }
+          value={values.outputLanguage}
+          options={
+            LANGUAGE_OPTIONS.some((option) => option.value === values.outputLanguage)
+              ? LANGUAGE_OPTIONS
+              : [{ label: `${values.outputLanguage} (missing)`, value: values.outputLanguage }, ...LANGUAGE_OPTIONS]
+          }
+          disabled={disabled}
+          onValueChange={(outputLanguage) => patch({ outputLanguage })}
         />
       </SettingsCard>
     </SettingsSection>

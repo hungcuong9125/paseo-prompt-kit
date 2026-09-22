@@ -1,5 +1,6 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { listActions, listRejectedPacks } from "./shared/action-registry/registry.js";
+import { listRejectedLanguages } from "./shared/language-registry/registry.js";
 import {
   actionsListRpc,
   apiTestRpc,
@@ -30,6 +31,14 @@ export default function contribute(
     pluginLog.error(
       { count: rejected.length, packs: rejected.map((entry) => entry.source).join(",") },
       "action packs rejected",
+    );
+  }
+
+  const rejectedLanguages = listRejectedLanguages();
+  if (rejectedLanguages.length > 0) {
+    pluginLog.error(
+      { count: rejectedLanguages.length, languages: rejectedLanguages.map((entry) => entry.source).join(",") },
+      "output languages rejected",
     );
   }
 

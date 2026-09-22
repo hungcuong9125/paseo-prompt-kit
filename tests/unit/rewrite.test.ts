@@ -163,6 +163,53 @@ describe("runRewrite: current model", () => {
   });
 });
 
+describe("runRewrite: output language", () => {
+  it("refuses an output language id that is not loaded and runs nothing", async () => {
+    const { createRewriteHandler } = await import("../../server/rewrite-engine/handler.js");
+    const harness = createRewriteHarness({});
+    const handler = createRewriteHandler({ spawn: harness.spawn });
+    const output = await handler(
+      {
+        actionId: "coding",
+        agentId: "agent-1",
+        workspaceId: "ws-1",
+        originalPrompt: "fix it",
+        settings: await settings({ outputLanguage: "not-loaded" }),
+      },
+      { paseo: harness.paseo } as never,
+    );
+    expect(output.status).toBe("error");
+    if (output.status !== "error") throw new Error("expected error");
+    expect(output.error.code).toBe("invalid_selection");
+    expect(harness.spawned).toEqual([]);
+  });
+
+  it("sends the loaded language's instruction inside the task the CLI receives", async () => {
+    const { createRewriteHandler } = await import("../../server/rewrite-engine/handler.js");
+    const { listLanguages } = await import("../../shared/language-registry/registry.js");
+    const language = listLanguages()[0]!;
+    // claude delivers the prompt over stdin, so the assembled task is observable.
+    const harness = createRewriteHarness({
+      agent: { provider: "claude", runtimeInfo: { provider: "claude" } },
+    });
+    const handler = createRewriteHandler({ spawn: harness.spawn });
+    const output = await handler(
+      {
+        actionId: "coding",
+        agentId: "agent-1",
+        workspaceId: "ws-1",
+        originalPrompt: "fix it",
+        settings: await settings({ outputLanguage: language.id }),
+      },
+      { paseo: harness.paseo } as never,
+    );
+    expect(output.status).toBe("ok");
+    const stdin = harness.spawned[0]?.stdin ?? "";
+    expect(stdin).toContain(`Output language: ${language.instruction}`);
+    expect(stdin.indexOf("Output language:")).toBeLessThan(stdin.indexOf("<user_prompt>"));
+  });
+});
+
 describe("runRewrite: CLI failure paths", () => {
   it("maps a CLI timeout to a timeout error and never replaces the composer", async () => {
     const harness = createRewriteHarness({

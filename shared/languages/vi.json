@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "id": "vi",
+  "label": "Tiếng Việt",
+  "instruction": "Write the rewritten prompt in Vietnamese. Translate the user's prose; keep every technical literal (paths, URLs, commands, code, identifiers, model and tool names) exactly as written."
+}

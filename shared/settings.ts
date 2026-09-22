@@ -2,6 +2,7 @@ import { defineSettings } from "@getpaseo/plugin";
 import { z } from "zod";
 import { apiEndpointSchema } from "./api-protocol.js";
 import { CLI_FAMILY_IDS } from "./cli-families.js";
+import { LANGUAGE_ID_PATTERN, SOURCE_LANGUAGE } from "./language-registry/schema.js";
 
 export const modelModeSchema = z.enum(["current", "dedicated"]);
 
@@ -77,6 +78,12 @@ export const promptKitSettingsSchema = z.object({
    * settings migration and a removed pack leaves no stale state behind.
    */
   actionEnabled: z.record(z.string(), z.boolean()).default({}),
+  /**
+   * The language the rewritten prompt is written in: `SOURCE_LANGUAGE` keeps
+   * the prompt's own language, any other value must be a loaded entry of
+   * `shared/languages/`. The daemon refuses an id it cannot resolve.
+   */
+  outputLanguage: z.string().regex(LANGUAGE_ID_PATTERN).default(SOURCE_LANGUAGE),
 });
 
 export type PromptKitSettings = z.output<typeof promptKitSettingsSchema>;

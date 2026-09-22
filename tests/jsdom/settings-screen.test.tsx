@@ -232,6 +232,33 @@ describe("status bar", () => {
   });
 });
 
+describe("output language", () => {
+  it("offers the source language first, then every loaded language, and saves the choice", async () => {
+    const { listLanguages } = await import("../../shared/language-registry/registry.js");
+    holder.state = readyState({});
+    holder.save.mockResolvedValue(true);
+    const view = await render();
+    const control = select(view, "Output language");
+    expect(Array.from(control.options, (option) => option.value)).toEqual([
+      "source",
+      ...listLanguages().map((language) => language.id),
+    ]);
+    const first = listLanguages()[0]!;
+    await choose(view, "Output language", first.id);
+    await press(view, "prompt-kit-save");
+    expect(holder.save.mock.calls[0]?.[0]).toMatchObject({ outputLanguage: first.id });
+  });
+
+  it("blocks readiness and marks the row when the saved id is no longer loaded", async () => {
+    holder.state = readyState({ outputLanguage: "gone" });
+    const view = await render();
+    expect(statusText(view)).toContain('No output language is loaded with the id "gone"');
+    const control = select(view, "Output language");
+    expect(control.value).toBe("gone");
+    expect(control.parentElement?.querySelector("[data-error]")).not.toBeNull();
+  });
+});
+
 describe("draft, save and discard", () => {
   it("saves the edited document against the revision it was drafted from", async () => {
     holder.state = readyState({});

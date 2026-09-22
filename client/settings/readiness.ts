@@ -1,4 +1,5 @@
 import type { ProviderCatalogOutput } from "../../shared/rpc.js";
+import { resolveLanguage } from "../../shared/language-registry/registry.js";
 import type { PromptKitSettings } from "../../shared/settings.js";
 import { validateDedicatedSelection } from "./selection.js";
 
@@ -52,6 +53,14 @@ export function describeReadiness(input: ReadinessInput): Readiness {
       kind: "blocked",
       path,
       reason: "No action is enabled, so the Composer shows no PromptKit pill.",
+    };
+  }
+
+  if (resolveLanguage(values.outputLanguage) === undefined) {
+    return {
+      kind: "blocked",
+      path,
+      reason: `No output language is loaded with the id "${values.outputLanguage}".`,
     };
   }
 

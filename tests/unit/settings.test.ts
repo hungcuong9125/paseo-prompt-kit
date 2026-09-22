@@ -22,6 +22,7 @@ describe("prompt kit settings", () => {
       secretsFile: null,
       timeoutMs: 90_000,
       actionEnabled: {},
+      outputLanguage: "source",
     });
   });
 

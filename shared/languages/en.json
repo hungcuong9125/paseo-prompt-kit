@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "id": "en",
+  "label": "English",
+  "instruction": "Write the rewritten prompt in English. Translate the user's prose; keep every technical literal (paths, URLs, commands, code, identifiers, model and tool names) exactly as written."
+}

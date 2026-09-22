@@ -59,6 +59,10 @@ The screen reads top to bottom in setup order:
 - `Current agent model` — the model the Composer's model control is showing for the agent whose pill you pressed. PromptKit reads the same value Paseo does (the provider session's runtime model first, then the configured model), so what you see is what runs.
 - `Dedicated model` — a provider, model and thinking option you pick from the daemon's provider catalog, whatever the agent itself runs.
 
+### Output language
+
+`Same as the prompt` (default) keeps the language you wrote in. `English`, `Tiếng Việt`, or any language you add translates the prose while paths, commands, code and names stay exactly as written. A language is one JSON file under `shared/languages/`; see `docs/guides/output-languages.md`.
+
 ### The three paths
 
 | Transport | Model source | What runs |
@@ -200,7 +204,7 @@ Every one of these leaves the Composer text untouched.
 
 ## Project layout
 
-The host compiler accepts only `client/`, `server/` and `shared/` at the root, so the modules live inside them. `docs/CORE.md` names each module's one responsibility; `docs/EXTENDING.md` says where a new action pack, API protocol, CLI family or settings section goes, with templates under `docs/templates/`.
+The host compiler accepts only `client/`, `server/` and `shared/` at the root, so the modules live inside them. `docs/CORE.md` names each module's one responsibility; `docs/guides/` walks through the two data-only extensions (a new action pack, a new output language); `docs/EXTENDING.md` covers those plus API protocols, CLI families and settings sections, with templates under `docs/templates/`.
 
 ## License
 

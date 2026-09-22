@@ -1,6 +1,7 @@
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import { buildTaskPrompt } from "../../shared/action-registry/wrapper.js";
 import { resolveAction } from "../../shared/action-registry/registry.js";
+import { resolveLanguage } from "../../shared/language-registry/registry.js";
 import type { RewriteInput, RewriteOutput } from "../../shared/rpc.js";
 import type { CliSpawner } from "../transports/cli/process.js";
 import { pluginLog } from "../log.js";
@@ -40,7 +41,22 @@ export function createRewriteHandler(dependencies: RewriteHandlerDependencies = 
       };
     }
 
-    pluginLog.info({ action: input.actionId, agentId: input.agentId }, "rewrite start");
+    const language = resolveLanguage(input.settings.outputLanguage);
+    if (language === undefined) {
+      pluginLog.error({ language: input.settings.outputLanguage }, "rewrite refused: unknown language");
+      return {
+        status: "error",
+        error: {
+          code: "invalid_selection",
+          message: `No output language is loaded with the id "${input.settings.outputLanguage}".`,
+        },
+      };
+    }
+
+    pluginLog.info(
+      { action: input.actionId, agentId: input.agentId, language: input.settings.outputLanguage },
+      "rewrite start",
+    );
 
     const output = await runRewrite(
       paseo,
@@ -49,7 +65,7 @@ export function createRewriteHandler(dependencies: RewriteHandlerDependencies = 
         workspaceId: input.workspaceId,
         systemPrompt: action.systemPrompt,
         originalPrompt: input.originalPrompt,
-        taskPrompt: buildTaskPrompt(action, input.originalPrompt),
+        taskPrompt: buildTaskPrompt(action, input.originalPrompt, language?.instruction ?? null),
       },
       {
         settings: input.settings,
