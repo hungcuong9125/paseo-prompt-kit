@@ -1,5 +1,5 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
-import { listActions, listRejectedPacks } from "./shared/action-registry/registry.js";
+import { listRejectedPacks, summarizeActions } from "./shared/action-registry/registry.js";
 import { listRejectedLanguages } from "./shared/language-registry/registry.js";
 import {
   actionsListRpc,
@@ -8,7 +8,6 @@ import {
   rewriteRpc,
   secretsStatusRpc,
   secretsWriteRpc,
-  type ActionsListOutput,
   type ApiTestOutput,
   type ProviderCatalogOutput,
 } from "./shared/rpc.js";
@@ -47,18 +46,7 @@ export default function contribute(
 
   server.handle(rewriteRpc, createRewriteHandler(dependencies));
 
-  server.handle(actionsListRpc, () => {
-    return {
-      actions: listActions().map((action) => ({
-        id: action.id,
-        version: action.version,
-        enabledByDefault: action.enabledByDefault,
-        title: action.title,
-        description: action.description,
-        icon: action.icon,
-      })),
-    } satisfies ActionsListOutput;
-  });
+  server.handle(actionsListRpc, (input) => summarizeActions(input.customActions));
 
   server.handle(providerCatalogRpc, async (input, { paseo }) => {
     const providers = await readProviderCatalog(paseo, input.cwd);

@@ -7,6 +7,7 @@ import { promptKitSettingsSchema, TIMEOUT_MS } from "../../shared/settings.js";
 
 vi.mock("react-native", async () => (await import("./mocks.js")).reactNativeMock);
 vi.mock("@getpaseo/plugin/client/ui", async () => (await import("./mocks.js")).pluginUiMock);
+vi.mock("@getpaseo/plugin/client/react-native", async () => (await import("./mocks.js")).pluginReactNativeMock);
 
 const holder = vi.hoisted(() => ({
   state: null as Record<string, unknown> | null,
@@ -30,6 +31,10 @@ vi.mock("@getpaseo/plugin/client", () => ({
 }));
 
 import { PromptKitSettingsScreen } from "../../client/settings/settings-screen.js";
+import { ACTION_SAMPLES } from "../../client/settings/action-samples.js";
+import { MAX_ENABLED_ACTIONS } from "../../client/actions/enabled.js";
+import { summarizeActions } from "../../shared/action-registry/registry.js";
+import type { ActionPack } from "../../shared/action-registry/schema.js";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 
 const theme = {
@@ -81,11 +86,13 @@ const actionCatalog = {
       id: "general",
       version: 1,
       enabledByDefault: true,
-      title: "Improve prompt",
+      title: "General",
       description: "Make the draft clear and ready to act on, in your own voice, without adding facts.",
       icon: "Code2",
+      custom: false,
     },
   ],
+  rejected: [],
 };
 
 const GEMINI = {
@@ -115,8 +122,15 @@ function readyState(values: Record<string, unknown>): Record<string, unknown> {
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
-async function render(): Promise<HTMLDivElement> {
-  holder.listActions.mockResolvedValue(actionCatalog);
+/** `live` answers the action list from the real registry, so custom actions show up. */
+async function render(live = false): Promise<HTMLDivElement> {
+  if (live) {
+    holder.listActions.mockImplementation(async (input: { customActions: ActionPack[] }) =>
+      summarizeActions(input.customActions),
+    );
+  } else {
+    holder.listActions.mockResolvedValue(actionCatalog);
+  }
   holder.listProviders.mockResolvedValue(catalog);
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -593,5 +607,111 @@ describe("advanced overrides", () => {
     expect(view.querySelector('select[data-label="Pi peer"]')).toBeNull();
     await press(view, "prompt-kit-save");
     expect(holder.save.mock.calls[0]?.[0]).toMatchObject({ apiEndpointByProvider: {} });
+  });
+});
+
+describe("custom actions", () => {
+  // Fails if the lone bundled action shows a switch that could hide the pill by accident.
+  it("shows the only action as always on", async () => {
+    holder.state = readyState({});
+    const view = await render(true);
+    expect(view.querySelector('input[data-label="General"]')).toBeNull();
+    expect(view.textContent).toContain("Always on · ");
+  });
+
+  function editor(view: HTMLDivElement): HTMLTextAreaElement {
+    const found = view.querySelector<HTMLTextAreaElement>('[data-testid="prompt-kit-custom-json"]');
+    if (!found) throw new Error("no custom action editor");
+    return found;
+  }
+
+  async function edit(view: HTMLDivElement, value: string) {
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+    await act(async () => {
+      setter?.call(editor(view), value);
+      editor(view).dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
+  function customPack(n: number): ActionPack {
+    return { ...ACTION_SAMPLES[0]!.pack, id: `custom-${n}`, title: `Custom ${n}` };
+  }
+
+  // Fails if Add stops offering a sample, or Apply/Save stop storing the edited JSON.
+  it("adds an action from a sample, lists it with a switch, and saves it", async () => {
+    holder.state = readyState({});
+    holder.save.mockResolvedValue(true);
+    const view = await render(true);
+
+    await pressAction(view, "Add action");
+    expect(JSON.parse(editor(view).value)).toMatchObject({ id: "my-action", schemaVersion: 1 });
+    await choose(view, "Start from", "plan-first");
+    const pack = JSON.parse(editor(view).value) as ActionPack;
+    expect(pack.id).toBe("plan-first");
+    await edit(view, JSON.stringify({ ...pack, title: "Plan it" }));
+
+    await press(view, "prompt-kit-custom-apply");
+    expect(view.querySelector('[data-testid="prompt-kit-custom-json"]')).toBeNull();
+    expect(view.querySelector<HTMLInputElement>('input[data-label="Plan it"]')?.checked).toBe(true);
+    expect(view.textContent).toContain("Custom · ");
+
+    await press(view, "prompt-kit-save");
+    const saved = holder.save.mock.calls[0]![0] as { customActions: ActionPack[] };
+    expect(saved.customActions.map((entry) => [entry.id, entry.title])).toEqual([["plan-first", "Plan it"]]);
+  });
+
+  // Fails if broken JSON or a taken id could reach the draft.
+  it("refuses invalid JSON and an id another action uses", async () => {
+    holder.state = readyState({});
+    const view = await render(true);
+    await pressAction(view, "Add action");
+    const pack = JSON.parse(editor(view).value) as ActionPack;
+
+    await edit(view, "{");
+    await press(view, "prompt-kit-custom-apply");
+    expect(view.querySelector('[data-testid="prompt-kit-custom-error"]')?.textContent).toContain("Not valid JSON");
+
+    await edit(view, JSON.stringify({ ...pack, id: "general" }));
+    await press(view, "prompt-kit-custom-apply");
+    expect(view.querySelector('[data-testid="prompt-kit-custom-error"]')?.textContent).toContain(
+      'Another action already uses the id "general"',
+    );
+    expect(view.querySelector('[data-testid="prompt-kit-save"]')).toBeNull();
+  });
+
+  // Fails if an edit loses the switch, or Delete leaves the pack or its switch behind.
+  it("edits and deletes a stored action", async () => {
+    holder.state = readyState({ customActions: [customPack(1)], actionEnabled: { "custom-1": false } });
+    holder.save.mockResolvedValue(true);
+    const view = await render(true);
+
+    await pressAction(view, "Custom 1");
+    await edit(view, JSON.stringify({ ...customPack(1), id: "renamed" }));
+    await press(view, "prompt-kit-custom-apply");
+    await press(view, "prompt-kit-save");
+    expect(holder.save.mock.calls[0]![0]).toMatchObject({ actionEnabled: { renamed: false } });
+
+    await pressAction(view, "Custom 1");
+    await press(view, "prompt-kit-custom-delete");
+    await press(view, "prompt-kit-save");
+    expect(holder.save.mock.calls[1]![0]).toMatchObject({ customActions: [], actionEnabled: {} });
+  });
+
+  // Fails if more than MAX_ENABLED_ACTIONS can be switched on, or saved.
+  it("keeps at most the maximum number of actions on", async () => {
+    const full = Array.from({ length: MAX_ENABLED_ACTIONS - 1 }, (_, index) => customPack(index + 1));
+    const extra = customPack(MAX_ENABLED_ACTIONS);
+    holder.state = readyState({ customActions: [...full, extra], actionEnabled: { [extra.id]: false } });
+    const view = await render(true);
+    const locked = view.querySelector<HTMLInputElement>(`input[data-label="${extra.title}"]`)!;
+    expect(locked.checked).toBe(false);
+    expect(locked.disabled).toBe(true);
+    expect(view.textContent).toContain(`${MAX_ENABLED_ACTIONS} actions are on; turn one off first.`);
+
+    act(() => root?.unmount());
+    container?.remove();
+    holder.state = readyState({ customActions: [...full, extra] });
+    const over = await render(true);
+    expect(statusText(over)).toContain(`keep at most ${MAX_ENABLED_ACTIONS}`);
   });
 });

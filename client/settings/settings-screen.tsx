@@ -8,15 +8,17 @@ import {
   providerCatalogRpc,
   secretsStatusRpc,
   secretsWriteRpc,
-  type ActionSummary,
+  type ActionsListOutput,
   type ProviderCatalogOutput,
 } from "../../shared/rpc.js";
+import type { ActionPack } from "../../shared/action-registry/schema.js";
 import { promptKitSettings } from "../../shared/settings.js";
-import { enabledActions } from "../actions/enabled.js";
+import { describeEnabledLimit, enabledActions } from "../actions/enabled.js";
 import { useSettingsDraft } from "./draft.js";
 import { describeReadiness } from "./readiness.js";
 import { ActionsSection } from "./sections/actions-section.js";
 import { AdvancedSection } from "./sections/advanced-section.js";
+import { CustomActionsSection } from "./sections/custom-actions-section.js";
 import { ApiEndpointSection } from "./sections/api-endpoint-section.js";
 import { DedicatedModelSection } from "./sections/dedicated-model-section.js";
 import { EngineSection } from "./sections/engine-section.js";
@@ -30,13 +32,13 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Provider catalog and action list, read once with retry. */
-function useCatalogs() {
+/** Provider catalog read once, action list re-read when the custom actions change; both retry. */
+function useCatalogs(customActions: readonly ActionPack[]) {
   const listProviders = useRpc(providerCatalogRpc);
   const listActions = useRpc(actionsListRpc);
   const [providers, setProviders] = useState<Providers | null>(null);
   const [providersError, setProvidersError] = useState<string | null>(null);
-  const [actions, setActions] = useState<readonly ActionSummary[] | null>(null);
+  const [registry, setRegistry] = useState<ActionsListOutput | null>(null);
   const [actionsError, setActionsError] = useState<string | null>(null);
 
   const reloadProviders = useCallback(() => {
@@ -46,25 +48,41 @@ function useCatalogs() {
       .catch((error: unknown) => setProvidersError(message(error)));
   }, [listProviders]);
 
+  const customKey = JSON.stringify(customActions);
   const reloadActions = useCallback(() => {
     setActionsError(null);
-    void listActions({})
-      .then((output) => setActions(output.actions))
+    void listActions({ customActions: JSON.parse(customKey) as ActionPack[] })
+      .then((output) => setRegistry(output))
       .catch((error: unknown) => setActionsError(message(error)));
-  }, [listActions]);
+  }, [listActions, customKey]);
 
   useEffect(() => {
     reloadProviders();
-    reloadActions();
-  }, [reloadProviders, reloadActions]);
+  }, [reloadProviders]);
 
-  return { providers, providersError, reloadProviders, actions, actionsError, reloadActions };
+  useEffect(() => {
+    reloadActions();
+  }, [reloadActions]);
+
+  return {
+    providers,
+    providersError,
+    reloadProviders,
+    actions: registry?.actions ?? null,
+    rejected: registry?.rejected ?? [],
+    actionsError,
+    reloadActions,
+  };
 }
 
 /** Status bar, then sections in setup order; irrelevant sections are not rendered. */
 function ReadyScreen({ settings, theme, layout }: { settings: ReadySettings } & PluginSurfaceProps) {
-  const draft = useSettingsDraft(settings);
-  const catalogs = useCatalogs();
+  const settingsDraft = useSettingsDraft(settings);
+  const catalogs = useCatalogs(settingsDraft.values.customActions);
+  // The enabled limit needs the registry, which the draft itself cannot read.
+  const limitProblem =
+    catalogs.actions === null ? null : describeEnabledLimit(catalogs.actions, settingsDraft.values);
+  const draft = { ...settingsDraft, problem: settingsDraft.problem ?? limitProblem };
   const testEndpoint = useRpc(apiTestRpc);
   const keyStatus = useRpc(secretsStatusRpc);
   const writeKey = useRpc(secretsWriteRpc);
@@ -75,8 +93,10 @@ function ReadyScreen({ settings, theme, layout }: { settings: ReadySettings } & 
     catalogs.actions === null ? null : enabledActions(catalogs.actions, values).length;
   const readiness = describeReadiness({ values, providers: catalogs.providers, enabledActionCount: enabledCount });
   const actionsChanged = useMemo(
-    () => JSON.stringify(values.actionEnabled) !== JSON.stringify(settings.values.actionEnabled),
-    [values.actionEnabled, settings.values.actionEnabled],
+    () =>
+      JSON.stringify([values.actionEnabled, values.customActions]) !==
+      JSON.stringify([settings.values.actionEnabled, settings.values.customActions]),
+    [values.actionEnabled, values.customActions, settings.values.actionEnabled, settings.values.customActions],
   );
 
   return (
@@ -91,11 +111,20 @@ function ReadyScreen({ settings, theme, layout }: { settings: ReadySettings } & 
 
       <ActionsSection
         actions={catalogs.actions}
+        rejected={catalogs.rejected}
         error={catalogs.actionsError}
         values={values}
         disabled={disabled}
         patch={draft.patch}
         reload={catalogs.reloadActions}
+      />
+
+      <CustomActionsSection
+        theme={theme}
+        actions={catalogs.actions}
+        values={values}
+        disabled={disabled}
+        patch={draft.patch}
       />
 
       <EngineSection theme={theme} compact={layout.compact} values={values} disabled={disabled} patch={draft.patch} />

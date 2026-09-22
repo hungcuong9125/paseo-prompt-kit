@@ -286,6 +286,29 @@ describe("runRewrite: output language", () => {
     );
     expect(harness.spawned[0]?.args).toContain(buildSystemPrompt(resolveAction("general")!));
   });
+
+  // Fails if a custom action from settings cannot be resolved by the daemon.
+  it("runs a custom action carried in the settings snapshot", async () => {
+    const { createRewriteHandler } = await import("../../server/rewrite-engine/handler.js");
+    const { ACTION_SAMPLES } = await import("../../client/settings/action-samples.js");
+    const custom = { ...ACTION_SAMPLES.find((entry) => entry.key === "plan-first")!.pack, system: "Action: CUSTOM-MARKER." };
+    const harness = createRewriteHarness({
+      agent: { provider: "claude", runtimeInfo: { provider: "claude" } },
+    });
+    const handler = createRewriteHandler({ spawn: harness.spawn });
+    const output = await handler(
+      {
+        actionId: custom.id,
+        agentId: "agent-1",
+        workspaceId: "ws-1",
+        originalPrompt: "fix it",
+        settings: await settings({ customActions: [custom] }),
+      },
+      { paseo: harness.paseo } as never,
+    );
+    expect(output.status).toBe("ok");
+    expect(harness.spawned[0]?.args.some((arg) => arg.endsWith("Action: CUSTOM-MARKER."))).toBe(true);
+  });
 });
 
 describe("runRewrite: CLI failure paths", () => {

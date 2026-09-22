@@ -31,7 +31,7 @@ describe("bundled registry", () => {
   });
 
   it("resolves a loaded action and refuses an id no pack owns", () => {
-    expect(resolveAction("general")?.title).toBe("Improve prompt");
+    expect(resolveAction("general")?.title).toBe("General");
     expect(resolveAction("does-not-exist")).toBeNull();
   });
 
@@ -159,6 +159,7 @@ describe("enabled set E drives the pill shape", () => {
       title: action.title,
       description: action.description,
       icon: action.icon,
+      custom: false,
     }));
     // Two synthetic actions stand in for a future pack: the shape rule is a
     // property of E, not of how many packs ship today.

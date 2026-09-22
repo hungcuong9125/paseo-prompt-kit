@@ -1,6 +1,6 @@
 # PromptKit
 
-PromptKit is a Paseo plugin (id `prompt-kit`) that rewrites the prompt in your Composer. It adds one `PromptKit` pill to the Composer's track bar and a `/rewrite <prompt>` slash command; the default action is `Improve prompt`. Running it rewrites the current Composer text in place, in your own voice (first person, speaking to the agent), keeps your language and every protected literal (URLs, absolute paths, shell commands, code blocks, model names, tool names), restores focus, and never sends the prompt. You review the result and send it yourself.
+PromptKit is a Paseo plugin (id `prompt-kit`) that rewrites the prompt in your Composer. It adds one `PromptKit` pill to the Composer's track bar and a `/rewrite <prompt>` slash command; the default action is `General`. Running it rewrites the current Composer text in place, in your own voice (first person, speaking to the agent), keeps your language and every protected literal (URLs, absolute paths, shell commands, code blocks, model names, tool names), restores focus, and never sends the prompt. You review the result and send it yourself.
 
 Rewriting has three paths, chosen in Settings. The default runs the selected model through the provider's own CLI, headlessly, in a temporary directory — no Paseo agent, no tab, no archive. Your primary conversation never receives a rewrite turn and never changes provider or session. The third path posts straight to an API you configure (OpenAI, Anthropic, Google Gemini, Cloudflare Workers AI, or anything speaking one of those protocols) when a CLI cold start is too slow or no CLI exists.
 
@@ -49,7 +49,7 @@ paseo plugin ls
 `--ref` chooses the initial branch, tag, or commit once; later `paseo plugin update prompt-kit` follows the remote's default HEAD. Pin a release instead of tracking `main` by giving `--ref` a tag:
 
 ```bash
-paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.5.0
+paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.5.1
 ```
 
 `paseo plugin ls` reports the installed commit.
@@ -58,9 +58,12 @@ paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.5.0
 
 Open it from Paseo Settings → Plugins → the `…` menu on `prompt-kit` → **Settings**. The bar at the top says whether a rewrite would run and over which path, names the reason when it would not, and holds **Save** / **Discard** once something has changed. Nothing is written until Save.
 
+![PromptKit settings with the default path: Provider CLI, current agent model, output in the prompt's language](docs/images/settings-provider-cli.png)
+
 The screen reads top to bottom in setup order:
 
-1. **Actions** — one switch per bundled action. One enabled action makes the pill a direct button; two or more make it a menu; none hides the pill. A change here reaches the pill when the agent re-opens or the plugin reloads.
+1. **Actions** — one switch per action, bundled or custom; up to 6 can be on. One enabled action makes the pill rewrite at once; two or more make it a menu (on mobile, one button per action in the sheet); none hides the pill. A lone action shows no switch. Saving updates every pill at once.
+   **Custom actions** — your own actions, written as action-pack JSON in a text box on the same screen: **Add** opens a sample (Blank template, Copy of General, Execution brief, Plan first, Review request, Make concise, or a copy of one of yours), you change the id, title and instructions, **Apply** checks the JSON, and **Save** stores it. They run through the same rewrite as the bundled ones.
 2. **Rewrite engine** — Transport, Model source (Provider CLI only) and Output language. Every other section appears only when these need it.
 3. **Dedicated model** (CLI + Dedicated) or **API endpoint** (Direct API).
 4. **Advanced** (collapsed) — timeout and the two per-provider overrides.
@@ -92,6 +95,8 @@ On `Direct API`, an agent whose provider is mapped under **Advanced → Endpoint
 ### API endpoint
 
 Choose an endpoint — presets and your saved custom endpoints are listed A–Z (Anthropic, Cloudflare Workers AI, Google Gemini, Local server, OpenAI, OpenRouter), with **Custom endpoint…** last — fill in the base URL, pick a **Key source** (see [API keys](#api-keys)), and press **Test**. A successful test fills the **Model** list from the endpoint; the rewrite refuses a model outside that list. When a list has more than 8 models, a **Filter models** row above Model narrows the dropdown by name or id; the saved model always stays in it. Save is blocked while the endpoint cannot work (for example an empty base URL), with the reason in the status bar.
+
+![PromptKit settings on Direct API with the Google Gemini endpoint: key source, connection test, model filter and model](docs/images/settings-direct-api.png)
 
 ### Advanced
 
@@ -230,7 +235,7 @@ Every one of these leaves the Composer text untouched.
 - Requires Paseo `>=0.9.0`. Because text access depends on the Composer DOM (or, on mobile, the React tree), a Paseo UI change can break it even when the public plugin SDK is compatible.
 - No auto-send. PromptKit only replaces the Composer text; you send the message.
 - PromptKit refuses to replace text you edited while a rewrite was running, and refuses when more than one Composer (or none) is visible.
-- Two bundled actions: `Improve prompt` (on by default) turns the draft into a clear instruction the agent can act on — the concrete action, each constraint made checkable, the working steps for that kind of task (find the cause first, follow the codebase's existing way, keep the change scoped), and when it is done; `Execution brief` (off by default, turn it on in Settings → Actions) gives the same as labelled parts: goal, context, constraints, approach, done when. Neither invents files, numbers, requirements or decisions the draft does not contain. Both write as you, speaking to the agent — never about "the user". Adding another action is one JSON file — see `docs/EXTENDING.md`.
+- One bundled action: `General` turns the draft into a clear instruction the agent can act on — the concrete action, each constraint made checkable, the working steps for that kind of task (find the cause first, follow the codebase's existing way, keep the change scoped), and when it is done. It never invents files, numbers, requirements or decisions the draft does not contain, and it writes as you, speaking to the agent — never about "the user". Add your own under Settings → Custom actions, or bundle one as a JSON file — see `docs/EXTENDING.md`.
 - The API transport does not stream: it makes one request and waits for the whole answer. A slow endpoint can exceed the daemon's 30-second plugin-call cap, in which case the host reports a timeout before PromptKit's own `Timeout (ms)` can fire.
 - No OAuth or token refresh: an endpoint uses a static key. A provider that needs an interactive login is better served by the CLI transport.
 

@@ -30,7 +30,7 @@ export function createRewriteHandler(dependencies: RewriteHandlerDependencies = 
     input: RewriteInput,
     { paseo }: PluginHandlerContext,
   ): Promise<RewriteOutput> {
-    const action = resolveAction(input.actionId);
+    const action = resolveAction(input.actionId, input.settings.customActions);
     if (action === null) {
       pluginLog.error({ action: input.actionId }, "rewrite refused: unknown action");
       return {

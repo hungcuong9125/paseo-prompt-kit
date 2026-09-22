@@ -18,6 +18,7 @@ describe("prompt kit settings", () => {
       apiEndpoints: [],
       apiEndpointId: null,
       apiModel: null,
+      customActions: [],
       apiEndpointByProvider: {},
       secretsDir: null,
       timeoutMs: 90_000,

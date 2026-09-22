@@ -80,15 +80,6 @@ describe("bundled packs", () => {
     expect(general.systemPrompt).toMatch(/never move a constraint up or down/i);
     expect(general.systemPrompt).toMatch(/invent facts/i);
   });
-
-  // Fails if the brief ships enabled, loses its labels, or starts inventing facts.
-  it("keeps the execution brief opt-in, labelled, and free of invented facts", () => {
-    const brief = listActions().find((action) => action.id === "brief")!;
-    expect(brief.enabledByDefault).toBe(false);
-    expect(brief.systemPrompt).toMatch(/labelled execution brief/i);
-    expect(brief.systemPrompt).toMatch(/write every label in the draft's language/i);
-    expect(brief.systemPrompt).toMatch(/invent facts/i);
-  });
 });
 
 describe("core-owned task wrapper", () => {

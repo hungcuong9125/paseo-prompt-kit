@@ -1,8 +1,10 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
+import type { ActionPack } from "./shared/action-registry/schema.js";
 import { actionsListRpc } from "./shared/rpc.js";
 import { createWebComposerAdapter } from "./client/composer-bridge/web.js";
 import { PLUGIN_ICON } from "./client/icon.js";
 import { createSettingsReader } from "./client/settings/read-settings.js";
+import { onSettingsSaved } from "./client/settings/settings-saved.js";
 import { registerRewriteCommand } from "./client/commands/rewrite-command.js";
 import { registerAgentPills } from "./client/pills/agent-pills.js";
 import { createRewriteRunner } from "./client/pills/rewrite-runner.js";
@@ -18,8 +20,8 @@ import { createRewriteSheet, locateComposerFromProbe } from "./client/sheet/rewr
 // module-scope `var` for a re-exported binding would have been assigned.
 export default function contribute(client: PluginClientContext): () => void {
   const readSettings = createSettingsReader(client.rpc);
-  const listActions = async () => {
-    const output = await client.rpc(actionsListRpc, {});
+  const listActions = async (customActions: readonly ActionPack[]) => {
+    const output = await client.rpc(actionsListRpc, { customActions: [...customActions] });
     // Fail closed on a malformed registry instead of registering a pill with an
     // unknown enabled set.
     if (!Array.isArray(output.actions)) {
@@ -45,6 +47,7 @@ export default function contribute(client: PluginClientContext): () => void {
     {
       listActions,
       readSettings,
+      onSettingsSaved,
       ...(composerSupported ? {} : { popover: createRewriteSheet(locateComposerFromProbe) }),
     },
   );

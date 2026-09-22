@@ -1,6 +1,6 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
-import { ACTION_ID_PATTERN } from "./action-registry/schema.js";
+import { ACTION_ID_PATTERN, actionPackSchema } from "./action-registry/schema.js";
 import { apiEndpointSchema } from "./api-protocol.js";
 import { promptKitSettingsSchema } from "./settings.js";
 
@@ -67,18 +67,28 @@ export const actionSummarySchema = z.object({
   title: z.string().min(1),
   description: z.string().min(1),
   icon: z.string().min(1),
+  /** True for an action the user wrote in Settings, false for a bundled pack. */
+  custom: z.boolean(),
+});
+
+export const rejectedPackSchema = z.object({
+  source: z.string().min(1),
+  reason: z.string().min(1),
 });
 
 /**
- * The registry as loaded, with no settings applied. Which actions are enabled is
- * a client-side decision, so the same settings document never has to be read
- * twice and the RPC stays a pure function of the loaded packs.
+ * The registry for the caller's custom actions, with no switches applied. Which
+ * actions are enabled is a client-side decision; the RPC stays a pure function of
+ * the bundled packs plus the `customActions` it is given.
  */
 export const actionsListRpc = defineRpc({
   name: "prompt-kit.actions.list",
-  input: z.object({}),
+  input: z.object({
+    customActions: z.array(actionPackSchema),
+  }),
   output: z.object({
     actions: z.array(actionSummarySchema),
+    rejected: z.array(rejectedPackSchema),
   }),
 });
 

@@ -170,10 +170,10 @@ describe("/rewrite slash command", () => {
       throw new Error(`unexpected rpc ${method}`);
     };
     const { registerRewriteCommand } = await import("../../client/commands/rewrite-command.js");
-    const { listActions } = await import("../../shared/action-registry/registry.js");
+    const { summarizeActions } = await import("../../shared/action-registry/registry.js");
     const fake = createFakeClient({ agents: [], rpc });
     const cleanup = registerRewriteCommand(fake.client, {
-      listActions: async () => listActions(),
+      listActions: async () => summarizeActions([]).actions,
       readSettings: async () => ({ status: "ready", values }),
     });
     await expect(fake.slashCommands[0]!.onSubmit(commandContext(rpc, "fix it"))).rejects.toThrow(

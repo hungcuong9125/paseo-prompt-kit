@@ -45,7 +45,7 @@ const props = {
 } as unknown as PluginButtonContentProps;
 
 const actions = {
-  actions: [{ id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I" }],
+  actions: [{ id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I", custom: false }],
 };
 
 let root: Root | null = null;
@@ -148,6 +148,7 @@ describe("rewrite sheet with the Composer reachable", () => {
 
   it("does not rewrite or touch the Composer when it is empty, and X leaves it alone", async () => {
     holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
+    holder.listActions.mockResolvedValue(actions);
     const composer = fakeComposer("");
     const view = await render(() => ({ ok: true, handle: composer.handle }));
     expect(holder.rewrite).not.toHaveBeenCalled();
@@ -159,9 +160,37 @@ describe("rewrite sheet with the Composer reachable", () => {
 
   it("explains when the Composer cannot be located and stays usable by hand", async () => {
     holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
+    holder.listActions.mockResolvedValue(actions);
     const view = await render(() => ({ ok: false, reason: "no_fiber" }));
     expect(view.querySelector('[data-testid="prompt-kit-sheet-note"]')?.textContent).toContain("component tree");
     expect(holder.rewrite).not.toHaveBeenCalled();
+  });
+});
+
+describe("rewrite sheet with several enabled actions", () => {
+  // Fails if the sheet runs the first action on open instead of letting the author choose.
+  it("waits for a choice and runs the action that was pressed", async () => {
+    holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
+    const summary = actions.actions[0]!;
+    holder.listActions.mockResolvedValue({
+      actions: [summary, { ...summary, id: "plan-first", title: "Plan first", custom: true }],
+      rejected: [],
+    });
+    holder.rewrite.mockResolvedValue({
+      status: "ok", rewrittenPrompt: "planned", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1,
+    });
+    const composer = fakeComposer("fix the login bug");
+    const view = await render(() => ({ ok: true, handle: composer.handle }));
+
+    expect(holder.rewrite).not.toHaveBeenCalled();
+    expect(field(view).value).toBe("fix the login bug");
+    expect(view.querySelector('[data-testid="prompt-kit-sheet-rewrite"]')).toBeNull();
+
+    await press(view, "prompt-kit-sheet-action-plan-first");
+    expect(holder.rewrite).toHaveBeenCalledWith(
+      expect.objectContaining({ actionId: "plan-first", originalPrompt: "fix the login bug" }),
+    );
+    expect(field(view).value).toBe("planned");
   });
 });
 

@@ -1,4 +1,5 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
+import type { ActionPack } from "../../shared/action-registry/schema.js";
 import type { ActionSummary } from "../../shared/rpc.js";
 import { enabledActions } from "../actions/enabled.js";
 import { createWebComposerAdapter } from "../composer-bridge/web.js";
@@ -8,7 +9,7 @@ import { createSettingsReader, type SettingsRead } from "../settings/read-settin
 export const REWRITE_COMMAND = "rewrite";
 
 export interface RewriteCommandDependencies {
-  listActions: () => Promise<readonly ActionSummary[]>;
+  listActions: (customActions: readonly ActionPack[]) => Promise<readonly ActionSummary[]>;
   readSettings: () => Promise<SettingsRead>;
 }
 
@@ -31,9 +32,9 @@ export function registerRewriteCommand(
       if (!adapter.isSupported()) {
         throw new Error("On mobile, press the PromptKit pill instead.");
       }
-      const actions = await dependencies.listActions();
       const settings = await dependencies.readSettings();
       if (settings.status !== "ready") throw new Error(settings.error);
+      const actions = await dependencies.listActions(settings.values.customActions);
       // Default flow = first enabled action.
       const action = enabledActions(actions, settings.values)[0];
       if (action === undefined) {

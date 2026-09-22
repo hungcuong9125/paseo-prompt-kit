@@ -1,5 +1,6 @@
 import { defineSettings } from "@getpaseo/plugin";
 import { z } from "zod";
+import { actionPackSchema } from "./action-registry/schema.js";
 import { apiEndpointSchema } from "./api-protocol.js";
 import { CLI_FAMILY_IDS } from "./cli-families.js";
 import { LANGUAGE_ID_PATTERN, SOURCE_LANGUAGE } from "./language-registry/schema.js";
@@ -69,6 +70,8 @@ export const promptKitSettingsSchema = z.object({
    * settings migration and a removed pack leaves no stale state behind.
    */
   actionEnabled: z.record(z.string(), z.boolean()).default({}),
+  /** Actions the user wrote in Settings; same pack schema and rewrite path as the bundled ones. */
+  customActions: z.array(actionPackSchema).default([]),
   /** `SOURCE_LANGUAGE` or a loaded id from `shared/languages/`. */
   outputLanguage: z.string().regex(LANGUAGE_ID_PATTERN).default(SOURCE_LANGUAGE),
 });

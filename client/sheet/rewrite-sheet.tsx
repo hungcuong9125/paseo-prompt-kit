@@ -3,7 +3,7 @@ import { Text, View } from "react-native";
 import { usePaseo, useRpc, useSettings } from "@getpaseo/plugin/client";
 import type { PluginButtonContentProps } from "@getpaseo/plugin/client";
 import { TextInput, useToast } from "@getpaseo/plugin/client/react-native";
-import { actionsListRpc, rewriteRpc } from "../../shared/rpc.js";
+import { actionsListRpc, rewriteRpc, type ActionSummary } from "../../shared/rpc.js";
 import { promptKitSettings, promptKitSettingsSchema } from "../../shared/settings.js";
 import { enabledActions } from "../actions/enabled.js";
 import {
@@ -30,10 +30,20 @@ const BODY_LIFT = SPACE.lg;
 /** Text kept per agent while the sheet is closed with X, so reopening resumes. */
 const drafts = new Map<string, string>();
 
+/** Action buttons per row when several actions are enabled. */
+const ACTIONS_PER_ROW = 2;
+
+function rows<T>(items: readonly T[]): T[][] {
+  const out: T[][] = [];
+  for (let index = 0; index < items.length; index += ACTIONS_PER_ROW) out.push(items.slice(index, index + ACTIONS_PER_ROW));
+  return out;
+}
+
 /**
- * Pill popover for native mobile: opens with the Composer's text, rewrites it
- * at once, Rewrite again replaces in place, Send hands it to the agent and
- * clears the Composer, X keeps everything as it is.
+ * Pill popover for native mobile: opens with the Composer's text. With one
+ * enabled action it rewrites at once and Rewrite runs it again; with several,
+ * each action has its own button and nothing runs until one is pressed. Send
+ * hands the text to the agent and clears the Composer, X keeps everything.
  */
 export function createRewriteSheet(locate: ComposerLocator): ComponentType<PluginButtonContentProps> {
   return function RewriteSheet(props: PluginButtonContentProps) {
@@ -51,6 +61,8 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
     const [value, setValue] = useState("");
     const [busy, setBusy] = useState<"idle" | "rewriting" | "sending">("idle");
     const [note, setNote] = useState<string | null>(null);
+    /** Enabled actions, null until read. */
+    const [choices, setChoices] = useState<readonly ActionSummary[] | null>(null);
     const started = useRef(false);
 
     const remember = useCallback(
@@ -62,7 +74,7 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
     );
 
     const runRewrite = useCallback(
-      async (source: string) => {
+      async (source: string, actionId: string) => {
         if (settings.status !== "ready") {
           toast.error(settings.status === "loading" ? "Settings are still loading." : settings.error);
           return;
@@ -73,11 +85,8 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
         }
         setBusy("rewriting");
         try {
-          const { actions } = await listActions({});
-          const action = enabledActions(actions, settings.values)[0];
-          if (action === undefined) throw new Error("No PromptKit action is enabled.");
           const output = await rewrite({
-            actionId: action.id,
+            actionId,
             agentId,
             workspaceId,
             originalPrompt: source,
@@ -91,12 +100,25 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
           setBusy("idle");
         }
       },
-      [agentId, listActions, remember, rewrite, settings, toast, workspaceId],
+      [agentId, remember, rewrite, settings, toast, workspaceId],
     );
 
-    // On open: read the Composer, show its text, and rewrite it straight away.
+    // Read the enabled actions once settings are ready.
+    const customActions = settings.status === "ready" ? settings.values.customActions : null;
     useEffect(() => {
-      if (started.current || agentId === null || settings.status === "loading") return;
+      if (settings.status !== "ready" || choices !== null) return;
+      const values = settings.values;
+      listActions({ customActions: values.customActions })
+        .then(({ actions }) => setChoices(enabledActions(actions, values)))
+        .catch((error: unknown) => {
+          setChoices([]);
+          toast.error(error instanceof Error ? error.message : String(error));
+        });
+    }, [choices, customActions, listActions, settings, toast]);
+
+    // On open: read the Composer and show its text; with one action, rewrite it straight away.
+    useEffect(() => {
+      if (started.current || agentId === null || choices === null) return;
       started.current = true;
       const lookup = locate(probeRef.current, agentId);
       composerRef.current = lookup;
@@ -104,8 +126,9 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
       const initial = composerText.trim() !== "" ? composerText : (drafts.get(agentId) ?? "");
       remember(initial);
       if (!lookup.ok) setNote(describeLookupFailure(lookup.reason));
-      if (composerText.trim() !== "") void runRewrite(composerText);
-    }, [agentId, remember, runRewrite, settings.status]);
+      else if (choices.length === 0) setNote("No PromptKit action is enabled.");
+      if (composerText.trim() !== "" && choices.length === 1) void runRewrite(composerText, choices[0]!.id);
+    }, [agentId, choices, remember, runRewrite]);
 
     const send = useCallback(async () => {
       if (busy !== "idle" || agentId === null || value.trim() === "") return;
@@ -139,6 +162,9 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
       [theme, busy],
     );
 
+    const several = choices !== null && choices.length > 1;
+    const only = choices?.length === 1 ? choices[0] : undefined;
+
     // The host pads the body and draws the title row; X is lifted into that row.
     return (
       <View style={{ gap: SPACE.md, marginTop: -BODY_LIFT }}>
@@ -157,29 +183,56 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
           multiline
           value={value}
           onChangeText={remember}
-          placeholder="Write the prompt, then press Rewrite"
+          placeholder={several ? "Write the prompt, then pick an action" : "Write the prompt, then press Rewrite"}
           placeholderTextColor={theme.colors.foregroundMuted}
           editable={busy === "idle"}
           returnKeyType="go"
           blurOnSubmit
-          onSubmitEditing={() => void runRewrite(value)}
+          onSubmitEditing={() => {
+            if (only !== undefined) void runRewrite(value, only.id);
+          }}
           style={box}
           testID="prompt-kit-sheet-input"
         />
         <Text style={text.muted} testID="prompt-kit-sheet-note">
           {busy === "rewriting"
             ? "Rewriting…"
-            : (note ?? "Rewrite replaces the text here. Send hands it to the agent and clears the Composer.")}
+            : (note ??
+              (several
+                ? "Pick how to rewrite; the result replaces the text here. Send hands it to the agent and clears the Composer."
+                : "Rewrite replaces the text here. Send hands it to the agent and clears the Composer."))}
         </Text>
+        {several
+          ? rows(choices).map((row) => (
+              <View key={row.map((action) => action.id).join(",")} style={{ flexDirection: "row", gap: SPACE.md }}>
+                {row.map((action) => (
+                  <Button
+                    key={action.id}
+                    theme={theme}
+                    label={action.title}
+                    fill
+                    onPress={() => void runRewrite(value, action.id)}
+                    disabled={busy !== "idle" || value.trim() === ""}
+                    testID={`prompt-kit-sheet-action-${action.id}`}
+                  />
+                ))}
+                {row.length < ACTIONS_PER_ROW ? <View style={{ flex: 1 }} /> : null}
+              </View>
+            ))
+          : null}
         <View style={{ flexDirection: "row", gap: SPACE.md }}>
-          <Button
-            theme={theme}
-            label={busy === "rewriting" ? "Rewriting…" : "Rewrite"}
-            fill
-            onPress={() => void runRewrite(value)}
-            disabled={busy !== "idle" || value.trim() === ""}
-            testID="prompt-kit-sheet-rewrite"
-          />
+          {several ? null : (
+            <Button
+              theme={theme}
+              label={busy === "rewriting" ? "Rewriting…" : "Rewrite"}
+              fill
+              onPress={() => {
+                if (only !== undefined) void runRewrite(value, only.id);
+              }}
+              disabled={busy !== "idle" || value.trim() === "" || only === undefined}
+              testID="prompt-kit-sheet-rewrite"
+            />
+          )}
           <Button
             theme={theme}
             label={busy === "sending" ? "Sending…" : "Send"}

@@ -1,5 +1,4 @@
 import general from "../packs/general.json";
-import brief from "../packs/brief.json";
 
 /**
  * The static pack barrel. Adding an action is one JSON file under
@@ -10,4 +9,4 @@ import brief from "../packs/brief.json";
  * Values are `unknown` on purpose: the loader validates each entry against
  * `actionPackSchema` and rejects a bad one without touching the others.
  */
-export const bundledPacks: readonly unknown[] = [general, brief];
+export const bundledPacks: readonly unknown[] = [general];

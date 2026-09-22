@@ -41,7 +41,6 @@ shared/                          Contract shared by both bundles
   packs/                         ★ ACTION PACKS — plain data, one JSON per action
     index.ts                       Static barrel: the list of bundled packs.
     general.json                   The default `general` pack: a clear, executable instruction with done criteria, no invented facts.
-    brief.json                     The opt-in `brief` pack: the same, as labelled goal / context / constraints / approach / done.
   languages/                     ★ OUTPUT LANGUAGES — plain data, one JSON per language
     index.ts                       Static barrel; `source` (keep the original language) is the built-in default.
     en.json, vi.json
@@ -49,7 +48,7 @@ shared/                          Contract shared by both bundles
   action-registry/               Loads, validates, and looks up Action Definitions
     schema.ts                      The Action Pack v1 contract (zod strict) + ACTION_ID_PATTERN.
     loader.ts                      Turns the barrel into a registry; a broken pack is rejected on its own.
-    registry.ts                    The one live registry; listActions / resolveAction.
+    registry.ts                    The one live registry: bundled packs + the caller's custom packs; resolveAction / summarizeActions.
     rewrite-contract.ts            Core's rewrite contract (author's voice, boundary, output), placed ahead of every pack's system text.
     wrapper.ts                     Core's injection boundary: <task>/<draft> + escaping;
                                    inserts "Output language: …" into <task> when an output language is set.
@@ -72,7 +71,7 @@ client/                          The app-side contribution
                                    runText(): text → RPC → inserts into the Composer if it is still empty.
   commands/rewrite-command.ts    The /rewrite <prompt> command, workspace scope (new seat, agentId null); Desktop/Web only.
   sheet/rewrite-sheet.tsx        The pill's popover on mobile: opens by reading the Composer and rewriting at once; Send sends + clears the Composer; ✕ leaves everything as it is.
-  actions/enabled.ts             Set E: actions that are loaded and enabled by the user.
+  actions/enabled.ts             Set E: actions that are loaded and enabled by the user; at most MAX_ENABLED_ACTIONS (6).
   icon.ts                        The plugin's single icon.
   settings/                      The Settings screen (feature folder)
     settings-screen.tsx            Composition root: status bar + sections in order.
@@ -83,8 +82,12 @@ client/                          The app-side contribution
     read-settings.ts               Reads settings via host RPC for code outside the React tree.
     api-endpoints.ts               Endpoint presets + validateEndpoint.
     model-filter.ts                Pure: narrows model options for the Filter models row.
+    action-samples.ts              Sample packs the Custom actions editor starts from.
+    custom-actions.ts              Pure: editor JSON → a stored pack (parse, id checks, switch bookkeeping).
+    settings-saved.ts              In-client signal after a Save; pills re-read their enabled set on it.
     sections/                      One file per section, shown based on Transport/Model source
       actions-section.tsx
+      custom-actions-section.tsx
       engine-section.tsx
       dedicated-model-section.tsx
       api-endpoint-section.tsx
@@ -165,14 +168,16 @@ its action changes. Prompt text inside a pack is content **the plugin author** w
 | RPC | In | Out |
 |---|---|---|
 | `prompt-kit.rewrite` | `actionId` (regex), `agentId` (null on a draft), `workspaceId`, `originalPrompt` ≤ 50,000, `settings` (a snapshot; host 0.8.0 doesn't let the server read settings) | `ok{rewrittenPrompt, model, durationMs}` or `error{code, message}` |
-| `prompt-kit.actions.list` | `{}` | loaded, valid actions, **before** settings are applied |
+| `prompt-kit.actions.list` | `customActions` (from settings) | bundled + custom actions, each marked `custom`, plus `rejected`; switches are **not** applied |
 | `prompt-kit.providers` | `cwd?` | daemon catalog + `available` |
 | `prompt-kit.api.test` | one endpoint + `secretsDir` | a model list or a coded error |
 | `prompt-kit.secrets.write` | `secretsDir`, entry `name`, `value` (null removes) | `ok` or an error message; never a key |
 | `prompt-kit.secrets.status` | `secretsDir`, entry `name` | `stored: boolean` or an error message; never a key |
 
 The pill menu is built from `actions.list`, no static import. The enabled set `E` is computed
-on the client (`client/actions/enabled.ts`).
+on the client (`client/actions/enabled.ts`). Custom actions live in settings
+(`customActions`) and reach the daemon in the rewrite RPC's `settings` snapshot; the handler
+resolves `actionId` against the same registry, so a custom action has no separate path.
 
 ---
 
@@ -188,7 +193,9 @@ the CLI transport only; the API transport never reads it. The remaining fields f
   `secretsDir` (shared by endpoints whose `keySource` is `secrets_file`). Each endpoint reads its
   key from exactly one `keySource`: `env`, `secrets_file` or `none`; there is no fallback.
 - Shared: `timeoutMs` (`TIMEOUT_MS.min..max`, default 90,000; the host caps the RPC at 30s —
-  DEF-008), `actionEnabled`, `outputLanguage` (`source` or a loaded id; an unknown id ⇒
+  DEF-008), `actionEnabled`, `customActions` (action packs written in Settings, same
+  schema as `shared/packs/`; an id that collides with another loaded action rejects both),
+  `outputLanguage` (`source` or a loaded id; an unknown id ⇒
   `invalid_selection`).
 
 An API key **never** lives in settings (this document reaches the browser); only the variable

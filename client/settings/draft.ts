@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import type { SettingsState } from "@getpaseo/plugin/client";
 import type { promptKitSettings, PromptKitSettings } from "../../shared/settings.js";
+import { announceSettingsSaved } from "./settings-saved.js";
 import { findSaveProblem } from "./validation.js";
 
 type ReadySettings = Extract<SettingsState<typeof promptKitSettings.schema>, { status: "ready" }>;
@@ -59,6 +60,7 @@ export function useSettingsDraft(settings: ReadySettings): SettingsDraft {
     if (draft === null || problem !== null) return;
     const ok = await settings.save(draft.values, revision);
     if (ok) {
+      announceSettingsSaved();
       setDraft(null);
       setJustSaved(true);
       setEpoch((current) => current + 1);

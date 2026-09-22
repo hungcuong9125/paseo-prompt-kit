@@ -1,6 +1,7 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { createElement } from "react";
-import { listActions } from "../../shared/action-registry/registry.js";
+import { summarizeActions } from "../../shared/action-registry/registry.js";
+import type { ActionPack } from "../../shared/action-registry/schema.js";
 import { promptKitSettingsSchema } from "../../shared/settings.js";
 
 export interface FakeAgent {
@@ -138,16 +139,7 @@ export function createFakeClient(
       }
       if (contract.name === "prompt-kit.actions.list") {
         if (options.actionsError) throw options.actionsError;
-        return {
-          actions: listActions().map((action) => ({
-            id: action.id,
-            version: action.version,
-            enabledByDefault: action.enabledByDefault,
-            title: action.title,
-            description: action.description,
-            icon: action.icon,
-          })),
-        };
+        return summarizeActions((input as { customActions: ActionPack[] }).customActions);
       }
       if (options.settingsError) throw options.settingsError;
       return { status: "ready", revision: "r1", values: promptKitSettingsSchema.parse({}) };

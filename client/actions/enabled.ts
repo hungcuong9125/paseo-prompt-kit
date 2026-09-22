@@ -1,6 +1,9 @@
 import type { ActionSummary } from "../../shared/rpc.js";
 import type { PromptKitSettings } from "../../shared/settings.js";
 
+/** The most actions the pill menu and the mobile sheet show at once. */
+export const MAX_ENABLED_ACTIONS = 6;
+
 /**
  * The locked UX: `E` is the set of loaded actions the user has enabled.
  *
@@ -13,4 +16,15 @@ export function enabledActions(
   settings: PromptKitSettings,
 ): readonly ActionSummary[] {
   return actions.filter((action) => settings.actionEnabled[action.id] ?? action.enabledByDefault);
+}
+
+/** Why the enabled set cannot be saved, or null. */
+export function describeEnabledLimit(
+  actions: readonly ActionSummary[],
+  settings: PromptKitSettings,
+): string | null {
+  const count = enabledActions(actions, settings).length;
+  return count > MAX_ENABLED_ACTIONS
+    ? `${count} actions are enabled; turn some off to keep at most ${MAX_ENABLED_ACTIONS}.`
+    : null;
 }

@@ -93,6 +93,47 @@ describe("composer pill registration", () => {
   });
 });
 
+describe("pill shape follows a settings save", () => {
+  // Fails if a pill keeps the shape it was registered with after the enabled set changes.
+  it("turns into a menu, disappears and comes back as the saved enabled set changes", async () => {
+    const { ACTION_SAMPLES } = await import("../../client/settings/action-samples.js");
+    const { announceSettingsSaved } = await import("../../client/settings/settings-saved.js");
+    let values = promptKitSettingsSchema.parse({});
+    const fake = createFakeClient({
+      agents: [agentA],
+      rpc: async (method) => {
+        if (method === "settings.prompt-kit.read") return { status: "ready", revision: "r1", values };
+        throw new Error(`unexpected rpc ${method}`);
+      },
+    });
+    const cleanup = contribute(fake.client);
+    await flush();
+    expect((button(fake.live()[0]!).behavior as { kind: string }).kind).toBe("action");
+
+    const customs = ACTION_SAMPLES.filter((entry) => ["plan-first", "review"].includes(entry.key)).map((entry) => entry.pack);
+    values = promptKitSettingsSchema.parse({ customActions: customs });
+    announceSettingsSaved();
+    await flush();
+    const behavior = button(fake.live()[0]!).behavior as { kind: string; items: { id: string }[] };
+    expect(behavior.kind).toBe("menu");
+    expect(behavior.items.map((item) => item.id)).toEqual(["general", ...customs.map((pack) => pack.id)]);
+
+    values = promptKitSettingsSchema.parse({
+      customActions: customs,
+      actionEnabled: Object.fromEntries(["general", ...customs.map((pack) => pack.id)].map((id) => [id, false])),
+    });
+    announceSettingsSaved();
+    await flush();
+    expect(fake.live()).toHaveLength(0);
+
+    values = promptKitSettingsSchema.parse({});
+    announceSettingsSaved();
+    await flush();
+    expect(fake.live().map((pill) => pill.agentId)).toEqual(["agent-a"]);
+    cleanup();
+  });
+});
+
 describe("pill shape follows the enabled set E", () => {
   it("is a direct action button when exactly one action is enabled", async () => {
     const { fake, cleanup } = await mountWith();
@@ -101,7 +142,7 @@ describe("pill shape follows the enabled set E", () => {
     expect(behavior.kind).toBe("action");
     expect(typeof behavior.onPress).toBe("function");
     // The button advertises the action itself, not a generic menu.
-    expect(button(pill).title).toBe("Improve prompt");
+    expect(button(pill).title).toBe("General");
     cleanup();
   });
 
@@ -199,7 +240,7 @@ describe("registry read economy", () => {
       workspaceId: `ws-${index}`,
     }));
     const listActions = vi.fn(async () => [
-      { id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I" },
+      { id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I", custom: false },
     ]);
     const fake = createFakeClient({
       agents,
@@ -217,6 +258,7 @@ describe("registry read economy", () => {
       () => async () => {},
       {
         listActions,
+        onSettingsSaved: () => () => {},
         readSettings: async () => ({
           status: "ready",
           values: promptKitSettingsSchema.parse({}),

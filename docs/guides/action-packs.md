@@ -1,8 +1,12 @@
 # Add a prompt option (Action Pack)
 
-An Action is one entry in the PromptKit pill's menu, e.g. "Improve prompt". Each Action
+An Action is one entry in the PromptKit pill's menu, e.g. "General". Each Action
 is **one JSON file** under `shared/packs/`. Core loads, validates, and runs it through the exact
-same path as the built-in `general` and `brief` actions; you don't touch the engine, validator, RPC, or UI.
+same path as the built-in `general` action; you don't touch the engine, validator, RPC, or UI.
+
+For an action only you use, you don't need this guide: Settings → **Custom actions** takes the same
+JSON, checks it against the same schema, and stores it in settings, with no build. This guide is
+for an action that ships with the plugin.
 
 ## Step 1 — Create the file from the template
 
@@ -53,10 +57,9 @@ Example `shared/packs/image.json`:
 
 ```ts
 import general from "../packs/general.json";
-import brief from "../packs/brief.json";
 import image from "../packs/image.json";
 
-export const bundledPacks: readonly unknown[] = [general, brief, image];
+export const bundledPacks: readonly unknown[] = [general, image];
 ```
 
 The array's order is the menu's order and Settings' order.

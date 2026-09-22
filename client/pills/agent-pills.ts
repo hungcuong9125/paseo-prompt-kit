@@ -6,6 +6,7 @@ import type {
   PluginButtonRegistration,
   PluginClientContext,
 } from "@getpaseo/plugin/client";
+import type { ActionPack } from "../../shared/action-registry/schema.js";
 import type { ActionSummary } from "../../shared/rpc.js";
 import { enabledActions } from "../actions/enabled.js";
 import { PLUGIN_ICON } from "../icon.js";
@@ -19,16 +20,18 @@ export interface AgentPillAgent {
 export type AgentPillRunner = (actionId: string) => Promise<void>;
 
 export interface AgentPillDependencies {
-  /** Loaded actions, from `prompt-kit.actions.list`. */
-  listActions: () => Promise<readonly ActionSummary[]>;
+  /** Loaded actions for these custom packs, from `prompt-kit.actions.list`. */
+  listActions: (customActions: readonly ActionPack[]) => Promise<readonly ActionSummary[]>;
   readSettings: () => Promise<SettingsRead>;
   /** When set, the pill opens this popover (host renders it as a bottom sheet on mobile). */
   popover?: ComponentType<PluginButtonContentProps>;
+  /** Fires after this client saves the settings, so every pill re-reads its enabled set. */
+  onSettingsSaved: (listener: () => void) => () => void;
 }
 
 const PILL_ID = "prompt-kit";
 
-/** Pill for the enabled set `E`: one action → button, several → menu, popover → sheet. `E` is read at registration. */
+/** Pill for the enabled set `E`: one action → button, several → menu, popover → sheet. */
 export function pillButton(
   enabled: readonly ActionSummary[],
   run: AgentPillRunner,
@@ -67,7 +70,8 @@ export function pillButton(
  * Registers one Composer pill per live agent. The agent snapshot is the only
  * source of the `workspaceId`/`agentId` pair the rewrite RPC requires, so
  * placement follows the agent directory: an agent upsert adds a pill, a remove
- * or archive drops it, and cleanup drops every registration.
+ * or archive drops it, and cleanup drops every registration. A settings save
+ * re-reads `E` and updates, adds or drops each pill to match.
  */
 export function registerAgentPills(
   client: PluginClientContext,
@@ -76,20 +80,26 @@ export function registerAgentPills(
 ): () => void {
   const entries = new Map<
     string,
-    { workspaceId: string; registration: PluginButtonRegistration }
+    { workspaceId: string; registration: PluginButtonRegistration; run: AgentPillRunner }
   >();
+  /** Every live agent, with or without a pill, so a save can add a pill that was missing. */
+  const live = new Map<string, AgentPillAgent>();
   let cancelled = false;
 
-  // The registry is fixed for the life of a registration, so it is read once per
-  // session: an agent directory of N agents must not issue N identical RPCs.
-  let actionsPromise: Promise<readonly ActionSummary[]> | null = null;
-  function loadActionsOnce(): Promise<readonly ActionSummary[]> {
-    actionsPromise ??= dependencies.listActions().catch((error: unknown) => {
-      // Do not cache a failure: the next agent may still register.
-      actionsPromise = null;
-      throw error;
-    });
-    return actionsPromise;
+  // The registry depends only on the custom packs, so it is read once per set of
+  // them: an agent directory of N agents must not issue N identical RPCs.
+  let cached: { key: string; promise: Promise<readonly ActionSummary[]> } | null = null;
+  function loadActions(customActions: readonly ActionPack[]): Promise<readonly ActionSummary[]> {
+    const key = JSON.stringify(customActions);
+    if (cached?.key !== key) {
+      const promise = dependencies.listActions(customActions).catch((error: unknown) => {
+        // Do not cache a failure: the next agent may still register.
+        if (cached?.promise === promise) cached = null;
+        throw error;
+      });
+      cached = { key, promise };
+    }
+    return cached.promise;
   }
 
   function remove(agentId: string): void {
@@ -97,6 +107,26 @@ export function registerAgentPills(
     if (!entry) return;
     entry.registration.remove();
     entries.delete(agentId);
+  }
+
+  /**
+   * The enabled set from the current settings, or null when it cannot be known.
+   * Fail closed: a settings or registry read failure registers no pill rather
+   * than a pill whose enabled set is unknown.
+   */
+  async function readEnabled(): Promise<readonly ActionSummary[] | null> {
+    const settings = await dependencies.readSettings();
+    if (settings.status !== "ready") {
+      console.error("[prompt-kit] settings unavailable; no pill registered", settings.error);
+      return null;
+    }
+    try {
+      const actions = await loadActions(settings.values.customActions);
+      return enabledActions(actions, settings.values);
+    } catch (error) {
+      console.error("[prompt-kit] failed to list actions", error);
+      return null;
+    }
   }
 
   async function upsert(agent: AgentPillAgent): Promise<void> {
@@ -107,35 +137,31 @@ export function registerAgentPills(
       remove(agent.agentId);
     }
 
-    // Fail closed on a settings or registry read failure: no pill is registered
-    // rather than a pill whose enabled set is unknown.
-    let actions: readonly ActionSummary[];
-    try {
-      actions = await loadActionsOnce();
-    } catch (error) {
-      console.error("[prompt-kit] failed to list actions", error);
-      return;
-    }
-    if (cancelled || entries.has(agent.agentId)) return;
-    const settings = await dependencies.readSettings();
-    if (settings.status !== "ready") {
-      console.error("[prompt-kit] settings unavailable; no pill registered", settings.error);
-      return;
-    }
-    if (cancelled || entries.has(agent.agentId)) return;
-
-    const enabled = enabledActions(actions, settings.values);
-    if (enabled.length === 0) return;
+    const enabled = await readEnabled();
+    if (cancelled || entries.has(agent.agentId) || enabled === null || enabled.length === 0) return;
 
     const isActive = () =>
       entries.get(agent.agentId)?.workspaceId === agent.workspaceId;
+    const run = createRunner(agent, isActive);
     const registration = client.addComposerPill({
       id: PILL_ID,
       workspaceId: agent.workspaceId,
       agentId: agent.agentId,
-      button: pillButton(enabled, createRunner(agent, isActive), dependencies.popover),
+      button: pillButton(enabled, run, dependencies.popover),
     });
-    entries.set(agent.agentId, { workspaceId: agent.workspaceId, registration });
+    entries.set(agent.agentId, { workspaceId: agent.workspaceId, registration, run });
+  }
+
+  /** After a save: each live agent's pill follows the new `E` — updated, added, or dropped. */
+  async function refresh(): Promise<void> {
+    const enabled = await readEnabled();
+    if (cancelled || enabled === null) return;
+    for (const agent of live.values()) {
+      const entry = entries.get(agent.agentId);
+      if (enabled.length === 0) remove(agent.agentId);
+      else if (entry) entry.registration.update(pillButton(enabled, entry.run, dependencies.popover));
+      else void upsert(agent);
+    }
   }
 
   function accept(agent: {
@@ -144,16 +170,24 @@ export function registerAgentPills(
     archivedAt?: string | null | undefined;
   }): void {
     if (agent.archivedAt || !agent.workspaceId) {
+      live.delete(agent.id);
       remove(agent.id);
       return;
     }
-    void upsert({ workspaceId: agent.workspaceId, agentId: agent.id });
+    const entry = { workspaceId: agent.workspaceId, agentId: agent.id };
+    live.set(agent.id, entry);
+    void upsert(entry);
   }
 
   const unsubscribe = client.paseo.agents.subscribe((update) => {
-    if (update.kind === "upsert") accept(update.agent);
-    else remove(update.agentId);
+    if (update.kind === "upsert") {
+      accept(update.agent);
+    } else {
+      live.delete(update.agentId);
+      remove(update.agentId);
+    }
   });
+  const stopFollowingSaves = dependencies.onSettingsSaved(() => void refresh());
 
   void client.paseo.agents
     .list({ subscribe: {}, page: { limit: 200 } })
@@ -167,6 +201,7 @@ export function registerAgentPills(
   return () => {
     cancelled = true;
     unsubscribe();
+    stopFollowingSaves();
     for (const agentId of [...entries.keys()]) remove(agentId);
   };
 }

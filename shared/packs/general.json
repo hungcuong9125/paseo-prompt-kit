@@ -3,7 +3,7 @@
   "id": "general",
   "version": 1,
   "enabledByDefault": true,
-  "title": "Improve prompt",
+  "title": "General",
   "description": "Make the draft clear and ready to act on, in your own voice, without adding facts.",
   "icon": "PenLine",
   "context": {

@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.5.1 - 2026-09-23
+
+### Added
+
+- **Custom actions** in Settings: write your own action as action-pack JSON in a text box on the
+  settings screen. **Add** opens a sample to edit (Blank template, Plan first, Review request,
+  Make concise, Copy of General, Execution brief, or a copy of one of yours); **Apply** checks
+  it against the pack schema and rejects an id another action uses; **Save** stores it in the new `customActions` setting. A
+  custom action runs through the same registry and rewrite path as the bundled ones.
+- On mobile, with two or more actions enabled, the sheet shows one button per action and waits
+  for a choice instead of rewriting with the first one.
+
+### Changed
+
+- The bundled action is renamed from **Improve prompt** to **General**, the title the pill,
+  its menu and Settings show; its id stays `general`. It is the only bundled action.
+  **Execution brief** is no longer bundled; it is a sample under Custom actions, and a saved `actionEnabled.brief` switch no longer applies.
+- At most 6 actions can be on: further switches are locked with a note, a new custom action
+  starts off when the set is full, and Save is blocked above the limit.
+- A lone action shows as **Always on** instead of a switch.
+- The Composer pill follows a Save at once: it turns into a menu, back into a direct button,
+  disappears or comes back as the enabled set changes, instead of keeping the shape it had when
+  the agent appeared.
+- `prompt-kit.actions.list` takes the caller's `customActions` and returns each action marked
+  bundled or custom, plus the packs it rejected.
+
 ## 0.5.0 - 2026-09-23
 
 ### Added

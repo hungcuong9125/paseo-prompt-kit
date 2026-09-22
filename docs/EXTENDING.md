@@ -22,7 +22,8 @@ General rules (from `AGENTS.md`):
 Full guide: `docs/guides/action-packs.md`.
 
 **Result:** a new entry in the pill menu, running through the same path as `general`, **no
-TypeScript edits**.
+TypeScript edits**. A personal action needs no file at all: Settings → Custom actions stores the
+same JSON in settings.
 
 1. Copy the template `docs/templates/action-pack.template.json` to `shared/packs/<id>.json`.
    `id` matches `^[a-z][a-z0-9-]*$` and matches the file name.
@@ -37,7 +38,7 @@ TypeScript edits**.
 
    ```ts
    import image from "../packs/image.json";
-   export const bundledPacks: readonly unknown[] = [general, brief, image];
+   export const bundledPacks: readonly unknown[] = [general, image];
    ```
 
 5. Verify:
