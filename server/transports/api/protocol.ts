@@ -1,4 +1,4 @@
-import type { ApiProtocolId } from "../../shared/api-protocol.js";
+import type { ApiProtocolId } from "../../../shared/api-protocol.js";
 
 /**
  * What a protocol module must do: turn one prompt into one HTTP request, and pull

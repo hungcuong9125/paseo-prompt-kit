@@ -8,7 +8,7 @@ vi.mock(
 
 import contribute from "../../index.client.js";
 import { promptKitSettingsSchema, type PromptKitSettings } from "../../shared/settings.js";
-import { createWebComposerAdapter } from "../../client/composer/web.js";
+import { createWebComposerAdapter } from "../../client/composer-bridge/web.js";
 import { createFakeClient, mountComposer, unmountComposer } from "./fakes.js";
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));

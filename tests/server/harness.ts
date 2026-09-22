@@ -1,6 +1,6 @@
 import type { PaseoApi } from "@getpaseo/client";
 import { promptKitSettingsSchema, type PromptKitSettings } from "../../shared/settings.js";
-import type { CliRunInput, CliRunResult, CliSpawner } from "../../server/cli/process.js";
+import type { CliRunInput, CliRunResult, CliSpawner } from "../../server/transports/cli/process.js";
 
 export interface FakeAgent {
   id: string;

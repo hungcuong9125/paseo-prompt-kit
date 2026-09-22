@@ -75,30 +75,6 @@ export const PROTOCOL_OPTIONS = [
   { label: "Google Gemini", value: "gemini" },
 ] as const;
 
-/** A blank endpoint, used by "Add endpoint" before a preset is chosen. */
-export function blankEndpoint(): ApiEndpoint {
-  return {
-    id: "",
-    label: "",
-    protocol: "openai",
-    baseUrl: "https://",
-    apiKeyEnv: "",
-    models: [],
-  };
-}
-
-/**
- * A URL-safe id derived from a label, because the schema requires
- * `^[a-z0-9][a-z0-9-]*$` and a user types a display name.
- */
-export function slugifyId(label: string): string {
-  return label
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64);
-}
-
 export function endpointFromPreset(preset: EndpointPreset): ApiEndpoint {
   return {
     id: preset.id,

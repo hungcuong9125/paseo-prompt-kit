@@ -1,6 +1,6 @@
 /**
  * Platform-neutral Composer surface. The rest of the plugin never sees a DOM
- * selector; only `client/composer/web.ts` implements this.
+ * selector; only `client/composer-bridge/web.ts` implements this.
  */
 export interface ComposerAdapter {
   isSupported(): boolean;

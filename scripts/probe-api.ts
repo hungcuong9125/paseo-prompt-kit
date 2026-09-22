@@ -13,7 +13,7 @@
  * is what a real answer most easily breaks, so the probe reports whether each
  * literal survived.
  */
-import { runApiRewrite } from "../server/api/runner.js";
+import { runApiRewrite } from "../server/transports/api/runner.js";
 import type { ApiEndpoint } from "../shared/api-protocol.js";
 
 const SYSTEM_PROMPT =

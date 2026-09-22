@@ -1,5 +1,5 @@
-import type { RewriteError } from "../shared/rpc.js";
-import { findMissingProtectedLiterals } from "../shared/protected-literals.js";
+import type { RewriteError } from "../../shared/rpc.js";
+import { findMissingProtectedLiterals } from "../../shared/protected-literals.js";
 
 export type OutputValidation =
   | { ok: true; text: string }

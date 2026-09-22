@@ -1,4 +1,4 @@
-import type { CliFamilyId } from "../../shared/cli-families.js";
+import { resolveCliFamilyId, type CliFamilyId } from "../../../shared/cli-families.js";
 
 /**
  * The supported CLI families and how each one is invoked headlessly.
@@ -194,9 +194,6 @@ export const opencodeFamily: CliFamily = {
 
 const FAMILIES: readonly CliFamily[] = [piFamily, claudeFamily, codexFamily, opencodeFamily];
 
-/** Longest id first, so `opencode` is tested before any shorter prefix would match. */
-const FAMILIES_BY_LENGTH = [...FAMILIES].sort((left, right) => right.id.length - left.id.length);
-
 export function findFamily(familyId: string): CliFamily | null {
   return FAMILIES.find((family) => family.id === familyId) ?? null;
 }
@@ -206,25 +203,14 @@ export function listFamilyIds(): readonly string[] {
 }
 
 /**
- * Resolves a Paseo provider id to the CLI family that runs it.
- *
- * Paseo names a built-in provider after its CLI (`pi`, `codex`) and a custom
- * profile after the role it plays (`pi-peer`, `codex-lead`), so the family is
- * the id itself or its leading segment. An explicit mapping from settings wins,
- * which is the only way to name a profile whose id does not mention its CLI.
- * Nothing falls back to a default: an unknown provider fails closed.
+ * The family that runs a Paseo provider. The id rule lives in
+ * `shared/cli-families.ts` so the settings screen shows the same answer the
+ * daemon acts on; this only attaches the invocation to it.
  */
 export function resolveFamily(
   providerId: string,
   providerMap: Readonly<Record<string, string>> = {},
 ): CliFamily | null {
-  const mapped = providerMap[providerId];
-  if (mapped !== undefined) return findFamily(mapped);
-  for (const family of FAMILIES_BY_LENGTH) {
-    if (providerId === family.id) return family;
-    if (providerId.startsWith(`${family.id}-`) || providerId.endsWith(`-${family.id}`)) {
-      return family;
-    }
-  }
-  return null;
+  const id = resolveCliFamilyId(providerId, providerMap);
+  return id === null ? null : findFamily(id);
 }

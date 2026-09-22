@@ -6,6 +6,7 @@ import type {
 } from "@getpaseo/plugin/client";
 import type { ActionSummary } from "../../shared/rpc.js";
 import { enabledActions } from "../actions/enabled.js";
+import { PLUGIN_ICON } from "../icon.js";
 import type { SettingsRead } from "../settings/read-settings.js";
 
 export interface AgentPillAgent {
@@ -37,14 +38,16 @@ export function pillButton(enabled: readonly ActionSummary[], run: AgentPillRunn
   const first = enabled[0]!;
   const base = {
     title: "PromptKit",
-    icon: "Sparkles",
+    icon: PLUGIN_ICON,
     label: "PromptKit",
   } as const;
 
   if (enabled.length === 1) {
+    // The icon stays the plugin's, not the action's: the pill and the settings
+    // screen title name the same plugin, so they must not show two different
+    // icons for it. The title still says which action this pill will run.
     return {
       ...base,
-      icon: first.icon,
       title: first.title,
       behavior: { kind: "action", onPress: () => run(first.id) },
     };

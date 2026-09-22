@@ -3,7 +3,7 @@
 Current-state takeover index. History → `docs/exec-plans/`; decisions → `docs/decision-log.md`.
 
 - Framework revision: bundle delivered 2026-09-21 (protocol v1)
-- Updated at: 2026-09-22 00:50Z
+- Updated at: 2026-09-22 11:10Z
 - Active Lead: claude-lead / claude-fable-5-1 (Lead-of-record) — open batch paseo-prompt-kit-post-release-composer-bug
 - Repository HEAD: see `git log -1`; branch `main`; origin https://github.com/hungcuong9125/paseo-prompt-kit — public main f07b0c6, tag v0.1.0 → 94e9a9a (release evidence commit below is local until the next push)
 - AIT database: initialized (prefix `pk`, `.ait/ait.db`, ignored)
@@ -19,6 +19,14 @@ Current-state takeover index. History → `docs/exec-plans/`; decisions → `doc
 - Active Peer disposition: d3fa32ad pk-98Fqg.1 on main (sole writer)
 - Heartbeat ID: 14dc4094 (lead-pk-bugfix-watch, */30 min, expires 2026-09-21T14:56Z)
 - Deferred: 5 open — docs/DEFERRED.md (DEF-001, DEF-002, DEF-006, DEF-007, DEF-008)
+
+## Human-directed restructure 2026-09-22 (UNCOMMITTED on main)
+
+- HUMAN_DIRECTIVE 2026-09-22: review for hidden bugs and fix; redesign the Settings screen; restructure per `docs/CORE.md`. Executed directly by the Human's seat; the G0 gate below is superseded for the *layout* part by this directive, the pack trust model (OQ-1/OQ-3) stays bundled-only as recorded in `docs/CORE.md` §7.
+- Host constraint verified from source (`packages/server/src/server/plugins/compiler.ts` `directoryTarget`): only `client/`, `server/`, `shared/` are legal root dirs, so CORE modules live inside them: `shared/action-registry`, `shared/packs`, `client/composer-bridge`, `server/rewrite-engine`, `server/model-resolver`, `server/transports/{cli,api}`. `docs/CORE.md` rewritten as as-built; `docs/EXTENDING.md` + `docs/templates/` added.
+- Bugs fixed: (1) dedicated CLI path required the *current* agent's provider to have a CLI family (`resolveCurrentAgent` ran first) → `unsupported_provider` from e.g. a `grok` agent; resolver now reads the agent once without a family requirement. (2) `resolveApiKey` collapsed `unreadable_secrets` into `missing_key`, so a malformed `secrets.json` told the user to add a key; reason now propagates and the message says to fix the file. (3) Settings screen shipped a debug line ("Hello Việt Nam 6"), had no UI for `apiEndpointByProvider`/`secretsFile`, showed the CLI map only in dedicated mode, and let out-of-range timeouts / invalid endpoints reach the host as schema errors; test-result write-back could overwrite concurrent edits (stale closure).
+- Settings screen v2: status bar (readiness + Save/Discard, `client/settings/readiness.ts`), functional-patch draft hook (`draft.ts`), pre-save `validation.ts`, five sections under `client/settings/sections/`, three own primitives under `client/settings/ui/`. `resolveCliFamilyId` moved to `shared/cli-families.ts` so the screen shows the same family the daemon resolves. Engine select label is "Model source".
+- Gate at this tree: typecheck clean; `vitest` unit+jsdom 21 files / 258 passed (host-load row ran via Paseo.app esbuild). `paseo plugin reload prompt-kit` → "Plugin ready", no `action packs rejected`. NOT evidenced: a browser/visual pass of the new screen (no MultiZen on this seat).
 
 ## Batch paseo-prompt-kit-post-release-composer-bug — OPEN
 

@@ -1,14 +1,14 @@
-import type { ApiEndpoint, ApiProtocolId } from "../../shared/api-protocol.js";
+import type { ApiEndpoint, ApiProtocolId } from "../../../shared/api-protocol.js";
 import { anthropicProtocol } from "./anthropic.js";
 import { geminiProtocol } from "./gemini.js";
-import { resolveApiKey } from "./key.js";
+import { resolveApiKey, type ApiKeyLookupFailure } from "./key.js";
 import { openAiProtocol } from "./openai.js";
 import type { ApiProtocol } from "./protocol.js";
 
 /**
  * The rewrite path that talks to an API directly.
  *
- * It is the counterpart of `server/cli/runner.ts` and shares its contract: given
+ * It is the counterpart of `server/transports/cli/runner.ts` and shares its contract: given
  * a model and a prompt, return text or a typed reason there is none. Everything
  * else — the protected-literal validator, the Composer write, the RPC shape — is
  * unchanged, so the two transports cannot drift apart in behaviour.
@@ -23,6 +23,22 @@ const PROTOCOLS: Readonly<Record<ApiProtocolId, ApiProtocol>> = {
   anthropic: anthropicProtocol,
   gemini: geminiProtocol,
 };
+
+/**
+ * Why a key could not be resolved, as a sentence that names the variable and
+ * never a value. An unreadable `secrets.json` is its own case: telling the user
+ * to "add it to secrets.json" when the file is malformed would send them to fix
+ * the wrong thing.
+ */
+function describeMissingKey(endpoint: ApiEndpoint, reason: ApiKeyLookupFailure): string {
+  const name = endpoint.apiKeyEnv.trim();
+  if (reason === "unreadable_secrets") {
+    return `secrets.json exists but could not be read as { "apiKeys": { ... } }; fix the file before "${name}" can be looked up.`;
+  }
+  return name === ""
+    ? `Endpoint "${endpoint.id}" has no key configured.`
+    : `No value for "${name}". Set the environment variable or add it to secrets.json.`;
+}
 
 export type ApiRewriteFailureCode =
   | "api_endpoint_unknown"
@@ -107,15 +123,7 @@ export async function testApiEndpoint(
     ...(dependencies.env === undefined ? {} : { env: dependencies.env }),
   });
   if (!key.ok) {
-    const name = input.endpoint.apiKeyEnv.trim();
-    return {
-      ok: false,
-      code: "missing_api_key",
-      message:
-        name === ""
-          ? `Endpoint "${input.endpoint.id}" has no key configured.`
-          : `No value for "${name}". Set the environment variable or add it to secrets.json.`,
-    };
+    return { ok: false, code: "missing_api_key", message: describeMissingKey(input.endpoint, key.reason) };
   }
 
   const request = protocol.buildModelsRequest({
@@ -186,15 +194,7 @@ export async function runApiRewrite(
   if (!key.ok) {
     // The message names the variable, never a value: a key must not reach a log,
     // an error string, or the client that renders the toast.
-    const name = input.endpoint.apiKeyEnv.trim();
-    return {
-      ok: false,
-      code: "missing_api_key",
-      message:
-        name === ""
-          ? `Endpoint "${input.endpoint.id}" has no key configured.`
-          : `No value for "${name}". Set the environment variable or add it to secrets.json.`,
-    };
+    return { ok: false, code: "missing_api_key", message: describeMissingKey(input.endpoint, key.reason) };
   }
 
   const request = protocol.buildRequest({

@@ -1,315 +1,194 @@
-# PromptKit Core — Change Proposal
+# PromptKit Core — Kiến trúc as-built (v1)
 
-> **Trạng thái:** DRAFT — chưa dispatch, chưa có DLF, chờ review ngoài
-> **Người đề xuất:** Lead · **Ngày:** 2026-09-21
-> **Liên quan:** packet `paseo-prompt-kit-post-release-composer-bug` (active) · `docs/IMPELEMENT_PLAN.md` §0 (đã định hướng Action Registry) · `AGENTS.md` (single live contract, hard cut)
-> **Không thuộc tài liệu này:** bug `PromptKit needs one visible Composer.` (điều tra riêng, release v0.1.1)
+> **Trạng thái:** AS-BUILT — mô tả cấu trúc đang chạy trên `main`.
+> **Hợp đồng:** một đường sống duy nhất; không dual-read, không shim, không nhánh version (`AGENTS.md`).
+> **Hướng dẫn thêm tính năng:** `docs/EXTENDING.md` (đọc trước khi sửa code).
 
-Tài liệu này là **thay đổi kiến trúc ở tầng CORE**, không phải bugfix. Nó mô tả hiện trạng, khoảng trống, hợp đồng mục tiêu, và các câu hỏi **phải được quyết trước khi dispatch**. Nó không chốt implementation; không có symbol, pseudocode, hay thứ tự sửa file.
+Tài liệu này trả lời ba câu hỏi: Core gồm những module nào, mỗi module chịu trách nhiệm gì (một câu, không có "và"), và ranh giới nào là do host Paseo áp đặt chứ không phải do ta chọn.
 
 ---
 
-## 1. Hiện trạng
+## 1. Ràng buộc từ host (không thương lượng được)
 
-### 1.1 Cái đã tách đúng
+Trình biên dịch plugin của Paseo (`packages/server/src/server/plugins/compiler.ts`, `directoryTarget`) chỉ chấp nhận **ba thư mục gốc**:
 
-`shared/actions.ts` đã tách **strategy** khỏi **pipeline**:
-
-```ts
-export interface PromptActionStrategy {
-  systemPrompt(): string;
-  taskPrompt(input: { originalPrompt: string }): string;
-}
-```
-
-`server/rewrite.ts` + `server/generation.ts` chỉ đọc `systemPrompt` / `taskPrompt`; chúng không biết "coding" là gì. Thêm một domain mới **không** phải sửa rewrite engine, validator, provider catalog, hay settings. Đây là nửa đường đúng.
-
-### 1.2 Cái còn khoá cứng
-
-| Vị trí | Nội dung | Hệ quả |
+| Thư mục | Bundle | Được import từ |
 |---|---|---|
-| `shared/actions.ts:4` | `export const promptActionIds = ["coding"] as const` | Tập action là hằng số biên dịch |
-| `shared/actions.ts:33-45` | `registry` là object literal có kiểu `{ [Id in PromptActionId]: … }` | Thêm id mà quên entry = lỗi type, nhưng id mới vẫn phải sửa file này |
-| `shared/actions.ts:47-56` | `promptActions`, `listPromptActions()`, `findPromptAction()` là module-level | Không có đăng ký lúc chạy |
-| `shared/rpc.ts:34` | `actionId: z.enum(promptActionIds)` | RPC **từ chối** mọi id ngoài danh sách; id lạ không tới được handler |
-| `client/pills/agent-pills.ts:7,25` | `listPromptActions()` import tĩnh, dựng menu một lần lúc đăng ký pill | Menu là ảnh chụp của source, không phải của registry |
-| `shared/prompts/coding.ts` | Prompt coding nằm trong module TS | Prompt là **code**, không phải dữ liệu |
+| `client/` | client (chạy trong app Paseo, React Native Web) | `client/`, `shared/` |
+| `server/` | server (chạy trong daemon, Node 20) | `server/`, `shared/` |
+| `shared/` | cả hai | chỉ `shared/` |
 
-### 1.3 Năng lực thực tế
+Cùng với hai entry `index.client.tsx` và `index.server.ts`. **Mọi thư mục gốc khác bị từ chối** khi build (`"invalid"`), nên các module CORE nằm **bên trong** ba thư mục này chứ không phải `core/` hay `packs/` ở gốc.
 
-| Khả năng | Hiện tại |
-|---|---|
-| Strategy tách khỏi pipeline | ✅ |
-| Thêm action built-in không viết lại engine | ✅ (vẫn phải sửa `actions.ts` + `rpc.ts`) |
-| Registry lúc chạy | ❌ |
-| Người ngoài thêm module/action mà không fork | ❌ |
-| Manifest/schema cho action | ❌ |
-| Action discovery | ❌ |
-| Cài Action Pack riêng | ❌ |
-| Version contract cho module | ❌ |
-| Third-party Action Pack | ❌ |
-
-Kết luận: hiện là **modular nội bộ**, chưa là **CORE để bên ngoài cắm vào**. Muốn thêm `image` / `document` / `research`, người ngoài phải: fork → sửa `promptActionIds` → thêm registry entry → sửa `z.enum` → rebuild plugin.
+Hệ quả thứ hai: daemon không bao giờ biết plugin nằm ở đâu trên đĩa (bundle được `eval`, không có install dir). Vì vậy Action Pack là **JSON được bundle lúc biên dịch**, không phải thư mục đọc lúc chạy.
 
 ---
 
-## 2. Mục tiêu và Non-goals
-
-### 2.1 Mục tiêu
-
-1. **Action Registry lúc chạy** — action được nạp, không được biên dịch cứng.
-2. **Action Pack khai báo (declarative)** — một thư mục + manifest + prompt, không cần viết TypeScript.
-3. **`actions.list` RPC** — menu hỏi Core, không import tĩnh.
-4. **`actionId` động** — RPC chấp nhận id hợp lệ theo hợp đồng, handler tự resolve và fail closed khi không có.
-5. **Built-in `coding` chuyển thành một Action Pack** — dogfood chính framework; không có nhánh đặc biệt cho built-in.
-6. **Version contract** — pack khai báo schema version và pack version; Core từ chối pack không tương thích.
-
-### 2.2 Non-goals (chốt cứng)
-
-- **Không** cho Action Pack chạy JS/TS, npm dependency, hay `require`/`import` động. Pack là JSON + Markdown + dữ liệu đã validate.
-- **Không** sandbox, **không** marketplace, **không** cài pack từ URL/network trong bản này.
-- **Không** per-pack settings UI trong bản này.
-- **Không** đổi ngữ nghĩa rewrite: vẫn một lượt gọi model, vẫn validate protected literals, vẫn không auto-send, vẫn replace Composer.
-- **Không** đổi cách ly injection: `escapeWrapperDelimiters` vẫn thuộc Core (xem OQ-6).
-- **Không** dual-read: bản này là **hard cut** (mục 10).
-- **Không** mobile.
-
----
-
-## 3. Ranh giới: Core một câu, Pack một câu
-
-- **PromptKit Core** — "sở hữu việc đọc/ghi Composer, chọn model, gọi model, validate output, và nạp action."
-- **PromptKit Action Pack** — "sở hữu phần chữ nghĩa của đúng một loại prompt: tên, icon, system prompt, task prompt."
-
-Không có câu nào chứa "and" nối hai trách nhiệm khác loại. Việc gì không nằm trong câu của Core thì thuộc module sở hữu nó, hoặc là module mới đặt tên theo nó.
-
-### 3.1 Module đề xuất
-
-| Module | Trách nhiệm (một câu) |
-|---|---|
-| `core/composer-bridge` | Chọn đúng Composer của agent đang thao tác và đọc/ghi/focus nó |
-| `core/rewrite-engine` | Chạy một lượt rewrite đã resolve model và trả kết quả đã validate |
-| `core/model-resolver` | Quyết định provider/model/thinking cho một request |
-| `core/action-registry` | Nạp, validate, và tra cứu Action Definition |
-| `core/action-pack-loader` | Biến một thư mục pack hợp lệ thành Action Definition |
-| `core/settings` | Giữ settings host-scoped |
-| `packs/builtin/coding` | Định nghĩa action `coding` dưới dạng pack |
-
-Ghi chú: tên thư mục là đề xuất, **không phải** quyết định của tài liệu này. Điều bắt buộc là ranh giới một-câu ở trên.
-
----
-
-## 4. Kiến trúc mục tiêu
+## 2. Bố cục và trách nhiệm một câu
 
 ```text
-                        PromptKit Core
-                              │
-        ┌─────────────────────┼─────────────────────┐
-        │                     │                     │
-  Composer Bridge      Rewrite Engine        Model Resolver
-        │                     │                     │
-        └─────────────────────┼─────────────────────┘
-                              │
-                       Action Registry
-                              │
-        ┌─────────────────────┼─────────────────────┐
-        │                     │                     │
-  builtin/coding        pack bên thứ ba       pack bên thứ ba
-   (đóng gói sẵn)        (declarative)         (declarative)
+index.client.tsx                 Gắn pill + màn Settings vào host; trả cleanup.
+index.server.ts                  Đăng ký settings và bốn RPC; composition root của daemon.
+
+shared/                          Hợp đồng chung cho cả hai bundle
+  packs/                         ★ ACTION PACKS — dữ liệu thuần, một JSON mỗi action
+    index.ts                       Barrel tĩnh: danh sách pack được bundle.
+    coding.json                    Pack built-in `coding`, đi đúng đường như pack khác.
+  action-registry/               Nạp, validate, tra cứu Action Definition
+    schema.ts                      Hợp đồng Action Pack v1 (zod strict) + ACTION_ID_PATTERN.
+    loader.ts                      Biến barrel thành registry; pack hỏng bị loại riêng lẻ.
+    registry.ts                    Registry sống duy nhất; listActions / resolveAction.
+    wrapper.ts                     Ranh giới injection của Core: <task>/<user_prompt> + escape.
+  settings.ts                    Schema settings host-scoped + hằng số TIMEOUT_MS.
+  rpc.ts                         Bốn hợp đồng RPC: rewrite, actions.list, providers, api.test.
+  api-protocol.ts                Danh sách protocol API và schema một endpoint.
+  cli-families.ts                Danh sách CLI family + quy tắc suy family từ provider id.
+  protected-literals.ts          Trích literal phải giữ nguyên qua rewrite.
+
+client/                          Đóng góp phía app
+  composer-bridge/               Tìm đúng một Composer đang hiển thị và đọc/ghi/focus nó
+    adapter.ts                     Giao diện trung lập nền tảng.
+    dom.ts                         Selector + kiểm tra hiển thị theo chuỗi tổ tiên.
+    web.ts                         Cài đặt DOM cho Desktop/Web.
+  pills/                         Một pill cho mỗi agent sống và đường rewrite được canh gác
+    agent-pills.ts                 Đăng ký/gỡ pill theo thư mục agent; hình pill theo tập E.
+    rewrite-runner.ts              Đọc Composer → RPC → thay text chỉ khi snapshot còn khớp.
+  actions/enabled.ts             Tập E: action đã nạp mà người dùng bật.
+  icon.ts                        Icon duy nhất của plugin.
+  settings/                      Màn Settings (feature folder)
+    settings-screen.tsx            Composition root: status bar + các section theo thứ tự.
+    draft.ts                       Hook draft: patch hàm, save theo revision, discard, epoch.
+    readiness.ts                   Thuần: rewrite có chạy không, qua đường nào, vì sao không.
+    validation.ts                  Thuần: vì sao chưa lưu được (timeout, endpoint, mapping).
+    selection.ts                   Thuần: kiểm tra selection dedicated/API (dùng cả ở runner).
+    read-settings.ts               Đọc settings qua host RPC cho code ngoài React tree.
+    api-endpoints.ts               Preset endpoint + validateEndpoint.
+    sections/                      Mỗi section một file, hiện theo giá trị Transport/Model source
+      actions-section.tsx
+      engine-section.tsx
+      dedicated-model-section.tsx
+      api-endpoint-section.tsx
+      advanced-section.tsx
+    ui/                            Ba primitive nhỏ ngoài bộ host: tokens, Button, Notice, StatusBar
+
+server/                          Đóng góp phía daemon
+  rewrite-engine/                Chạy một lượt rewrite đã resolve và trả kết quả đã validate
+    engine.ts                      resolveTarget → transport → validateRewriteOutput.
+    handler.ts                     RPC `prompt-kit.rewrite`: resolve action, log không nội dung.
+    output-validator.ts            Từ chối preface/refusal/commentary/mất literal.
+  model-resolver/                Quyết định provider/model/thinking và transport cho một request
+    resolver.ts                    Ba đường: current-CLI, dedicated-CLI, API. Fail closed.
+    provider-catalog.ts            Đọc catalog daemon + trạng thái available.
+  transports/                    Cách một prompt đến model
+    cli/                           family.ts (4 CLI), process.ts (spawn, kill tree), runner.ts (scratch dir)
+    api/                           protocol.ts (interface), openai/anthropic/gemini.ts, key.ts, runner.ts
+  log.ts                         Log không bao giờ mang prompt hay output.
+  paseo-types.ts                 Kiểu Paseo suy từ SDK server (không import client package).
 ```
 
-Core **không** biết tên action nào tồn tại. Nó chỉ biết: id hợp lệ, definition hợp lệ, và pipeline.
+Quy tắc đặt chỗ: việc gì không nằm trong câu của module thì thuộc module sở hữu nó, hoặc là module mới đặt tên theo nó. Không có `utils/`, `common/`, `helpers/`.
 
 ---
 
-## 5. Hợp đồng Action Pack v1
-
-### 5.1 Bố cục thư mục
+## 3. Luồng một lượt rewrite
 
 ```text
-<root>/
-└── <pack-id>/
-    ├── promptkit.action.json
-    ├── system.md
-    ├── task.md
-    └── README.md
+pill press
+  └─ rewrite-runner.run(actionId)
+       ├─ composer-bridge.readText()            ← từ chối nếu 0 hoặc >1 Composer hiển thị
+       ├─ read-settings + selection (pre-flight) ← lỗi cấu hình thành câu, không tới daemon
+       └─ rpc prompt-kit.rewrite ──────────────────────────────────────────────┐
+                                                                               ▼
+                                            handler: resolveAction(actionId) ← unknown_action
+                                                     buildTaskPrompt (wrapper Core)
+                                            engine:  resolveTarget ──► resolver (3 đường)
+                                                     transports/cli | transports/api
+                                                     output-validator (protected literals)
+       ┌───────────────────────────────────────────────────────────────────────┘
+       ├─ isActive() && readText() === snapshot   ← text đổi giữa chừng → giữ nguyên
+       └─ composer-bridge.replaceText + focus     ← không bao giờ auto-send
 ```
 
-`system.md` / `task.md` là nội dung prompt thuần. `README.md` cho người đọc, Core không đọc.
+---
 
-### 5.2 Manifest
+## 4. Hợp đồng Action Pack v1
 
-```json
-{
-  "schemaVersion": 1,
-
-  "id": "image",
-  "version": "1.0.0",
-
-  "title": "Improve image prompt",
-  "description": "Optimize a prompt for image generation.",
-  "icon": "Image",
-
-  "prompt": {
-    "system": "system.md",
-    "task": "task.md"
-  },
-
-  "context": { "mode": "prompt-only" },
-  "output": { "mode": "replace-composer" },
-  "guardrails": { "preserveLanguage": true }
-}
-```
-
-### 5.3 Ràng buộc trường
+Một pack là **dữ liệu**: JSON, không code, không đường dẫn file. Schema strict trong `shared/action-registry/schema.ts`:
 
 | Trường | Ràng buộc |
 |---|---|
-| `schemaVersion` | Số nguyên; bản này chỉ chấp nhận `1`. Không có nhánh v2. |
-| `id` | `^[a-z][a-z0-9-]*$`; duy nhất trong toàn bộ registry đã nạp |
-| `version` | SemVer hợp lệ |
-| `title` / `description` | Chuỗi không rỗng, có giới hạn độ dài |
-| `icon` | Tên icon thuộc bộ icon host chấp nhận |
-| `prompt.system` / `prompt.task` | Đường dẫn **tương đối trong thư mục pack**; không `..`, không tuyệt đối, không symlink thoát ra ngoài |
-| `context.mode` | `"prompt-only"` — giá trị khác là pack không hợp lệ |
-| `output.mode` | `"replace-composer"` — giá trị khác là pack không hợp lệ |
-| `guardrails.*` | Chỉ khoá đã biết; khoá lạ ⇒ pack không hợp lệ (strict) |
+| `schemaVersion` | literal `1`. Không có nhánh v2. |
+| `id` | `^[a-z][a-z0-9-]*$`, duy nhất trong barrel; trùng id ⇒ **cả hai** pack bị loại |
+| `version` | số nguyên dương; chỉ để log và hiển thị |
+| `enabledByDefault` | boolean; người dùng override bằng `actionEnabled[id]` |
+| `title`, `description`, `icon` | chuỗi không rỗng; `icon` là tên Lucide, sai tên thì render trống |
+| `context.mode` | `"prompt-only"` |
+| `output.mode` | `"replace-composer"` |
+| `system`, `task` | văn bản chỉ dẫn, ≤ 50 000 ký tự; **không** tự bọc `<task>`/`<user_prompt>` |
 
-Nguyên tắc: **pack không hợp lệ thì không được nạp**, và **không có fallback** sang pack khác. Sai một pack không được làm hỏng menu hay chọn nhầm action.
+Fail closed: pack sai ⇒ vắng mặt trong `actions.list`, log `action packs rejected`, các pack khác vẫn chạy, không có action mặc định.
 
-### 5.4 Version contract
-
-Ba lớp version phải tách bạch, không được trộn:
-
-1. `schemaVersion` — hình dạng manifest. Bản này = 1.
-2. `pack.version` — phiên bản nội dung pack. Core ghi log, không dùng để branch hành vi.
-3. `requirements.paseo` của plugin — range tương thích host (xem mục 9).
+Ranh giới injection thuộc Core (`wrapper.ts`), pack không được bọc. Prompt trong pack là văn bản **tác giả plugin** viết, khác `<user_prompt>` là dữ liệu không tin cậy.
 
 ---
 
-## 6. Built-in `coding` trở thành một pack
+## 5. RPC
 
-**Bắt buộc.** Không được để `coding` là ngoại lệ trong source.
-
-```text
-packs/builtin/coding/
-├── promptkit.action.json
-├── system.md      ← nội dung từ shared/prompts/coding.ts:3-18
-├── task.md        ← khuôn task từ shared/prompts/coding.ts:31-38
-└── README.md
-```
-
-Điều này biến "framework có chạy không" thành một câu hỏi kiểm chứng được: nếu `coding` chạy qua đường pack, thì đường pack chạy. Nếu `coding` được ưu ái riêng, framework chưa được chứng minh.
-
-Lưu ý kỹ thuật: phần `escapeWrapperDelimiters` **không** đi theo pack — nó là cơ chế an toàn của Core (OQ-6).
-
----
-
-## 7. RPC và menu
-
-### 7.1 `prompt-kit.rewrite`
-
-`actionId` từ `z.enum(promptActionIds)` thành một id hợp lệ theo hợp đồng:
-
-```ts
-actionId: z.string().regex(/^[a-z][a-z0-9-]*$/)
-```
-
-Handler resolve qua registry. Không có ⇒ lỗi có mã riêng, không được rơi vào nhánh "action mặc định".
-
-### 7.2 `prompt-kit.actions.list`
-
-RPC mới, trả về các action đã nạp và hợp lệ: id, title, description, icon, version. Menu Composer dựng từ RPC này, **không** từ `listPromptActions()`.
-
-Hệ quả: menu phản ánh registry thật tại thời điểm hỏi; action không nạp được thì không xuất hiện, và không có mục "chết" bấm vào rồi báo lỗi.
-
-### 7.3 Fail closed
-
-- id không tồn tại ⇒ lỗi rõ ràng, không rewrite.
-- pack hỏng ⇒ action đó vắng mặt; các pack khác không bị ảnh hưởng.
-- registry rỗng ⇒ menu rỗng; **không** tự thêm action mặc định.
-
----
-
-## 8. Câu hỏi phải quyết trước khi dispatch
-
-Đây là phần review cần trả lời. Mỗi câu phải có **một** quyết định, không phải một danh sách lựa chọn.
-
-- **OQ-1 — Nguồn pack.** Chỉ pack đóng gói trong plugin? Chỉ pack người dùng đặt trong thư mục cấu hình? Hay cả hai? Nếu cả hai: thứ tự ưu tiên và xử lý trùng `id` thế nào? *(Ảnh hưởng trực tiếp tới mô hình tin cậy.)*
-- **OQ-2 — Tương thích.** Khi `schemaVersion` tăng trong tương lai, Core từ chối pack cũ hay từ chối chính nó? Không được đề xuất dual-read.
-- **OQ-3 — Danh tính.** `pack.id` có phải namespaced theo plugin/installation không? Một installation được nạp bao nhiêu pack?
-- **OQ-4 — Settings.** Bản này không có settings per-pack. Điều đó có chấp nhận được với `image` (cần aspect ratio, style) hay chỉ hoãn?
-- **OQ-5 — Định nghĩa "pack hợp lệ".** Ngoài schema: giới hạn độ dài prompt? Bắt buộc có placeholder `{{prompt}}` trong `task.md`, hay Core tự bọc? Hai lựa chọn này cho hai hợp đồng khác nhau.
-- **OQ-6 — Sở hữu ranh giới injection.** `escapeWrapperDelimiters` ở Core (pack không được tự bọc) hay ở pack (Core chỉ chèn)? Chọn sai sẽ mở lại lỗ hổng prompt-injection đã đóng ở DLF-006.
-- **OQ-7 — Protected literals.** Validator hiện chạy trên `originalPrompt`. Pack tự do định nghĩa task prompt thì validator có cần thêm ràng buộc theo pack không?
-- **OQ-8 — Nội dung pack là dữ liệu tin cậy hay không tin cậy?** Prompt pack là văn bản tác giả viết (khác `<user_prompt>`), nhưng nếu pack đến từ bên thứ ba thì cần tuyên bố rõ.
-
----
-
-## 9. An toàn
-
-- Pack **không** thực thi code. Đây là ràng buộc kiến trúc, không phải tạm thời.
-- Đường dẫn trong manifest resolve **trong** thư mục pack; từ chối `..`, absolute, symlink thoát.
-- Không tải pack từ network ở bản này.
-- Paseo plugin là trusted, unsandboxed code (docs Paseo). Vì vậy pack declarative **không** làm tăng bề mặt thực thi, nhưng **có** làm tăng bề mặt nội dung: prompt pack là instruction gửi tới model. Cần tuyên bố rõ điều này cho người dùng.
-- `requirements.paseo: ">=0.8.0"` hiện tại **quá rộng** cho một plugin bám DOM private: range này bao cả prerelease (qua `stableCore`) và mọi bản tương lai. Cần siết trong một DLF riêng, không trộn vào bản này.
-
----
-
-## 10. Hard cut — những gì bị xoá
-
-Theo `AGENTS.md`: một hợp đồng sống duy nhất, không dual-read, không shim, không legacy parser.
-
-Bị xoá khỏi source khi bản này landed:
-
-- `promptActionIds` (và kiểu `PromptActionId` suy ra từ nó, nếu không còn chỗ dùng).
-- `promptActions` module-level và registry object literal.
-- `codingActionStrategy` trong `shared/prompts/coding.ts`.
-- `z.enum(promptActionIds)` trong `shared/rpc.ts`.
-- Import tĩnh `listPromptActions()` trong `client/pills/agent-pills.ts`.
-
-Quy tắc cho test: sau hard cut, **case âm phải suy ra từ biên hiện tại** (regex id, `schemaVersion`, giới hạn độ dài, trường strict) — không được đặt tên các id đã xoá, không được test "danh sách cũ vắng mặt". Việc rà identifier bị xoá làm bằng `git diff`, không bằng blacklist.
-
-Dev state: reset/rebuild, không có đường migration cho dữ liệu dev cũ.
-
----
-
-## 11. Acceptance
-
-Claim phải quan sát được, không phải "đã sửa file":
-
-1. Thêm một pack mới **chỉ bằng dữ liệu** ⇒ action xuất hiện trong menu và rewrite chạy được, **không** đổi file TypeScript nào. Bằng chứng: diff rỗng ngoài thư mục pack + log rewrite mang `actionId` mới.
-2. `coding` chạy qua đúng đường pack như pack bên thứ ba. Bằng chứng: không còn nhánh code riêng cho `coding`.
-3. Pack sai schema / id sai regex / `schemaVersion` sai / đường dẫn thoát thư mục ⇒ action vắng mặt, các action khác vẫn chạy, không có fallback. Bằng chứng: case âm suy từ biên hiện tại.
-4. `actions.list` phản ánh registry thật; menu không còn import tĩnh.
-5. Không đổi hành vi đã accept: không auto-send, protected literals, injection boundary, timeout, model resolution, settings.
-6. Gate xanh, có log gắn tree.
-
----
-
-## 12. Rollback
-
-Built-in `coding` là dữ liệu. Revert = `git revert` commit của bản này; không có state ngoài git cần dọn, không có migration phải đảo.
-
----
-
-## 13. Chia release
-
-| Release | Nội dung | Ghi chú |
+| RPC | Vào | Ra |
 |---|---|---|
-| `v0.1.1` | Bugfix Composer selection (`locateField` + ancestor visibility + thông điệp lỗi tách 0 vs >1) | **Không** trộn với CORE. Xem packet active. |
-| `v0.2.0` | PromptKit Core: registry lúc chạy, pack loader, `actions.list`, `actionId` động, built-in coding thành pack | Phụ thuộc OQ-1..OQ-8 đã được quyết |
-| sau `v0.2.0` | `promptkit-coding` / `-image` / `-document` / `-research` như pack độc lập | Chỉ khả thi nếu OQ-1 và OQ-3 đã chốt |
+| `prompt-kit.rewrite` | `actionId` (regex), `agentId`, `workspaceId`, `originalPrompt` ≤ 50 000, `settings` (snapshot, host 0.8.0 không cho server đọc settings) | `ok{rewrittenPrompt, model, durationMs}` hoặc `error{code, message}` |
+| `prompt-kit.actions.list` | `{}` | các action đã nạp hợp lệ, **chưa** áp settings |
+| `prompt-kit.providers` | `cwd?` | catalog daemon + `available` |
+| `prompt-kit.api.test` | một endpoint + `secretsFile` | danh sách model hoặc lỗi có mã |
 
-Thứ tự là ràng buộc: bugfix trước, CORE sau. Không gộp.
+Menu pill dựng từ `actions.list`, không import tĩnh. Tập bật `E` tính ở client (`client/actions/enabled.ts`).
 
 ---
 
-## 14. Truy vết
+## 6. Settings (host-scoped, version 1)
 
-- Định hướng gốc: `docs/IMPELEMENT_PLAN.md` §0 (Action Registry, "thêm action sau mà không thay đổi core flow").
-- Quy tắc kiến trúc: `AGENTS.md` (single live contract, hard cut, module boundaries), `framework/module-boundaries.md`.
-- Vòng đời packet: `docs/PLANS.md`, `framework/packet-template.md`.
-- Quyết định đã khoá liên quan: DLF-003 (target 0.8.0, settings đi kèm RPC), DLF-005 (chỉ dùng `addComposerPill`), DLF-006 (validator fail-closed, injection boundary), DLF-011 (v0.1.0 public).
-- Việc hoãn liên quan: DEF-001, DEF-002 (protected literals), DEF-006 (host-load test), DEF-007 (theme).
-- Chưa có DLF cho tài liệu này. Chấp nhận nó cần một quyết định của Lead và một packet riêng.
+Hai trục độc lập quyết định đường chạy: `transport` (`cli`|`api`) × `modelMode` (`current`|`dedicated`). Các trường còn lại là hệ quả của hai trục:
+
+- CLI: `dedicatedProvider/Model/ThinkingOptionId`, `providerCli` (override family theo provider id).
+- API: `apiEndpoints[]`, `apiEndpointId`, `apiModel`, `apiEndpointByProvider`, `secretsFile`.
+- Chung: `timeoutMs` (`TIMEOUT_MS.min..max`, mặc định 90 000; host cắt RPC ở 30 s — DEF-008), `actionEnabled`.
+
+Key API **không bao giờ** nằm trong settings (tài liệu này tới browser); chỉ có tên biến, giá trị đọc ở daemon từ env rồi `secrets.json`.
+
+---
+
+## 7. Quyết định đã khoá (trả lời OQ-1..OQ-8 của bản đề xuất)
+
+| OQ | Quyết định |
+|---|---|
+| OQ-1 Nguồn pack | Chỉ pack **bundle trong plugin** (`shared/packs/`). Pack từ thư mục người dùng/network cần FR upstream (daemon không biết install dir). |
+| OQ-2 Tương thích | `schemaVersion` khác `1` ⇒ pack bị loại. Khi cần đổi shape: sửa schema v1 và mọi pack cùng lúc (hard cut). |
+| OQ-3 Danh tính | Một namespace phẳng; `id` duy nhất trong barrel; trùng ⇒ loại cả hai. |
+| OQ-4 Settings per-pack | Không có. `actionEnabled[id]` là mức duy nhất. |
+| OQ-5 Pack hợp lệ | Schema strict + giới hạn 50 000 ký tự. Không placeholder `{{prompt}}`: Core tự bọc. |
+| OQ-6 Injection | `escapeWrapperDelimiters` ở Core. |
+| OQ-7 Protected literals | Validator chạy trên `originalPrompt`, độc lập pack. |
+| OQ-8 Tin cậy | Prompt pack là nội dung tác giả plugin; pack bên thứ ba không tồn tại trong bản này. |
+
+---
+
+## 8. Điểm mở rộng
+
+Bốn điểm mở rộng có tên, mỗi điểm một thư mục và một bước đăng ký. Chi tiết và template: `docs/EXTENDING.md`.
+
+| Muốn thêm | Chạm vào | Không chạm |
+|---|---|---|
+| Action mới | `shared/packs/<id>.json` + một dòng `shared/packs/index.ts` | engine, validator, RPC, settings, UI |
+| Protocol API mới | `server/transports/api/<protocol>.ts` + `PROTOCOLS` + `API_PROTOCOL_IDS` | resolver, engine |
+| CLI family mới | `server/transports/cli/family.ts` + `CLI_FAMILY_IDS` | resolver, engine |
+| Trường settings mới | `shared/settings.ts` + một section trong `client/settings/sections/` + `readiness/validation` nếu ảnh hưởng đường chạy | các section khác |
+
+---
+
+## 9. Bất biến phải giữ khi sửa
+
+1. Không auto-send; chỉ thay text Composer khi snapshot còn khớp và pill còn active.
+2. Fail closed: lỗi cấu hình/pack/transport là lỗi có mã; không rơi sang endpoint, model, hay transport khác.
+3. Prompt không vào `argv`, không vào log; key không vào settings, log, RPC, hay thông điệp lỗi.
+4. Một registry, một schema version, một đường rewrite. Không có nhánh riêng cho `coding`.
+5. Client và server chỉ gặp nhau qua `shared/`; server không import `@getpaseo/client`.

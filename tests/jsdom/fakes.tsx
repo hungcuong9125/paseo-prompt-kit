@@ -1,6 +1,6 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { createElement } from "react";
-import { listActions } from "../../shared/actions/registry.js";
+import { listActions } from "../../shared/action-registry/registry.js";
 import { promptKitSettingsSchema } from "../../shared/settings.js";
 
 export interface FakeAgent {
@@ -26,7 +26,7 @@ export interface FakeAgentUpdate {
 export interface FakeClient {
   client: PluginClientContext;
   pills: FakePill[];
-  screens: { id: string; title: string; Component: unknown }[];
+  screens: { id: string; title: string; icon: string; Component: unknown }[];
   rpcCalls: { method: string; input: unknown }[];
   sent: number;
   live(): FakePill[];
@@ -61,7 +61,7 @@ export function createFakeClient(
   } = {},
 ): FakeClient {
   const pills: FakePill[] = [];
-  const screens: { id: string; title: string; Component: unknown }[] = [];
+  const screens: { id: string; title: string; icon: string; Component: unknown }[] = [];
   const rpcCalls: { method: string; input: unknown }[] = [];
   const handlers = new Set<(update: FakeAgentUpdate) => void>();
   const state = { sent: 0 };
@@ -108,7 +108,7 @@ export function createFakeClient(
         },
       };
     },
-    addSettingsScreen(contribution: { id: string; title: string; Component: unknown }) {
+    addSettingsScreen(contribution: { id: string; title: string; icon: string; Component: unknown }) {
       screens.push(contribution);
       return () => {};
     },

@@ -40,33 +40,45 @@ paseo plugin ls
 
 ## Settings
 
-Open the PromptKit settings screen from Paseo settings. Two independent choices decide which of the three paths runs.
+Open the PromptKit screen from Paseo settings. The bar at the top says whether a rewrite would run and over which path, names the reason when it would not, and holds **Save** / **Discard** once something has changed. Nothing is written until Save.
+
+The screen reads top to bottom in setup order:
+
+1. **Actions** — one switch per bundled action. One enabled action makes the pill a direct button; two or more make it a menu; none hides the pill. A change here reaches the pill when the agent re-opens or the plugin reloads.
+2. **Rewrite engine** — the two independent choices below. Every other section appears only when these two need it.
+3. **Dedicated model** (CLI + Dedicated) or **API endpoint** (Direct API).
+4. **Advanced** (collapsed) — timeout, secrets directory, and the two per-provider overrides.
 
 ### Transport
 
 - `Provider CLI` (default) — the provider's own CLI runs the rewrite headlessly. The model comes from the next setting.
 - `Direct API` — PromptKit posts to an endpoint you configure. No CLI is started.
 
-### Rewrite model
+### Model source
 
 - `Current agent model` — the model the Composer's model control is showing for the agent whose pill you pressed. PromptKit reads the same value Paseo does (the provider session's runtime model first, then the configured model), so what you see is what runs.
 - `Dedicated model` — a provider, model and thinking option you pick from the daemon's provider catalog, whatever the agent itself runs.
 
 ### The three paths
 
-| Transport | Rewrite model | What runs |
+| Transport | Model source | What runs |
 |---|---|---|
 | `Provider CLI` | `Current agent model` | The agent's own provider CLI with the model the Composer shows |
 | `Provider CLI` | `Dedicated model` | The dedicated provider's CLI with the model you picked |
 | `Direct API` | either | An HTTP request to the endpoint you configured |
 
-On `Direct API` the model has two sources. If you map an endpoint to a provider under `Endpoint by provider`, the agent's own model is sent — this is how you point a provider such as `opencode` at your own OpenAI-compatible endpoint. Otherwise pick `Dedicated model` and choose an `API model`.
+On `Direct API` the model has two sources. If you map a provider to an endpoint under **Advanced → Endpoint per provider**, the agent's own model is sent — this is how you point a provider such as `opencode` at your own OpenAI-compatible endpoint. Otherwise pick `Dedicated model` and choose a model on the endpoint.
 
-### Other fields
+### API endpoint
 
-- `Provider CLI`: maps a provider id to a CLI family. Most ids need no entry — a profile named after its CLI (`pi-peer`, `codex-lead`) resolves on its own. Map one only when the id does not say which CLI runs it. An unmapped provider is refused, never guessed.
-- `Endpoint by provider`: maps a provider id to an API endpoint, so that provider rewrites over HTTP. An entry here takes precedence over the global endpoint.
-- `Timeout (ms)`: how long a rewrite may run, default `90000`, allowed range `1000`–`600000`. Note the daemon also caps a plugin call at 30 seconds, so a value above that is not reachable in practice.
+Choose a preset (Groq, OpenAI, Anthropic, Google Gemini, OpenRouter, Local server) or a custom endpoint, fill in the base URL and the **name** of the key variable, and press **Test**. A successful test fills the model list from the endpoint; the rewrite refuses a model outside that list. Save is blocked while the endpoint cannot work (for example an empty base URL), with the reason in the status bar.
+
+### Advanced
+
+- `Timeout (ms)`: how long a rewrite may run, default `90000`, allowed range `1000`–`600000`. The daemon caps one plugin call at 30 s, so the screen notes when a budget above that cannot be reached.
+- `Secrets directory` (Direct API): where `secrets.json` lives. Empty means `<PASEO_HOME>/plugin-settings/prompt-kit`.
+- `CLI per provider` (Provider CLI): shows which CLI each provider id resolves to and lets you override it. A profile named after its CLI (`pi-peer`, `codex-lead`) resolves on its own; an unresolved provider is refused, never guessed.
+- `Endpoint per provider` (Direct API): sends a provider's own agent model to one of your endpoints. A mapped provider needs no dedicated model.
 
 Settings are host-scoped and persist across plugin reload.
 
@@ -182,9 +194,13 @@ Every one of these leaves the Composer text untouched.
 - Requires Paseo `>=0.8.0`. Because text access depends on the Composer DOM, a Paseo UI change can break it even when the public plugin SDK is compatible.
 - No auto-send. PromptKit only replaces the Composer text; you send the message.
 - PromptKit refuses to replace text you edited while a rewrite was running, and refuses when more than one Composer (or none) is visible.
-- One action in this version: `Improve coding prompt`.
+- One bundled action in this version: `Improve coding prompt`. Adding another is one JSON file — see `docs/EXTENDING.md`.
 - The API transport does not stream: it makes one request and waits for the whole answer. A slow endpoint can exceed the daemon's 30-second plugin-call cap, in which case the host reports a timeout before PromptKit's own `Timeout (ms)` can fire.
 - No OAuth or token refresh: an endpoint uses a static key. A provider that needs an interactive login is better served by the CLI transport.
+
+## Project layout
+
+The host compiler accepts only `client/`, `server/` and `shared/` at the root, so the modules live inside them. `docs/CORE.md` names each module's one responsibility; `docs/EXTENDING.md` says where a new action pack, API protocol, CLI family or settings section goes, with templates under `docs/templates/`.
 
 ## License
 

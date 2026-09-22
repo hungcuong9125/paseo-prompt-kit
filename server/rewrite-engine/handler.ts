@@ -1,10 +1,10 @@
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
-import { buildTaskPrompt } from "../shared/actions/wrapper.js";
-import { resolveAction } from "../shared/actions/registry.js";
-import type { RewriteInput, RewriteOutput } from "../shared/rpc.js";
-import type { CliSpawner } from "./cli/process.js";
-import { pluginLog } from "./log.js";
-import { runRewrite } from "./rewrite.js";
+import { buildTaskPrompt } from "../../shared/action-registry/wrapper.js";
+import { resolveAction } from "../../shared/action-registry/registry.js";
+import type { RewriteInput, RewriteOutput } from "../../shared/rpc.js";
+import type { CliSpawner } from "../transports/cli/process.js";
+import { pluginLog } from "../log.js";
+import { runRewrite } from "./engine.js";
 
 export interface RewriteHandlerDependencies {
   /** Test seam: replaces the CLI spawner underneath the rewrite engine. */

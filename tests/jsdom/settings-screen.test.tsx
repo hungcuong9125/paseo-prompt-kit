@@ -1,27 +1,28 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { promptKitSettingsSchema } from "../../shared/settings.js";
+import { promptKitSettingsSchema, TIMEOUT_MS } from "../../shared/settings.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock("react-native", async () => (await import("./mocks.js")).reactNativeMock);
-vi.mock(
-  "@getpaseo/plugin/client/ui",
-  async () => (await import("./mocks.js")).pluginUiMock,
-);
+vi.mock("@getpaseo/plugin/client/ui", async () => (await import("./mocks.js")).pluginUiMock);
 
 const holder = vi.hoisted(() => ({
   state: null as Record<string, unknown> | null,
   save: vi.fn(),
   listProviders: vi.fn(),
   listActions: vi.fn(),
+  testEndpoint: vi.fn(),
 }));
 
 vi.mock("@getpaseo/plugin/client", () => ({
   useSettings: () => holder.state,
-  useRpc: (contract: { name: string }) =>
-    contract.name === "prompt-kit.providers" ? holder.listProviders : holder.listActions,
+  useRpc: (contract: { name: string }) => {
+    if (contract.name === "prompt-kit.providers") return holder.listProviders;
+    if (contract.name === "prompt-kit.api.test") return holder.testEndpoint;
+    return holder.listActions;
+  },
 }));
 
 import { PromptKitSettingsScreen } from "../../client/settings/settings-screen.js";
@@ -64,12 +65,7 @@ const catalog = {
         },
       ],
     },
-    {
-      provider: "ghost",
-      label: "Ghost",
-      available: false,
-      models: [],
-    },
+    { provider: "ghost", label: "Ghost", available: false, models: [] },
   ],
 };
 
@@ -86,6 +82,15 @@ const actionCatalog = {
       icon: "Code2",
     },
   ],
+};
+
+const GROQ = {
+  id: "groq",
+  label: "Groq",
+  protocol: "openai",
+  baseUrl: "https://api.groq.com/openai/v1",
+  apiKeyEnv: "GROQ_API_KEY",
+  models: ["openai/gpt-oss-20b"],
 };
 
 function readyState(values: Record<string, unknown>): Record<string, unknown> {
@@ -106,12 +111,14 @@ let container: HTMLDivElement | null = null;
 
 async function render(): Promise<HTMLDivElement> {
   holder.listActions.mockResolvedValue(actionCatalog);
+  holder.listProviders.mockResolvedValue(catalog);
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
     root!.render(<PromptKitSettingsScreen {...surfaceProps} />);
   });
+  await flush();
   return container;
 }
 
@@ -121,18 +128,52 @@ async function flush(): Promise<void> {
   });
 }
 
-async function selectValue(container: HTMLDivElement, label: string, value: string) {
-  const select = container.querySelector<HTMLSelectElement>(`select[data-label="${label}"]`)!;
+function statusTitle(view: HTMLDivElement): string {
+  return view.querySelector('[data-testid="prompt-kit-status-title"]')?.textContent ?? "";
+}
+
+function statusText(view: HTMLDivElement): string {
+  return view.querySelector('[data-testid="prompt-kit-status"]')?.textContent ?? "";
+}
+
+function select(view: HTMLDivElement, label: string): HTMLSelectElement {
+  const found = view.querySelector<HTMLSelectElement>(`select[data-label="${label}"]`);
+  if (!found) throw new Error(`no select labelled "${label}"`);
+  return found;
+}
+
+async function choose(view: HTMLDivElement, label: string, value: string) {
+  const control = select(view, label);
   await act(async () => {
-    select.value = value;
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    control.value = value;
+    control.dispatchEvent(new Event("change", { bubbles: true }));
   });
 }
 
-async function pressSave(container: HTMLDivElement) {
-  const button = container.querySelector<HTMLButtonElement>(
-    'button[data-label="Save settings"]',
-  )!;
+async function type(view: HTMLDivElement, label: string, value: string) {
+  const input = view.querySelector<HTMLInputElement>(`input[data-label="${label}"]`);
+  if (!input) throw new Error(`no input labelled "${label}"`);
+  // React tracks the last value it set; the native setter bypasses that tracker
+  // so the bubbling input event is seen as a real change.
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  await act(async () => {
+    setter?.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+async function press(view: HTMLDivElement, testId: string) {
+  const button = view.querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`);
+  if (!button) throw new Error(`no button ${testId}`);
+  await act(async () => {
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await flush();
+}
+
+async function pressAction(view: HTMLDivElement, label: string) {
+  const button = view.querySelector<HTMLButtonElement>(`button[data-label="${label}"]`);
+  if (!button) throw new Error(`no action ${label}`);
   await act(async () => {
     button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
@@ -147,95 +188,234 @@ afterEach(() => {
   holder.save.mockReset();
   holder.listProviders.mockReset();
   holder.listActions.mockReset();
+  holder.testEndpoint.mockReset();
 });
 
-/** Every render loads the action list, so tests stub it once. */
-function stubActions() {
-  holder.listActions.mockResolvedValue(actionCatalog);
-}
-
-describe("promptkit settings screen", () => {
-  it("saves the edited selection through the host settings API and keeps it after the host echoes it back", async () => {
+describe("status bar", () => {
+  it("reports the default path as ready with no controls until something changes", async () => {
     holder.state = readyState({});
-    holder.save.mockResolvedValue(true);
-    holder.listProviders.mockResolvedValue(catalog);
     const view = await render();
-    const mode = view.querySelector<HTMLSelectElement>('select[data-label="Rewrite model"]')!;
-    expect(mode.value).toBe("current");
-
-    await selectValue(view, "Rewrite model", "dedicated");
-    await pressSave(view);
-
-    expect(holder.save).toHaveBeenCalledTimes(1);
-    const [savedValues, savedRevision] = holder.save.mock.calls[0]!;
-    expect(savedValues).toMatchObject({ modelMode: "dedicated" });
-    expect(savedRevision).toBe("r1");
-
-    holder.state = readyState({ modelMode: "dedicated" });
-    await act(async () => {
-      root!.render(<PromptKitSettingsScreen {...surfaceProps} />);
-    });
-    expect(
-      view.querySelector<HTMLSelectElement>('select[data-label="Rewrite model"]')!.value,
-    ).toBe("dedicated");
+    expect(statusTitle(view)).toBe("Ready · Provider CLI · current agent model");
+    expect(view.querySelector('[data-testid="prompt-kit-save"]')).toBeNull();
   });
 
-  it("loads the provider catalog and offers models and thinking options for a dedicated selection", async () => {
-    holder.state = readyState({
-      modelMode: "dedicated",
-      dedicatedProvider: "openai",
-      dedicatedModel: "gpt-5",
-    });
-    holder.listProviders.mockResolvedValue(catalog);
+  it("names the reason a rewrite would be refused", async () => {
+    holder.state = readyState({ modelMode: "dedicated", dedicatedProvider: "openai" });
     const view = await render();
-    await flush();
-
-    expect(holder.listProviders).toHaveBeenCalled();
-    const provider = view.querySelector<HTMLSelectElement>('select[data-label="Provider"]')!;
-    const model = view.querySelector<HTMLSelectElement>('select[data-label="Model"]')!;
-    const thinking = view.querySelector<HTMLSelectElement>('select[data-label="Thinking"]')!;
-    expect(provider.value).toBe("openai");
-    expect(model.value).toBe("gpt-5");
-    const optionValues = (select: HTMLSelectElement) =>
-      Array.from(select.options, (option) => option.value);
-    expect(optionValues(model)).toEqual(["", "gpt-5"]);
-    expect(optionValues(thinking)).toEqual(["", "high"]);
-    expect(provider.options[1]!.textContent).toBe("OpenAI");
-    expect(provider.options[2]!.textContent).toBe("Ghost (unavailable)");
+    expect(statusTitle(view)).toContain("Not ready");
+    expect(statusText(view)).toContain("Select a dedicated provider and model.");
   });
 
-  it("shows an incomplete dedicated selection as invalid", async () => {
-    holder.state = readyState({
-      modelMode: "dedicated",
-      dedicatedProvider: "openai",
-      dedicatedModel: null,
-    });
-    holder.listProviders.mockResolvedValue(catalog);
-    const view = await render();
-    await flush();
-
-    const error = view.querySelector("[data-error]");
-    expect(error?.textContent).toBe("Select a dedicated provider and model.");
-  });
-
-  it("shows a selection that is no longer listed as invalid", async () => {
+  it("reports a selection the catalog no longer lists", async () => {
     holder.state = readyState({
       modelMode: "dedicated",
       dedicatedProvider: "ghost",
       dedicatedModel: "gone",
     });
-    holder.listProviders.mockResolvedValue(catalog);
     const view = await render();
-    await flush();
-
-    expect(view.querySelector("[data-error]")?.textContent).toBe("Provider is unavailable: ghost");
+    expect(statusText(view)).toContain("Provider is unavailable: ghost");
+    // The row that needs fixing carries the same message.
+    expect(select(view, "Provider").parentElement?.textContent).toContain("Provider is unavailable: ghost");
   });
 
-  it("shows no error while the current model is selected", async () => {
+  it("explains that a disabled-everything document hides the pill", async () => {
+    holder.state = readyState({ actionEnabled: { coding: false } });
+    const view = await render();
+    expect(statusText(view)).toContain("no PromptKit pill");
+  });
+
+  it("refuses the API transport on the current model until a provider is mapped", async () => {
+    holder.state = readyState({ transport: "api" });
+    const view = await render();
+    expect(statusTitle(view)).toContain("Not ready · Direct API");
+    expect(statusText(view)).toContain("endpoint mapped to a provider");
+  });
+});
+
+describe("draft, save and discard", () => {
+  it("saves the edited document against the revision it was drafted from", async () => {
+    holder.state = readyState({});
+    holder.save.mockResolvedValue(true);
+    const view = await render();
+
+    await choose(view, "Model source", "dedicated");
+    expect(statusText(view)).toContain("Unsaved changes");
+    await choose(view, "Provider", "openai");
+    await choose(view, "Model", "gpt-5");
+    expect(statusTitle(view)).toBe("Ready · Provider CLI · openai · gpt-5");
+
+    await press(view, "prompt-kit-save");
+    expect(holder.save).toHaveBeenCalledTimes(1);
+    const [savedValues, savedRevision] = holder.save.mock.calls[0]!;
+    expect(savedValues).toMatchObject({
+      modelMode: "dedicated",
+      dedicatedProvider: "openai",
+      dedicatedModel: "gpt-5",
+    });
+    expect(savedRevision).toBe("r1");
+    expect(statusText(view)).toContain("Saved.");
+  });
+
+  it("discards the draft and shows the host document again", async () => {
     holder.state = readyState({});
     const view = await render();
+    await choose(view, "Transport", "api");
+    expect(select(view, "Transport").value).toBe("api");
+    await press(view, "prompt-kit-discard");
+    expect(select(view, "Transport").value).toBe("cli");
+    expect(view.querySelector('[data-testid="prompt-kit-save"]')).toBeNull();
+  });
+
+  it("blocks Save on a timeout outside the schema range and says which bound was crossed", async () => {
+    holder.state = readyState({});
+    const view = await render();
+    await press(view, "prompt-kit-advanced-toggle");
+    await type(view, "Timeout (ms)", String(TIMEOUT_MS.max + 1));
+    expect(statusTitle(view)).toBe("Cannot save yet");
+    expect(statusText(view)).toContain(TIMEOUT_MS.max.toLocaleString());
+    const save = view.querySelector<HTMLButtonElement>('[data-testid="prompt-kit-save"]');
+    expect(save?.disabled).toBe(true);
+    await press(view, "prompt-kit-save");
+    expect(holder.save).not.toHaveBeenCalled();
+  });
+
+  it("notes the host's own cap when the timeout is legal but unreachable", async () => {
+    holder.state = readyState({ timeoutMs: TIMEOUT_MS.hostRpcCapMs + 1 });
+    const view = await render();
+    await press(view, "prompt-kit-advanced-toggle");
+    const row = view.querySelector('[data-row="Timeout (ms)"]');
+    expect(row?.textContent).toContain(`${TIMEOUT_MS.hostRpcCapMs / 1000} s`);
+    expect(row?.querySelector("[data-error]")).toBeNull();
+  });
+});
+
+describe("API endpoint section", () => {
+  it("adds a preset by choosing it and asks for a model on the dedicated path", async () => {
+    holder.state = readyState({ transport: "api", modelMode: "dedicated" });
+    holder.save.mockResolvedValue(true);
+    const view = await render();
+    expect(statusText(view)).toContain("Add an API endpoint");
+
+    await choose(view, "Endpoint", "groq");
+    expect(view.querySelector<HTMLInputElement>('input[data-label="Base URL"]')?.value).toBe(
+      "https://api.groq.com/openai/v1",
+    );
+    expect(statusText(view)).toContain("Select an API model.");
+
+    await type(view, "Model", "openai/gpt-oss-20b");
+    expect(statusTitle(view)).toBe("Ready · Direct API · groq · openai/gpt-oss-20b");
+
+    await press(view, "prompt-kit-save");
+    expect(holder.save.mock.calls[0]?.[0]).toMatchObject({
+      apiEndpointId: "groq",
+      apiModel: "openai/gpt-oss-20b",
+      apiEndpoints: [expect.objectContaining({ id: "groq", apiKeyEnv: "GROQ_API_KEY" })],
+    });
+  });
+
+  it("writes the model list a successful test returns into the draft", async () => {
+    holder.state = readyState({
+      transport: "api",
+      modelMode: "dedicated",
+      apiEndpointId: "groq",
+      apiEndpoints: [{ ...GROQ, models: [] }],
+    });
+    holder.testEndpoint.mockResolvedValue({ status: "ok", models: ["a-model", "b-model"] });
+    const view = await render();
+
+    await pressAction(view, "Connection");
+    expect(holder.testEndpoint).toHaveBeenCalledWith({
+      endpoint: expect.objectContaining({ id: "groq" }),
+      secretsFile: null,
+    });
+    const model = select(view, "Model");
+    expect(Array.from(model.options, (option) => option.value)).toEqual(["", "a-model", "b-model"]);
+    expect(view.querySelector('[data-row="Connection"]')?.textContent).toContain("2 models");
+  });
+
+  it("keeps a field typed during a test instead of overwriting it with the test result", async () => {
+    holder.state = readyState({
+      transport: "api",
+      modelMode: "dedicated",
+      apiEndpointId: "groq",
+      apiEndpoints: [{ ...GROQ, models: [] }],
+    });
+    let finish: (value: unknown) => void = () => {};
+    holder.testEndpoint.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    holder.save.mockResolvedValue(true);
+    const view = await render();
+
+    await pressAction(view, "Connection");
+    await type(view, "Key variable", "MY_GROQ_KEY");
+    await act(async () => {
+      finish({ status: "ok", models: ["a-model"] });
+    });
     await flush();
-    expect(view.querySelector("[data-error]")).toBeNull();
-    expect(holder.listProviders).not.toHaveBeenCalled();
+
+    await choose(view, "Model", "a-model");
+    await press(view, "prompt-kit-save");
+    expect(holder.save.mock.calls[0]?.[0]).toMatchObject({
+      apiEndpoints: [expect.objectContaining({ apiKeyEnv: "MY_GROQ_KEY", models: ["a-model"] })],
+    });
+  });
+
+  it("blocks Save while a custom endpoint has no usable base URL", async () => {
+    holder.state = readyState({ transport: "api", modelMode: "dedicated" });
+    const view = await render();
+    await choose(view, "Endpoint", "__custom__");
+    expect(statusTitle(view)).toBe("Cannot save yet");
+    expect(statusText(view)).toContain("base URL");
+    await type(view, "Base URL", "http://127.0.0.1:8080/v1");
+    expect(statusTitle(view)).not.toBe("Cannot save yet");
+  });
+
+  it("drops a provider mapping that pointed at a removed endpoint", async () => {
+    holder.state = readyState({
+      transport: "api",
+      apiEndpointId: "groq",
+      apiEndpoints: [GROQ],
+      apiEndpointByProvider: { openai: "groq" },
+    });
+    holder.save.mockResolvedValue(true);
+    const view = await render();
+    expect(statusTitle(view)).toContain("Ready");
+    await pressAction(view, "Remove endpoint");
+    expect(statusTitle(view)).not.toBe("Cannot save yet");
+    // Nothing is left to send an API rewrite through, and the bar says so.
+    expect(statusText(view)).toContain("endpoint mapped to a provider");
+  });
+});
+
+describe("advanced overrides", () => {
+  it("shows which CLI a provider id resolves to and lets the user override it", async () => {
+    holder.state = readyState({});
+    holder.listProviders.mockResolvedValue({
+      providers: [
+        { provider: "pi-peer", label: "Pi peer", available: true, models: [] },
+        { provider: "mystery", label: "Mystery", available: true, models: [] },
+      ],
+    });
+    holder.save.mockResolvedValue(true);
+    holder.listActions.mockResolvedValue(actionCatalog);
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root!.render(<PromptKitSettingsScreen {...surfaceProps} />);
+    });
+    await flush();
+    const view = container;
+
+    await press(view, "prompt-kit-advanced-toggle");
+    const pi = select(view, "Pi peer");
+    expect(pi.options[0]?.textContent).toBe("Automatic: pi");
+    const mystery = select(view, "Mystery");
+    expect(mystery.options[0]?.textContent).toBe("Automatic: none");
+    expect(mystery.parentElement?.querySelector("[data-error]")).not.toBeNull();
+
+    await choose(view, "Mystery", "opencode");
+    expect(mystery.parentElement?.querySelector("[data-error]")).toBeNull();
+    await press(view, "prompt-kit-save");
+    expect(holder.save.mock.calls[0]?.[0]).toMatchObject({ providerCli: { mystery: "opencode" } });
   });
 });

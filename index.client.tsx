@@ -1,6 +1,7 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { actionsListRpc } from "./shared/rpc.js";
-import { createWebComposerAdapter } from "./client/composer/web.js";
+import { createWebComposerAdapter } from "./client/composer-bridge/web.js";
+import { PLUGIN_ICON } from "./client/icon.js";
 import { createSettingsReader } from "./client/settings/read-settings.js";
 import { registerAgentPills } from "./client/pills/agent-pills.js";
 import { createRewriteRunner } from "./client/pills/rewrite-runner.js";
@@ -43,7 +44,7 @@ export default function contribute(client: PluginClientContext): () => void {
   const removeSettingsScreen = client.addSettingsScreen({
     id: "prompt-kit",
     title: "PromptKit",
-    icon: "Sparkles",
+    icon: PLUGIN_ICON,
     Component: PromptKitSettingsScreen,
   });
 

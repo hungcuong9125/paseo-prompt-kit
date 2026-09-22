@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { piFamily, claudeFamily } from "../../server/cli/family.js";
-import { spawnCli, type CliRunInput } from "../../server/cli/process.js";
-import { runCliRewrite } from "../../server/cli/runner.js";
+import { piFamily, claudeFamily } from "../../server/transports/cli/family.js";
+import { spawnCli, type CliRunInput } from "../../server/transports/cli/process.js";
+import { runCliRewrite } from "../../server/transports/cli/runner.js";
 
 const BASE = {
   model: "m",

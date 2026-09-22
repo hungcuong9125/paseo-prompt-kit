@@ -3,13 +3,12 @@ import {
   ENDPOINT_PRESETS,
   PROTOCOL_OPTIONS,
   endpointFromPreset,
-  slugifyId,
   validateEndpoint,
 } from "../../client/settings/api-endpoints.js";
 import { promptKitSettingsSchema } from "../../shared/settings.js";
 
 /**
- * The endpoint editor's pure half: presets, id derivation and the pre-save check.
+ * The API endpoint section's pure half: the presets and the per-endpoint check.
  *
  * These are the rules that decide what reaches the settings document, so they are
  * tested without a DOM. A preset that produced an invalid endpoint, or a check
@@ -55,31 +54,6 @@ describe("endpoint presets", () => {
   });
 });
 
-describe("slugifyId", () => {
-  it("derives a schema-valid id from a display name", () => {
-    expect(slugifyId("Groq")).toBe("groq");
-    expect(slugifyId("Google Gemini")).toBe("google-gemini");
-    expect(slugifyId("My  Endpoint!!")).toBe("my-endpoint");
-    expect(slugifyId("  Leading and trailing  ")).toBe("leading-and-trailing");
-  });
-
-  it("produces an id the schema accepts", async () => {
-    for (const label of ["Groq", "Google Gemini", "OpenRouter", "My Endpoint!!", "A B C"]) {
-      const id = slugifyId(label);
-      await expect(
-        promptKitSettingsSchema.parseAsync({
-          apiEndpoints: [{ id, label, protocol: "openai", baseUrl: "https://x.example", models: [] }],
-        }),
-      ).resolves.toBeDefined();
-    }
-  });
-
-  it("returns an empty string when nothing usable remains", () => {
-    // The check then reports "An id is required", which is the right message.
-    expect(slugifyId("!!!")).toBe("");
-  });
-});
-
 describe("validateEndpoint", () => {
   const valid = {
     id: "groq",
@@ -100,7 +74,13 @@ describe("validateEndpoint", () => {
   });
 
   it("rejects an id the schema would reject", () => {
-    for (const id of ["Groq", "1 leading digit ok but caps no", "has space", "has_underscore", "-leading"]) {
+    for (const id of [
+      "Groq",
+      "1 leading digit ok but caps no",
+      "has space",
+      "has_underscore",
+      "-leading",
+    ]) {
       expect(validateEndpoint({ ...valid, id }, [], null)).not.toBeNull();
     }
     // A digit first is allowed by the schema, so it must be allowed here too.
@@ -119,6 +99,8 @@ describe("validateEndpoint", () => {
   it("requires an http(s) base URL", () => {
     expect(validateEndpoint({ ...valid, baseUrl: "api.groq.com" }, [], null)).toContain("base URL");
     expect(validateEndpoint({ ...valid, baseUrl: "ftp://x" }, [], null)).toContain("base URL");
-    expect(validateEndpoint({ ...valid, baseUrl: "http://127.0.0.1:1234/v1" }, [], null)).toBeNull();
+    expect(
+      validateEndpoint({ ...valid, baseUrl: "http://127.0.0.1:1234/v1" }, [], null),
+    ).toBeNull();
   });
 });

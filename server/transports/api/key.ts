@@ -28,9 +28,11 @@ export interface SecretsFile {
   readonly apiKeys: Readonly<Record<string, string>>;
 }
 
+export type ApiKeyLookupFailure = "no_key_configured" | "missing_key" | "unreadable_secrets";
+
 export type ApiKeyLookup =
   | { readonly ok: true; readonly key: string; readonly source: "env" | "secrets_file" }
-  | { readonly ok: false; readonly reason: "no_key_configured" | "missing_key" | "unreadable_secrets" };
+  | { readonly ok: false; readonly reason: ApiKeyLookupFailure };
 
 /** `$PASEO_HOME/plugin-settings/prompt-kit`, the directory the daemon stores settings in. */
 export function defaultSecretsDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -108,9 +110,14 @@ export async function resolveApiKey(input: {
 
   const secrets = await readSecretsFile(secretsFilePath(input.secretsDir, env));
   if (isLookup(secrets)) {
-    // `no_key_configured` from a missing file is not the whole story: the name is
-    // what the user must fix, so report it as missing rather than unconfigured.
-    return secrets.ok ? secrets : { ok: false, reason: "missing_key" };
+    if (secrets.ok) return secrets;
+    // A missing file only means this host uses environment variables, so the
+    // name is what the user must fix: report the key as missing. An unreadable
+    // file is a different problem and must keep its own reason, or the user is
+    // told to add a key to a file that cannot be parsed.
+    return secrets.reason === "unreadable_secrets"
+      ? secrets
+      : { ok: false, reason: "missing_key" };
   }
   const value = secrets.apiKeys[name];
   if (typeof value === "string" && value.trim() !== "") {

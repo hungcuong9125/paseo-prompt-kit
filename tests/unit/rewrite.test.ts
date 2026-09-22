@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runRewrite } from "../../server/rewrite.js";
+import { runRewrite } from "../../server/rewrite-engine/engine.js";
 import {
   cliStdout,
   createRewriteHarness,
@@ -305,6 +305,24 @@ describe("runRewrite: dedicated model", () => {
     if (output.status !== "error") throw new Error("expected error");
     expect(output.error.code).toBe("unsupported_provider");
     expect(harness.spawned).toEqual([]);
+  });
+
+  // The dedicated path borrows only the agent's working directory. Requiring the
+  // agent's own provider to have a CLI family would refuse a valid dedicated
+  // selection for every agent whose provider has no CLI at all.
+  it("runs the dedicated CLI even when the current agent's provider has no CLI family", async () => {
+    const harness = createRewriteHarness({
+      agent: { provider: "grok", runtimeInfo: { provider: "grok" } },
+      models: [{ provider: "claude", available: true, models: ["claude-haiku-4-5"] }],
+    });
+    const output = await rewrite(harness, {
+      modelMode: "dedicated",
+      dedicatedProvider: "claude",
+      dedicatedModel: "claude-haiku-4-5",
+    });
+    expect(output.status).toBe("ok");
+    expect(harness.spawned[0]?.command).toBe("claude");
+    expect(harness.spawned[0]?.cwd).not.toBe("/tmp/workspace");
   });
 
   it("fails closed when no dedicated selection is complete", async () => {

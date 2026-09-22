@@ -1,6 +1,6 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
-import { ACTION_ID_PATTERN } from "./actions/schema.js";
+import { ACTION_ID_PATTERN } from "./action-registry/schema.js";
 import { apiEndpointSchema } from "./api-protocol.js";
 import { promptKitSettingsSchema } from "./settings.js";
 

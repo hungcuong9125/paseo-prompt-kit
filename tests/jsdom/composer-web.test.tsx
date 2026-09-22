@@ -4,7 +4,7 @@ import {
   COMPOSER_ROOT_SELECTOR,
   createWebComposerAdapter,
   isElementVisible,
-} from "../../client/composer/web.js";
+} from "../../client/composer-bridge/web.js";
 
 /**
  * The fixture reproduces the real Composer DOM: the root carries

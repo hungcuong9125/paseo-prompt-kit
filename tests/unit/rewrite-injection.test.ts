@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { listActions } from "../../shared/actions/registry.js";
-import { buildTaskPrompt } from "../../shared/actions/wrapper.js";
+import { listActions } from "../../shared/action-registry/registry.js";
+import { buildTaskPrompt } from "../../shared/action-registry/wrapper.js";
 
 /**
  * The injection boundary is a property of the loaded `coding` pack's instruction

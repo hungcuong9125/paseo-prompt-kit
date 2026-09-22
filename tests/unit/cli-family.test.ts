@@ -7,7 +7,7 @@ import {
   opencodeFamily,
   piFamily,
   resolveFamily,
-} from "../../server/cli/family.js";
+} from "../../server/transports/cli/family.js";
 
 const REQUEST = {
   model: "some-model",

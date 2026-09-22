@@ -1,5 +1,5 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
-import type { ComposerAdapter } from "../composer/adapter.js";
+import type { ComposerAdapter } from "../composer-bridge/adapter.js";
 import { providerCatalogRpc, rewriteRpc, type ProviderCatalogOutput, type RewriteInput } from "../../shared/rpc.js";
 import { promptKitSettingsSchema } from "../../shared/settings.js";
 import type { SettingsRead } from "../settings/read-settings.js";

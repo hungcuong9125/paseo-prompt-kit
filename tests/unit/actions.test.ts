@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { loadActionRegistry } from "../../shared/actions/loader.js";
-import { actionPackSchema, ACTION_ID_PATTERN, MAX_INSTRUCTION_CHARS } from "../../shared/actions/schema.js";
-import { buildTaskPrompt, escapeWrapperDelimiters } from "../../shared/actions/wrapper.js";
-import { listActions, listRejectedPacks, resolveAction } from "../../shared/actions/registry.js";
+import { loadActionRegistry } from "../../shared/action-registry/loader.js";
+import { actionPackSchema, ACTION_ID_PATTERN, MAX_INSTRUCTION_CHARS } from "../../shared/action-registry/schema.js";
+import { buildTaskPrompt, escapeWrapperDelimiters } from "../../shared/action-registry/wrapper.js";
+import { listActions, listRejectedPacks, resolveAction } from "../../shared/action-registry/registry.js";
 import { enabledActions } from "../../client/actions/enabled.js";
 
 const validPack = {

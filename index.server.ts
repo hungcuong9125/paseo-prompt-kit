@@ -1,5 +1,5 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
-import { listActions, listRejectedPacks } from "./shared/actions/registry.js";
+import { listActions, listRejectedPacks } from "./shared/action-registry/registry.js";
 import {
   actionsListRpc,
   apiTestRpc,
@@ -10,9 +10,9 @@ import {
   type ProviderCatalogOutput,
 } from "./shared/rpc.js";
 import { promptKitSettings } from "./shared/settings.js";
-import { testApiEndpoint } from "./server/api/runner.js";
-import { readProviderCatalog } from "./server/provider-catalog.js";
-import { createRewriteHandler, type RewriteHandlerDependencies } from "./server/rewrite-handler.js";
+import { testApiEndpoint } from "./server/transports/api/runner.js";
+import { readProviderCatalog } from "./server/model-resolver/provider-catalog.js";
+import { createRewriteHandler, type RewriteHandlerDependencies } from "./server/rewrite-engine/handler.js";
 import { pluginLog } from "./server/log.js";
 
 /**

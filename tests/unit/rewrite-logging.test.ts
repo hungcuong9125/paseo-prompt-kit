@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import contribute from "../../index.server.js";
-import { runRewrite } from "../../server/rewrite.js";
+import { runRewrite } from "../../server/rewrite-engine/engine.js";
 import { cliStdout, createRewriteHarness, REWRITE_REQUEST, settings } from "../server/harness.js";
 
 interface CapturedLog {

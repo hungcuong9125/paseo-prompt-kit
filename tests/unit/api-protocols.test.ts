@@ -1,12 +1,12 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { anthropicProtocol } from "../../server/api/anthropic.js";
-import { geminiProtocol } from "../../server/api/gemini.js";
-import { openAiProtocol } from "../../server/api/openai.js";
-import { resolveApiKey, secretsFilePath } from "../../server/api/key.js";
-import { testApiEndpoint } from "../../server/api/runner.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { anthropicProtocol } from "../../server/transports/api/anthropic.js";
+import { geminiProtocol } from "../../server/transports/api/gemini.js";
+import { openAiProtocol } from "../../server/transports/api/openai.js";
+import { resolveApiKey, secretsFilePath } from "../../server/transports/api/key.js";
+import { runApiRewrite, testApiEndpoint } from "../../server/transports/api/runner.js";
 
 const CALL = {
   baseUrl: "https://api.example.com/openai/v1",
@@ -180,7 +180,38 @@ describe("api key resolution", () => {
     const result = await resolveApiKey({ apiKeyEnv: "GROQ_API_KEY", secretsDir: dir, env: {} });
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected failure");
-    expect(result.reason).toBe("missing_key");
+    expect(result.reason).toBe("unreadable_secrets");
+  });
+
+  // The two failures send the user to different places, so the message a
+  // rewrite or a test reports has to say which one happened.
+  it("tells the user to fix secrets.json when it cannot be parsed, not to add a key", async () => {
+    const dir = await secretsDirWith("{ this is not json");
+    const fetch = vi.fn();
+    const result = await runApiRewrite(
+      {
+        endpoint: {
+          id: "groq",
+          label: "Groq",
+          protocol: "openai",
+          baseUrl: "https://api.groq.com/openai/v1",
+          apiKeyEnv: "GROQ_API_KEY",
+          models: [],
+        },
+        model: "m",
+        systemPrompt: "s",
+        taskPrompt: "t",
+        timeoutMs: 1000,
+        secretsDir: dir,
+      },
+      { fetch: fetch as unknown as typeof globalThis.fetch, env: {} },
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected failure");
+    expect(result.code).toBe("missing_api_key");
+    expect(result.message).toContain("secrets.json exists but could not be read");
+    expect(result.message).not.toContain("add it to secrets.json");
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("ignores a non-string entry instead of sending it as a header", async () => {

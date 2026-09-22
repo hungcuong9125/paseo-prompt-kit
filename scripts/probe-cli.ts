@@ -8,8 +8,8 @@
  * cheap models. The plugin itself runs whatever model the user selected — there
  * is no model restriction in the runtime path.
  */
-import { claudeFamily, codexFamily, opencodeFamily, piFamily, type CliFamily } from "../server/cli/family.js";
-import { runCliRewrite } from "../server/cli/runner.js";
+import { claudeFamily, codexFamily, opencodeFamily, piFamily, type CliFamily } from "../server/transports/cli/family.js";
+import { runCliRewrite } from "../server/transports/cli/runner.js";
 
 const SYSTEM_PROMPT =
   "You rewrite user requests for an autonomous coding agent.\n\n" +

@@ -105,6 +105,18 @@ describe("pill shape follows the enabled set E", () => {
     cleanup();
   });
 
+  it("shows the plugin's own icon, the same one the settings title uses", async () => {
+    // The pill and the settings screen name the same plugin, so they must not
+    // show two different icons for it. The pill used to take the first action's
+    // icon, which read as a different plugin from the one in the settings header.
+    const { fake, cleanup } = await mountWith();
+    const { PLUGIN_ICON } = await import("../../client/icon.js");
+    const pill = fake.live()[0]!;
+    expect(button(pill).icon).toBe(PLUGIN_ICON);
+    expect(fake.screens[0]?.icon).toBe(PLUGIN_ICON);
+    cleanup();
+  });
+
   it("hides the pill when every action is disabled", async () => {
     const { fake, cleanup } = await mountWith({ actionEnabled: { coding: false } });
     expect(fake.live()).toHaveLength(0);

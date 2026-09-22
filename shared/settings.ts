@@ -14,6 +14,23 @@ export const modelModeSchema = z.enum(["current", "dedicated"]);
 export const transportSchema = z.enum(["cli", "api"]);
 
 /**
+ * The budget one rewrite may spend, in milliseconds. The settings screen reads
+ * the same numbers so its check and the schema cannot disagree.
+ *
+ * `hostRpcCapMs` is not a PromptKit choice: the daemon rejects any plugin call
+ * after 30 s (`@getpaseo/server` `plugins/runtime.ts`, `REQUEST_TIMEOUT_MS`), so
+ * a budget above it is accepted but cannot be reached in practice. The screen
+ * says so; the schema does not forbid it, because the cap is the host's and may
+ * change without a plugin release.
+ */
+export const TIMEOUT_MS = {
+  min: 1_000,
+  max: 600_000,
+  default: 90_000,
+  hostRpcCapMs: 30_000,
+} as const;
+
+/**
  * Host-scoped PromptKit settings. Every field has a default so `{}` parses and
  * an incomplete dedicated selection can never silently select another model.
  *
@@ -53,7 +70,7 @@ export const promptKitSettingsSchema = z.object({
    * A daemon started with a non-default `PASEO_HOME` still reads its own secrets.
    */
   secretsFile: z.string().min(1).nullable().default(null),
-  timeoutMs: z.number().int().min(1_000).max(600_000).default(90_000),
+  timeoutMs: z.number().int().min(TIMEOUT_MS.min).max(TIMEOUT_MS.max).default(TIMEOUT_MS.default),
   /**
    * Per-action user toggle, keyed by action id. An id absent here falls back to
    * the pack's `enabledByDefault`, so a newly added pack is usable without a

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createRewriteRunner } from "../../client/pills/rewrite-runner.js";
-import type { ComposerAdapter } from "../../client/composer/adapter.js";
+import type { ComposerAdapter } from "../../client/composer-bridge/adapter.js";
 import { promptKitSettingsSchema } from "../../shared/settings.js";
 
 const settings = promptKitSettingsSchema.parse({});

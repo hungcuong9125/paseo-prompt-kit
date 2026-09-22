@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateRewriteOutput } from "../../server/output-validator.js";
+import { validateRewriteOutput } from "../../server/rewrite-engine/output-validator.js";
 
 function code(output: string): string {
   const result = validateRewriteOutput({ originalPrompt: "fix the bug", output });
