@@ -95,6 +95,7 @@ const GEMINI = {
   baseUrl: "https://generativelanguage.googleapis.com",
   keySource: "env",
   apiKeyEnv: "GEMINI_API_KEY",
+  accountIdVar: "",
   models: ["gemini-2.5-flash-lite"],
 };
 
@@ -429,17 +430,62 @@ describe("API endpoint section", () => {
 
     await type(view, "API key", "AIza-secret");
     holder.keyStatus.mockResolvedValue({ status: "ok", stored: true });
-    await pressAction(view, "Store key");
+    await pressAction(view, "Store API key");
     expect(holder.writeKey).toHaveBeenCalledWith({ secretsDir: null, name: "GEMINI_API_KEY", value: "AIza-secret" });
     expect(view.querySelector<HTMLInputElement>('input[data-label="API key"]')?.value).toBe("");
-    expect(view.querySelector('[data-row="Remove stored key"]')).not.toBeNull();
+    expect(view.querySelector('[data-row="Remove stored API key"]')).not.toBeNull();
 
-    await pressAction(view, "Remove stored key");
+    await pressAction(view, "Remove stored API key");
     expect(holder.writeKey).toHaveBeenLastCalledWith({ secretsDir: null, name: "GEMINI_API_KEY", value: null });
 
     await choose(view, "Key source", "env");
     await press(view, "prompt-kit-save");
     expect(JSON.stringify(holder.save.mock.calls[0]?.[0])).not.toContain("AIza-secret");
+  });
+
+  // The host dropdown cannot search, so a filter row above it shortens its options.
+  it("filters the Model dropdown from the row above it and keeps the saved model", async () => {
+    const models = Array.from({ length: 12 }, (_, index) => `model-${index}`).concat(["gemini-3.1-pro-preview"]);
+    holder.state = readyState({
+      transport: "api",
+      apiEndpointId: "gemini",
+      apiModel: "model-3",
+      apiEndpoints: [{ ...GEMINI, models }],
+    });
+    const view = await render();
+    await type(view, "Filter models", "PRO");
+    expect(Array.from(select(view, "Model").options, (option) => option.value)).toEqual(["", "model-3", "gemini-3.1-pro-preview"]);
+    expect(view.querySelector('[data-row="Filter models"]')?.textContent).toContain("1 of 13 models match.");
+  });
+
+  it("shows no filter row for a short model list", async () => {
+    holder.state = readyState({ transport: "api", apiEndpointId: "gemini", apiEndpoints: [GEMINI] });
+    const view = await render();
+    expect(view.querySelector('input[data-label="Filter models"]')).toBeNull();
+  });
+
+  it("lists endpoints A–Z, saved custom ones with their protocol, and Custom endpoint… last", async () => {
+    holder.state = readyState({
+      transport: "api",
+      apiEndpoints: [{ ...GEMINI, id: "groq", label: "Groq", protocol: "openai", models: [] }],
+    });
+    const view = await render();
+    const labels = Array.from(select(view, "Endpoint").options, (option) => option.textContent ?? "");
+    expect(labels[0]).toBe("Choose an endpoint…");
+    expect(labels.at(-1)).toBe("Custom endpoint…");
+    const middle = labels.slice(1, -1);
+    expect(middle).toEqual([...middle].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })));
+    expect(middle).toContain("Groq — OpenAI-compatible");
+  });
+
+  it("asks Cloudflare for an account ID variable above the key variable, prefilled", async () => {
+    holder.state = readyState({ transport: "api" });
+    const view = await render();
+    await choose(view, "Endpoint", "cloudflare");
+    const account = view.querySelector<HTMLInputElement>('input[data-label="Account ID"]');
+    expect(account?.value).toBe("CLAUDFLARE_ACCOUNT_ID");
+    const rows = Array.from(view.querySelectorAll("[data-row]"), (row) => row.getAttribute("data-row"));
+    expect(rows.indexOf("Account ID")).toBeLessThan(rows.indexOf("Key variable"));
   });
 
   // One key source per endpoint; the secrets directory lives with it, not under Advanced.

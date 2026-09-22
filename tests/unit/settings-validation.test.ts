@@ -15,6 +15,7 @@ const ENDPOINT = {
   baseUrl: "https://api.groq.com/openai/v1",
   keySource: "env" as const,
   apiKeyEnv: "GROQ_API_KEY",
+  accountIdVar: "",
   models: [],
 };
 

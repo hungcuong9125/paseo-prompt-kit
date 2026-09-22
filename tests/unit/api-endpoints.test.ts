@@ -1,3 +1,4 @@
+import { API_PROTOCOL_IDS } from "../../shared/api-protocol.js";
 import { describe, expect, it } from "vitest";
 import {
   ENDPOINT_PRESETS,
@@ -46,10 +47,10 @@ describe("endpoint presets", () => {
     expect(local?.baseUrl).toMatch(/^http:\/\/127\.0\.0\.1/);
   });
 
-  it("covers all three protocols", () => {
+  it("covers every protocol", () => {
     const protocols = new Set(ENDPOINT_PRESETS.map((preset) => preset.protocol));
-    expect(protocols).toEqual(new Set(["openai", "anthropic", "gemini"]));
-    // The picker must offer the same three, or a preset would be unreachable.
+    expect(protocols).toEqual(new Set(API_PROTOCOL_IDS));
+    // The picker must offer every protocol, or a preset would be unreachable.
     expect(new Set(PROTOCOL_OPTIONS.map((option) => option.value))).toEqual(protocols);
   });
 });
@@ -62,6 +63,7 @@ describe("validateEndpoint", () => {
     baseUrl: "https://api.groq.com/openai/v1",
     keySource: "env" as const,
     apiKeyEnv: "GROQ_API_KEY",
+    accountIdVar: "",
     models: [],
   };
 
@@ -95,6 +97,12 @@ describe("validateEndpoint", () => {
   // Editing an endpoint keeps its own id, so it must not collide with itself.
   it("allows an edited endpoint to keep its own id", () => {
     expect(validateEndpoint(valid, [valid], "groq")).toBeNull();
+  });
+
+  it("requires the account ID variable for a protocol that needs one", () => {
+    const cloudflare = { ...valid, protocol: "cloudflare" as const, baseUrl: "https://api.cloudflare.com/client/v4" };
+    expect(validateEndpoint(cloudflare, [], null)).toContain("account ID");
+    expect(validateEndpoint({ ...cloudflare, accountIdVar: "CLAUDFLARE_ACCOUNT_ID" }, [], null)).toBeNull();
   });
 
   it("requires an http(s) base URL", () => {

@@ -6,18 +6,20 @@ import {
   SettingsSection,
   SettingsSelect,
 } from "@getpaseo/plugin/client/ui";
-import type { ApiEndpoint, ApiProtocolId } from "../../../shared/api-protocol.js";
+import { isApiProtocolId, protocolNeedsAccountId, type ApiEndpoint, type ApiProtocolId } from "../../../shared/api-protocol.js";
 import type { ApiTestOutput } from "../../../shared/rpc.js";
 import type { PromptKitSettings } from "../../../shared/settings.js";
 import {
   ENDPOINT_PRESETS,
   KEY_SOURCE_OPTIONS,
+  MODEL_PLACEHOLDER,
   PROTOCOL_OPTIONS,
   endpointFromPreset,
   isUsableSecretsDir,
   validateEndpoint,
 } from "../api-endpoints.js";
 import type { SettingsPatch } from "../draft.js";
+import { MODEL_FILTER_THRESHOLD, describeFilter, filterModels } from "../model-filter.js";
 import { StoredKeyRows, type StoredKeyRowsProps } from "./stored-key-rows.js";
 
 export interface ApiEndpointSectionProps {
@@ -62,20 +64,23 @@ function withEndpoint(
 /** Pick endpoint → fill details → Test → pick model. One picker for presets and custom entries. */
 export function ApiEndpointSection({ values, disabled, epoch, patch, test, keyStatus, writeKey }: ApiEndpointSectionProps) {
   const [tests, setTests] = useState<Readonly<Record<string, TestState>>>({});
+  const [modelQuery, setModelQuery] = useState("");
 
   const selected = values.apiEndpoints.find((endpoint) => endpoint.id === values.apiEndpointId) ?? null;
   const selectedIsPreset = selected !== null && PRESET_IDS.has(selected.id);
   const testState: TestState = selected === null ? { kind: "idle" } : (tests[selected.id] ?? { kind: "idle" });
   const problem = selected === null ? null : validateEndpoint(selected, values.apiEndpoints, selected.id);
 
+  // Presets and saved custom endpoints together, A–Z; "Custom endpoint…" always last.
   const endpointOptions = useMemo(() => {
-    const custom = values.apiEndpoints.filter((endpoint) => !PRESET_IDS.has(endpoint.id));
-    return [
-      { label: "Choose an endpoint…", value: NONE },
+    const protocolLabel = (id: ApiProtocolId) => PROTOCOL_OPTIONS.find((option) => option.value === id)?.label ?? id;
+    const entries = [
       ...ENDPOINT_PRESETS.map((preset) => ({ label: `${preset.label} — ${preset.note}`, value: preset.id })),
-      ...custom.map((endpoint) => ({ label: endpoint.label, value: endpoint.id })),
-      { label: "Custom endpoint…", value: CUSTOM },
-    ];
+      ...values.apiEndpoints
+        .filter((endpoint) => !PRESET_IDS.has(endpoint.id))
+        .map((endpoint) => ({ label: `${endpoint.label} — ${protocolLabel(endpoint.protocol)}`, value: endpoint.id })),
+    ].sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: "base" }));
+    return [{ label: "Choose an endpoint…", value: NONE }, ...entries, { label: "Custom endpoint…", value: CUSTOM }];
   }, [values.apiEndpoints]);
 
   const modelOptions = useMemo(() => {
@@ -89,6 +94,7 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test, keySt
 
   /** Choosing an endpoint selects one that exists or adds it from its preset. */
   const choose = (choice: string) => {
+    setModelQuery("");
     patch((current) => {
       if (choice === NONE) return { apiEndpointId: null, apiModel: null };
       if (current.apiEndpoints.some((endpoint) => endpoint.id === choice)) {
@@ -110,6 +116,7 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test, keySt
               baseUrl: "https://",
               keySource: "env" as const,
               apiKeyEnv: "",
+              accountIdVar: "",
               models: [],
             },
           ],
@@ -226,7 +233,7 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test, keySt
                   options={PROTOCOL_OPTIONS}
                   disabled={disabled}
                   onValueChange={(protocol) =>
-                    edit({ protocol: protocol === "anthropic" || protocol === "gemini" ? protocol : "openai" })
+                    edit({ protocol: isApiProtocolId(protocol) ? protocol : "openai" })
                   }
                 />
               </>
@@ -245,7 +252,7 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test, keySt
               label="Key source"
               hint={
                 selected.keySource === "env"
-                  ? "An environment variable of the Paseo daemon. Paseo launched from Finder has no shell variables."
+                  ? "An environment variable of the Paseo daemon. Paseo reads your shell variables once, when it starts: after adding one, quit and reopen Paseo."
                   : selected.keySource === "secrets_file"
                     ? "An entry in secrets.json on the daemon's machine. Works however Paseo was started."
                     : "Send no key. For a local server such as LM Studio, vLLM or llama.cpp."
@@ -257,6 +264,22 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test, keySt
                 edit({ keySource: keySource === "secrets_file" || keySource === "none" ? keySource : "env" })
               }
             />
+            {protocolNeedsAccountId(selected.protocol) ? (
+              <SettingsInput
+                key={`${epoch}-${selected.id}-account`}
+                label="Account ID"
+                hint={
+                  selected.keySource === "secrets_file"
+                    ? "Name of the entry under apiKeys in secrets.json holding the account ID, not the ID."
+                    : "Name of the environment variable holding the account ID, not the ID."
+                }
+                error={selected.accountIdVar.trim() === "" ? "Enter the account ID variable." : null}
+                initialValue={selected.accountIdVar}
+                placeholder="CLAUDFLARE_ACCOUNT_ID"
+                disabled={disabled}
+                onChangeText={(accountIdVar) => edit({ accountIdVar })}
+              />
+            ) : null}
             {selected.keySource === "none" ? null : (
               <SettingsInput
                 key={`${epoch}-${selected.id}-key`}
@@ -286,13 +309,26 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test, keySt
               />
             ) : null}
             {selected.keySource === "secrets_file" && secretsDirError === null ? (
-              <StoredKeyRows
-                name={selected.apiKeyEnv}
-                secretsDir={values.secretsDir}
-                disabled={disabled}
-                status={keyStatus}
-                write={writeKey}
-              />
+              <>
+                {protocolNeedsAccountId(selected.protocol) ? (
+                  <StoredKeyRows
+                    subject="Account ID"
+                    name={selected.accountIdVar}
+                    secretsDir={values.secretsDir}
+                    disabled={disabled}
+                    status={keyStatus}
+                    write={writeKey}
+                  />
+                ) : null}
+                <StoredKeyRows
+                  subject="API key"
+                  name={selected.apiKeyEnv}
+                  secretsDir={values.secretsDir}
+                  disabled={disabled}
+                  status={keyStatus}
+                  write={writeKey}
+                />
+              </>
             ) : null}
             <SettingsAction
               label="Connection"
@@ -303,13 +339,24 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test, keySt
               onPress={() => void runTest(selected)}
             />
 
+            {modelOptions.length > MODEL_FILTER_THRESHOLD ? (
+              <SettingsInput
+                key={`filter-${selected.id}`}
+                label="Filter models"
+                hint={describeFilter(modelOptions.length, filterModels(modelOptions, modelQuery).length, modelQuery)}
+                initialValue=""
+                placeholder="flash, llama, @cf/meta…"
+                disabled={disabled}
+                onChangeText={setModelQuery}
+              />
+            ) : null}
             {selected.models.length > 0 ? (
               <SettingsSelect
                 label="Model"
                 hint="Which model the rewrite asks this endpoint for. A provider mapped under Advanced sends its own model instead."
                 error={values.apiModel === null ? "Choose a model." : null}
                 value={values.apiModel ?? NONE}
-                options={[{ label: "Select a model", value: NONE }, ...modelOptions]}
+                options={[{ label: "Select a model", value: NONE }, ...filterModels(modelOptions, modelQuery, values.apiModel)]}
                 disabled={disabled}
                 onValueChange={(apiModel) => patch({ apiModel: apiModel === NONE ? null : apiModel })}
               />
@@ -320,7 +367,7 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test, keySt
                 hint="This endpoint has not listed its models. Press Test to fill the list, or type the id."
                 error={values.apiModel === null ? "Choose a model." : null}
                 initialValue={values.apiModel ?? ""}
-                placeholder="gemini-2.5-flash-lite"
+                placeholder={MODEL_PLACEHOLDER[selected.protocol]}
                 disabled={disabled}
                 onChangeText={(model) => patch({ apiModel: model.trim() === "" ? null : model.trim() })}
               />

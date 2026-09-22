@@ -1,5 +1,6 @@
-import type { ApiEndpoint, ApiProtocolId } from "../../../shared/api-protocol.js";
+import { protocolNeedsAccountId, type ApiEndpoint, type ApiProtocolId } from "../../../shared/api-protocol.js";
 import { anthropicProtocol } from "./anthropic.js";
+import { cloudflareProtocol } from "./cloudflare.js";
 import { geminiProtocol } from "./gemini.js";
 import { resolveApiKey, type ApiKeyLookupFailure } from "./key.js";
 import { openAiProtocol } from "./openai.js";
@@ -22,25 +23,58 @@ const PROTOCOLS: Readonly<Record<ApiProtocolId, ApiProtocol>> = {
   openai: openAiProtocol,
   anthropic: anthropicProtocol,
   gemini: geminiProtocol,
+  cloudflare: cloudflareProtocol,
 };
 
 /** Names the variable and where it was looked for, never the value. */
-function describeMissingKey(endpoint: ApiEndpoint, reason: ApiKeyLookupFailure): string {
-  const name = endpoint.apiKeyEnv.trim();
+function describeMissing(what: "key" | "account ID", name: string, endpointId: string, reason: ApiKeyLookupFailure): string {
   switch (reason) {
     case "no_key_name":
-      return `Endpoint "${endpoint.id}" has no key variable. Enter one, or set Key source to No key.`;
+      return what === "key"
+        ? `Endpoint "${endpointId}" has no key variable. Enter one, or set Key source to No key.`
+        : `Endpoint "${endpointId}" has no account ID variable.`;
     case "missing_env":
-      return `The environment variable "${name}" is not set for the Paseo daemon.`;
+      return `The environment variable "${name}" (${what}) is not set for the Paseo daemon. Paseo reads shell variables once, when it starts: if you added it since, quit and reopen Paseo.`;
     case "missing_secrets_file":
-      return `secrets.json was not found in the secrets directory, so "${name}" cannot be read.`;
+      return `secrets.json was not found in the secrets directory, so "${name}" (${what}) cannot be read.`;
     case "missing_secrets_entry":
-      return `secrets.json has no value for "${name}".`;
+      return `secrets.json has no value for "${name}" (${what}).`;
     case "unreadable_secrets":
       return `secrets.json exists but could not be read as { "apiKeys": { ... } }; fix the file before "${name}" can be looked up.`;
     case "invalid_secrets_dir":
       return "The secrets directory must be an absolute path or start with ~/.";
   }
+}
+
+type Credentials =
+  | { readonly ok: true; readonly apiKey: string; readonly accountId: string }
+  | { readonly ok: false; readonly code: "missing_api_key"; readonly message: string };
+
+/** The key, and the account id when the protocol needs one, each from the endpoint's own source. */
+async function resolveCredentials(
+  endpoint: ApiEndpoint,
+  secretsDir: string | null,
+  env: NodeJS.ProcessEnv | undefined,
+): Promise<Credentials> {
+  const shared = { secretsDir, ...(env === undefined ? {} : { env }) };
+  const key = await resolveApiKey({ keySource: endpoint.keySource, apiKeyEnv: endpoint.apiKeyEnv, ...shared });
+  if (!key.ok) {
+    return { ok: false, code: "missing_api_key", message: describeMissing("key", endpoint.apiKeyEnv.trim(), endpoint.id, key.reason) };
+  }
+  if (!protocolNeedsAccountId(endpoint.protocol)) return { ok: true, apiKey: key.key, accountId: "" };
+  const account = await resolveApiKey({
+    keySource: endpoint.keySource === "none" ? "env" : endpoint.keySource,
+    apiKeyEnv: endpoint.accountIdVar,
+    ...shared,
+  });
+  if (!account.ok) {
+    return {
+      ok: false,
+      code: "missing_api_key",
+      message: describeMissing("account ID", endpoint.accountIdVar.trim(), endpoint.id, account.reason),
+    };
+  }
+  return { ok: true, apiKey: key.key, accountId: account.key };
 }
 
 export type ApiRewriteFailureCode =
@@ -120,19 +154,13 @@ export async function testApiEndpoint(
     };
   }
 
-  const key = await resolveApiKey({
-    keySource: input.endpoint.keySource,
-    apiKeyEnv: input.endpoint.apiKeyEnv,
-    secretsDir: input.secretsDir,
-    ...(dependencies.env === undefined ? {} : { env: dependencies.env }),
-  });
-  if (!key.ok) {
-    return { ok: false, code: "missing_api_key", message: describeMissingKey(input.endpoint, key.reason) };
-  }
+  const credentials = await resolveCredentials(input.endpoint, input.secretsDir, dependencies.env);
+  if (!credentials.ok) return credentials;
 
   const request = protocol.buildModelsRequest({
     baseUrl: input.endpoint.baseUrl,
-    apiKey: key.key,
+    apiKey: credentials.apiKey,
+    accountId: credentials.accountId,
   });
   const doFetch = dependencies.fetch ?? globalThis.fetch;
   const controller = new AbortController();
@@ -190,21 +218,14 @@ export async function runApiRewrite(
     };
   }
 
-  const key = await resolveApiKey({
-    keySource: input.endpoint.keySource,
-    apiKeyEnv: input.endpoint.apiKeyEnv,
-    secretsDir: input.secretsDir,
-    ...(dependencies.env === undefined ? {} : { env: dependencies.env }),
-  });
-  if (!key.ok) {
-    // The message names the variable, never a value: a key must not reach a log,
-    // an error string, or the client that renders the toast.
-    return { ok: false, code: "missing_api_key", message: describeMissingKey(input.endpoint, key.reason) };
-  }
+  // Messages name the variable, never a value.
+  const credentials = await resolveCredentials(input.endpoint, input.secretsDir, dependencies.env);
+  if (!credentials.ok) return credentials;
 
   const request = protocol.buildRequest({
     baseUrl: input.endpoint.baseUrl,
-    apiKey: key.key,
+    apiKey: credentials.apiKey,
+    accountId: credentials.accountId,
     model: input.model,
     systemPrompt: input.systemPrompt,
     taskPrompt: input.taskPrompt,

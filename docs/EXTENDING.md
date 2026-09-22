@@ -64,7 +64,7 @@ is the built-in default, with no file.
 ## 2. Add an API protocol
 
 **Result:** a new endpoint kind selectable in Settings → API endpoint → Protocol.
-(Only needed when the vendor does **not** speak the OpenAI/Anthropic/Gemini shape. A new vendor
+(Only needed when the vendor does **not** speak the OpenAI, Anthropic, Gemini or Cloudflare shape. A new vendor
 with the same shape is just a preset — see §5.)
 
 1. Create `server/transports/api/<protocol>.ts` following
@@ -77,8 +77,9 @@ with the same shape is just a preset — see §5.)
 3. Test: add a `describe` block to `tests/unit/api-protocols.test.ts` following the pattern of
    the three existing protocols (correct request URL/header/body, parses the answer, parses the
    model list, an empty key ⇒ no header sent).
-4. `tests/unit/api-endpoints.test.ts` has a "covers all three protocols" row — update the
-   protocol set there too.
+4. Add a preset for the vendor to `ENDPOINT_PRESETS`: `tests/unit/api-endpoints.test.ts`
+   ("covers every protocol") fails until every protocol id has one. `server/transports/api/cloudflare.ts`
+   is the most recent worked example.
 
 ---
 

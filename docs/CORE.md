@@ -80,6 +80,7 @@ client/                          The app-side contribution
     selection.ts                   Pure: checks the dedicated/API selection (shared with the runner).
     read-settings.ts               Reads settings via host RPC for code outside the React tree.
     api-endpoints.ts               Endpoint presets + validateEndpoint.
+    model-filter.ts                Pure: narrows model options for the Filter models row.
     sections/                      One file per section, shown based on Transport/Model source
       actions-section.tsx
       engine-section.tsx
@@ -98,7 +99,7 @@ server/                          The daemon-side contribution
     provider-catalog.ts            Reads the daemon catalog + availability state.
   transports/                    How a prompt reaches a model
     cli/                           family.ts (4 CLIs), process.ts (spawn, kill tree), runner.ts (scratch dir)
-    api/                           protocol.ts (interface), openai/anthropic/gemini.ts, key.ts (read), secrets-store.ts (write-only), runner.ts
+    api/                           protocol.ts (interface), openai/anthropic/gemini/cloudflare.ts, key.ts (read), secrets-store.ts (write-only), runner.ts
   log.ts                         Logging that never carries a prompt or an output.
   paseo-types.ts                 Paseo types inferred from the server SDK (never imports the client package).
 ```

@@ -13,6 +13,8 @@ import type { ApiProtocolId } from "../../../shared/api-protocol.js";
 export interface ApiCall {
   readonly baseUrl: string;
   readonly apiKey: string;
+  /** Empty unless the protocol needs an account id. */
+  readonly accountId: string;
   readonly model: string;
   /** The rewrite instruction. */
   readonly systemPrompt: string;
@@ -29,6 +31,7 @@ export interface ApiHttpRequest {
 export interface ApiModelsCall {
   readonly baseUrl: string;
   readonly apiKey: string;
+  readonly accountId: string;
 }
 
 export interface ApiProtocol {

@@ -2,7 +2,7 @@
 
 PromptKit is a Paseo plugin (id `prompt-kit`) that rewrites the prompt in your Composer. It adds one `PromptKit` pill to the Composer's track bar and a `/rewrite <prompt>` slash command; the bundled action is `Improve coding prompt`. Running it rewrites the current Composer text in place, keeps the user's language and every protected literal (URLs, absolute paths, shell commands, code blocks, model names, tool names), restores focus, and never sends the prompt. You review the result and send it yourself.
 
-Rewriting has three paths, chosen in Settings. The default runs the selected model through the provider's own CLI, headlessly, in a temporary directory — no Paseo agent, no tab, no archive. Your primary conversation never receives a rewrite turn and never changes provider or session. The third path posts straight to an API you configure (Anthropic, OpenAI, Gemini, or anything speaking one of those three protocols) when a CLI cold start is too slow or no CLI exists.
+Rewriting has three paths, chosen in Settings. The default runs the selected model through the provider's own CLI, headlessly, in a temporary directory — no Paseo agent, no tab, no archive. Your primary conversation never receives a rewrite turn and never changes provider or session. The third path posts straight to an API you configure (OpenAI, Anthropic, Google Gemini, Cloudflare Workers AI, or anything speaking one of those protocols) when a CLI cold start is too slow or no CLI exists.
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
@@ -49,7 +49,7 @@ paseo plugin ls
 `--ref` chooses the initial branch, tag, or commit once; later `paseo plugin update prompt-kit` follows the remote's default HEAD. Pin a release instead of tracking `main` by giving `--ref` a tag:
 
 ```bash
-paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.3.1
+paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.4.0
 ```
 
 `paseo plugin ls` reports the installed commit.
@@ -91,7 +91,7 @@ On `Direct API`, an agent whose provider is mapped under **Advanced → Endpoint
 
 ### API endpoint
 
-Choose a preset (OpenAI, Anthropic, Google Gemini, OpenRouter, Local server) or a custom endpoint, fill in the base URL, pick a **Key source** (see [API keys](#api-keys)), and press **Test**. A successful test fills the **Model** list from the endpoint; the rewrite refuses a model outside that list. Save is blocked while the endpoint cannot work (for example an empty base URL), with the reason in the status bar.
+Choose an endpoint — presets and your saved custom endpoints are listed A–Z (Anthropic, Cloudflare Workers AI, Google Gemini, Local server, OpenAI, OpenRouter), with **Custom endpoint…** last — fill in the base URL, pick a **Key source** (see [API keys](#api-keys)), and press **Test**. A successful test fills the **Model** list from the endpoint; the rewrite refuses a model outside that list. When a list has more than 8 models, a **Filter models** row above Model narrows the dropdown by name or id; the saved model always stays in it. Save is blocked while the endpoint cannot work (for example an empty base URL), with the reason in the status bar.
 
 ### Advanced
 
@@ -108,7 +108,7 @@ An API key is **never** stored in PromptKit's settings document. That document i
 | Key source | Rows shown | Where the value is read |
 |---|---|---|
 | `Environment variable` (default) | Key variable | The daemon's environment variable with that name. The plugin server inherits the daemon's environment, so this suits a daemon started from a shell. |
-| `secrets.json` | Key variable, Secrets directory, API key (optional) | The entry with that name under `apiKeys` in `<Secrets directory>/secrets.json`. |
+| `secrets.json` | Key variable, Secrets directory, API key (optional); Cloudflare also Account ID | The entry with that name under `apiKeys` in `<Secrets directory>/secrets.json`. |
 | `No key` | — | Nothing. For a local server (vLLM, llama.cpp, LM Studio). |
 
 **Secrets directory** is shared by every endpoint that uses `secrets.json`. It must be an absolute path or start with `~/`. Empty means `<PASEO_HOME>/plugin-settings/prompt-kit`; `PASEO_HOME` defaults to `~/.paseo`, so on macOS the default file is `~/.paseo/plugin-settings/prompt-kit/secrets.json`.
@@ -117,7 +117,7 @@ After a successful **Test**, the Connection row says which source the key came f
 
 ### Why the file exists at all
 
-On macOS, launching Paseo from Finder gives the daemon **no shell environment**, so a key exported in `~/.zshrc` never reaches it. `secrets.json` is the source that works regardless of how Paseo was started.
+Paseo Desktop reads your login shell's environment **once, when it starts**, and the daemon keeps that copy. A key exported in `~/.zshrc` after Paseo started does not reach it until you quit and reopen Paseo; a daemon started some other way (a service, a remote host) may never see it. `secrets.json` is read at request time, so it works however and whenever the daemon was started.
 
 ### `secrets.json` format
 
@@ -169,13 +169,16 @@ With Key source `secrets.json`, the API endpoint section shows an **API key** fi
 
 Endpoints are defined in the settings document under `apiEndpoints`, because that is the only configuration store a Paseo plugin can read. A provider profile in `~/.paseo/config.json` is **not** visible to PromptKit: the daemon does not pass provider environment variables to plugins.
 
-Each endpoint is one of three protocols. Adding a vendor is a settings edit, not a code change:
+Each endpoint is one of four protocols. Adding a vendor that speaks one of them is a settings edit, not a code change:
 
 | Protocol | Request | Works with |
 |---|---|---|
 | `openai` | `POST <baseUrl>/chat/completions`, `Authorization: Bearer` | OpenAI, OpenRouter, LiteLLM, vLLM, llama.cpp, LM Studio, Together, Fireworks, Groq, most gateways |
 | `anthropic` | `POST <baseUrl>/v1/messages`, `x-api-key` | Anthropic, z.ai, Alibaba/Qwen, Anthropic-compatible gateways |
 | `gemini` | `POST <baseUrl>/v1beta/models/<model>:generateContent`, `x-goog-api-key` | Google AI Studio, Vertex |
+| `cloudflare` | `POST <baseUrl>/accounts/<account id>/ai/run/<model>`, `Authorization: Bearer` | Cloudflare Workers AI (`@cf/...` models) |
+
+**Cloudflare Workers AI.** Base URL `https://api.cloudflare.com/client/v4`. The endpoint has an extra **Account ID** row, above Key variable, holding the **name** of the variable with your account id — prefilled `CLAUDFLARE_ACCOUNT_ID`, change it if yours differs. The account id is read from the same **Key source** as the token, so with `secrets.json` both live in the file and work however Paseo was started. The key variable defaults to `CLOUDFLARE_AUTH_TOKEN`, an API token with Workers AI permission. Models are the full `@cf/...` ids, for example `@cf/meta/llama-3.1-8b-instruct-fp8`; **Test** lists the account's text-generation models. PromptKit sends `max_tokens: 2048` because the service default of 256 tokens would cut a rewrite short.
 
 Example — a Google Gemini endpoint with `gemini-2.5-flash-lite`, from the settings document:
 

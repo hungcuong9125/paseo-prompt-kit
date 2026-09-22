@@ -1,7 +1,9 @@
-import { SettingsAction, SettingsCard, SettingsSection, SettingsSelect } from "@getpaseo/plugin/client/ui";
+import { useState } from "react";
+import { SettingsAction, SettingsCard, SettingsInput, SettingsSection, SettingsSelect } from "@getpaseo/plugin/client/ui";
 import type { ProviderCatalogOutput } from "../../../shared/rpc.js";
 import type { PromptKitSettings } from "../../../shared/settings.js";
 import type { SettingsPatch } from "../draft.js";
+import { MODEL_FILTER_THRESHOLD, describeFilter, filterModels } from "../model-filter.js";
 
 type Providers = ProviderCatalogOutput["providers"];
 
@@ -27,9 +29,12 @@ export function DedicatedModelSection({
   patch,
   reloadProviders,
 }: DedicatedModelSectionProps) {
+  const [query, setQuery] = useState("");
   const catalog = providers ?? [];
   const provider = catalog.find((entry) => entry.provider === values.dedicatedProvider);
   const model = provider?.models.find((entry) => entry.id === values.dedicatedModel);
+  const modelOptions = (provider?.models ?? []).map((entry) => ({ label: entry.label, value: entry.id }));
+  const shownModels = filterModels(modelOptions, query, values.dedicatedModel);
 
   const providerError =
     values.dedicatedProvider === null
@@ -68,22 +73,31 @@ export function DedicatedModelSection({
             })),
           ]}
           disabled={disabled || providers === null}
-          onValueChange={(next) =>
+          onValueChange={(next) => {
+            setQuery("");
             patch({
               dedicatedProvider: next === NONE ? null : next,
               dedicatedModel: null,
               dedicatedThinkingOptionId: null,
-            })
-          }
+            });
+          }}
         />
+        {modelOptions.length > MODEL_FILTER_THRESHOLD ? (
+          <SettingsInput
+            key={`filter-${values.dedicatedProvider ?? ""}`}
+            label="Filter models"
+            hint={describeFilter(modelOptions.length, filterModels(modelOptions, query).length, query)}
+            initialValue=""
+            placeholder="flash, llama, @cf/meta…"
+            disabled={disabled}
+            onChangeText={setQuery}
+          />
+        ) : null}
         <SettingsSelect
           label="Model"
           error={providerError === null ? modelError : null}
           value={values.dedicatedModel ?? NONE}
-          options={[
-            { label: "Select a model", value: NONE },
-            ...(provider?.models ?? []).map((entry) => ({ label: entry.label, value: entry.id })),
-          ]}
+          options={[{ label: "Select a model", value: NONE }, ...shownModels]}
           disabled={disabled || provider === undefined}
           onValueChange={(next) =>
             patch({ dedicatedModel: next === NONE ? null : next, dedicatedThinkingOptionId: null })

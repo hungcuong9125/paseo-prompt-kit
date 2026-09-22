@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { anthropicProtocol } from "../../server/transports/api/anthropic.js";
+import { cloudflareProtocol } from "../../server/transports/api/cloudflare.js";
 import { geminiProtocol } from "../../server/transports/api/gemini.js";
 import { openAiProtocol } from "../../server/transports/api/openai.js";
 import { resolveApiKey, resolveSecretsDir } from "../../server/transports/api/key.js";
@@ -12,6 +13,7 @@ import { runApiRewrite, testApiEndpoint } from "../../server/transports/api/runn
 const CALL = {
   baseUrl: "https://api.example.com/openai/v1",
   apiKey: "sk-test",
+  accountId: "",
   model: "openai/gpt-oss-20b",
   systemPrompt: "SYSTEM",
   taskPrompt: "TASK",
@@ -132,6 +134,102 @@ describe("gemini protocol", () => {
   });
 });
 
+describe("cloudflare protocol", () => {
+  const BASE = "https://api.cloudflare.com/client/v4";
+  const ACCOUNT_BASE = `${BASE}/accounts/acc123/ai`;
+
+  // Mirrors the documented curl: POST .../accounts/<id>/ai/run/@cf/..., Bearer token, messages body.
+  it("runs the model under the account path with a bearer token and system/user messages", () => {
+    const request = cloudflareProtocol.buildRequest({
+      ...CALL,
+      baseUrl: `${BASE}/`,
+      accountId: "acc123",
+      model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+    });
+    expect(request.url).toBe(`${ACCOUNT_BASE}/run/@cf/meta/llama-3.1-8b-instruct-fp8`);
+    expect(request.headers["authorization"]).toBe("Bearer sk-test");
+    const body = JSON.parse(request.body);
+    expect(body.messages).toEqual([
+      { role: "system", content: "SYSTEM" },
+      { role: "user", content: "TASK" },
+    ]);
+    expect(body.temperature).toBe(0);
+    // The service default of 256 tokens would cut a rewrite short.
+    expect(body.max_tokens).toBeGreaterThan(256);
+  });
+
+  it("sends no credential header for an empty key", () => {
+    const request = cloudflareProtocol.buildRequest({ ...CALL, baseUrl: BASE, accountId: "acc123", apiKey: "" });
+    expect(request.headers["authorization"]).toBeUndefined();
+  });
+
+  it("reads result.response, or the OpenAI shape some models return", () => {
+    expect(cloudflareProtocol.parseResponse({ result: { response: "rewritten" }, success: true })).toBe("rewritten");
+    expect(
+      cloudflareProtocol.parseResponse({ result: { choices: [{ message: { content: "chat" } }] } }),
+    ).toBe("chat");
+    expect(cloudflareProtocol.parseResponse({ result: {}, success: false })).toBeNull();
+  });
+
+  it("lists the account's text-generation models by name", () => {
+    const request = cloudflareProtocol.buildModelsRequest({ baseUrl: BASE, apiKey: "sk-test", accountId: "acc123" });
+    expect(request.url).toBe(`${ACCOUNT_BASE}/models/search?task=Text%20Generation&per_page=100`);
+    expect(request.headers["authorization"]).toBe("Bearer sk-test");
+    const payload = { result: [{ name: "@cf/meta/llama-3.1-8b-instruct-fp8" }, { name: "@cf/qwen/qwq-32b" }] };
+    expect(cloudflareProtocol.parseModelsResponse(payload)).toEqual([
+      "@cf/meta/llama-3.1-8b-instruct-fp8",
+      "@cf/qwen/qwq-32b",
+    ]);
+  });
+
+  const ENDPOINT = {
+    id: "cloudflare",
+    label: "Cloudflare Workers AI",
+    protocol: "cloudflare" as const,
+    baseUrl: BASE,
+    keySource: "env" as const,
+    apiKeyEnv: "CLOUDFLARE_AUTH_TOKEN",
+    accountIdVar: "CLAUDFLARE_ACCOUNT_ID",
+    models: [],
+  };
+
+  // The account id comes from the same source as the key, so secrets.json covers both.
+  it("reads the account id from the endpoint's key source", async () => {
+    const fromEnv = vi.fn(async (_url: unknown) => new Response(JSON.stringify({ result: [] })));
+    await testApiEndpoint(
+      { endpoint: ENDPOINT, secretsDir: null, timeoutMs: 1_000 },
+      { fetch: fromEnv as unknown as typeof globalThis.fetch, env: { CLOUDFLARE_AUTH_TOKEN: "t", CLAUDFLARE_ACCOUNT_ID: "acc-env" } },
+    );
+    expect(String(fromEnv.mock.calls[0]?.[0])).toContain("/accounts/acc-env/ai/");
+
+    const dir = await mkdtemp(path.join(tmpdir(), "prompt-kit-cf-"));
+    await writeFile(
+      path.join(dir, "secrets.json"),
+      JSON.stringify({ apiKeys: { CLOUDFLARE_AUTH_TOKEN: "t", CLAUDFLARE_ACCOUNT_ID: "acc-file" } }),
+    );
+    const fromFile = vi.fn(async (_url: unknown) => new Response(JSON.stringify({ result: [] })));
+    await testApiEndpoint(
+      { endpoint: { ...ENDPOINT, keySource: "secrets_file" }, secretsDir: dir, timeoutMs: 1_000 },
+      { fetch: fromFile as unknown as typeof globalThis.fetch, env: {} },
+    );
+    await rm(dir, { recursive: true, force: true });
+    expect(String(fromFile.mock.calls[0]?.[0])).toContain("/accounts/acc-file/ai/");
+  });
+
+  it("names an unset account id variable and sends nothing", async () => {
+    const fetch = vi.fn();
+    const result = await testApiEndpoint(
+      { endpoint: ENDPOINT, secretsDir: null, timeoutMs: 1_000 },
+      { fetch: fetch as unknown as typeof globalThis.fetch, env: { CLOUDFLARE_AUTH_TOKEN: "t" } },
+    );
+    expect(result).toMatchObject({ ok: false, code: "missing_api_key" });
+    if (result.ok) throw new Error("expected failure");
+    expect(result.message).toContain("CLAUDFLARE_ACCOUNT_ID");
+    expect(result.message).toContain("account ID");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
 describe("api key resolution", () => {
   const created: string[] = [];
 
@@ -202,6 +300,7 @@ describe("api key resolution", () => {
           baseUrl: "https://api.groq.com/openai/v1",
           keySource: "secrets_file",
           apiKeyEnv: "GROQ_API_KEY",
+          accountIdVar: "",
           models: [],
         },
         model: "m",
@@ -242,6 +341,7 @@ describe("api endpoint test", () => {
     baseUrl: "https://generativelanguage.googleapis.com",
     keySource: "env" as const,
     apiKeyEnv: "GEMINI_API_KEY",
+    accountIdVar: "",
     models: [],
   };
 

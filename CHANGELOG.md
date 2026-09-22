@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.4.0 - 2026-09-23
+
+### Added
+
+- Cloudflare Workers AI as a Direct API protocol and preset: `POST
+  <base>/accounts/<account id>/ai/run/@cf/...` with a bearer token (`CLOUDFLARE_AUTH_TOKEN`),
+  `result.response` as the answer, and **Test** listing the account's text-generation models.
+  `max_tokens` is sent as 2048 so the service's 256-token default cannot truncate a rewrite.
+- **Account ID** row for Cloudflare, above Key variable, prefilled `CLAUDFLARE_ACCOUNT_ID`. It
+  names the variable holding the account id, read from the endpoint's Key source like the token,
+  so `secrets.json` can hold both. With `secrets.json`, the account id can be stored from
+  Settings the same write-only way as the key.
+- A **Filter models** row above Model, in the Dedicated model and API endpoint sections, narrows
+  the Model dropdown by name or id when the list has more than 8 models. The saved model always
+  stays listed. The dropdown itself is the host's (220 px, no search), which plugins cannot
+  widen or search.
+
+### Changed
+
+- The endpoint list is sorted A–Z across presets and saved custom endpoints, with
+  **Custom endpoint…** last; a saved custom endpoint shows its protocol after the name.
+- The Model field's hint shows a model id of the endpoint's own protocol instead of always a
+  Gemini one.
+- The write-only storage rows are named after what they store: **Store API key** /
+  **Remove stored API key**, and **Store Account ID** / **Remove stored Account ID** for Cloudflare.
+
+### Fixed
+
+- The Key source hint, the missing-variable message and README claimed that Paseo opened from
+  Finder has no shell variables. Paseo Desktop does read the login shell's environment, but only
+  once, at start; they now say that a variable added later needs Paseo quit and reopened.
+
 ## 0.3.1 - 2026-09-23
 
 ### Added

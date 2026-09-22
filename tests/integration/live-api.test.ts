@@ -36,6 +36,7 @@ const ENDPOINTS: readonly ApiEndpoint[] = [
     baseUrl: "https://api.groq.com/openai/v1",
     keySource: "env",
     apiKeyEnv: "GROQ_API_KEY",
+    accountIdVar: "",
     models: ["openai/gpt-oss-20b"],
   },
   {
@@ -45,6 +46,7 @@ const ENDPOINTS: readonly ApiEndpoint[] = [
     baseUrl: "https://api.anthropic.com",
     keySource: "env",
     apiKeyEnv: "ANTHROPIC_API_KEY",
+    accountIdVar: "",
     models: ["claude-haiku-4-5"],
   },
   {
@@ -54,6 +56,7 @@ const ENDPOINTS: readonly ApiEndpoint[] = [
     baseUrl: "https://generativelanguage.googleapis.com",
     keySource: "env",
     apiKeyEnv: "GEMINI_API_KEY",
+    accountIdVar: "",
     // A stable model: a preview model is intermittently 503 under load, which
     // would make the row flaky for a reason that has nothing to do with PromptKit.
     models: ["gemini-2.5-flash"],

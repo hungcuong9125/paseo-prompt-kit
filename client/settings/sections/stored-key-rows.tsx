@@ -5,7 +5,9 @@ export type KeyStatus = { status: "ok"; stored: boolean } | { status: "error"; m
 export type KeyWriteResult = { status: "ok" } | { status: "error"; message: string };
 
 export interface StoredKeyRowsProps {
-  /** The secrets.json entry name (the endpoint's key variable). */
+  /** What the value is, e.g. "API key" or "Account ID"; names the rows. */
+  subject: string;
+  /** The secrets.json entry name. */
   name: string;
   secretsDir: string | null;
   disabled: boolean;
@@ -16,7 +18,7 @@ export interface StoredKeyRowsProps {
 type Stored = { kind: "unknown" } | { kind: "known"; stored: boolean } | { kind: "error"; message: string };
 
 /** Write-only entry of one secrets.json key: the value is sent once and never shown again. */
-export function StoredKeyRows({ name, secretsDir, disabled, status, write }: StoredKeyRowsProps) {
+export function StoredKeyRows({ subject, name, secretsDir, disabled, status, write }: StoredKeyRowsProps) {
   const [stored, setStored] = useState<Stored>({ kind: "unknown" });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -70,13 +72,13 @@ export function StoredKeyRows({ name, secretsDir, disabled, status, write }: Sto
   return (
     <>
       <SettingsInput
-        key={`api-key-${inputKey}`}
-        label="API key"
+        key={`${subject}-${inputKey}`}
+        label={subject}
         hint={`Convenience only: the value travels once from this screen to the daemon and is written to secrets.json. Prefer an environment variable or editing secrets.json on the daemon's machine. ${state}`.trim()}
         error={message !== null && !message.startsWith("Saved") && !message.startsWith("Removed") ? message : null}
         initialValue=""
-        placeholder="Paste the key, then press Save"
-        secureTextEntry
+        placeholder={`Paste the ${subject.toLowerCase()}, then press Save`}
+        secureTextEntry={subject === "API key"}
         disabled={!canWrite}
         onChangeText={(text) => {
           value.current = text;
@@ -84,15 +86,15 @@ export function StoredKeyRows({ name, secretsDir, disabled, status, write }: Sto
         }}
       />
       <SettingsAction
-        label="Store key"
-        hint={message !== null && (message.startsWith("Saved") || message.startsWith("Removed")) ? message : "Write-only: the key is never shown or read back."}
+        label={`Store ${subject}`}
+        hint={message !== null && (message.startsWith("Saved") || message.startsWith("Removed")) ? message : "Write-only: the value is never shown or read back."}
         actionLabel={busy ? "Saving…" : "Save"}
         disabled={!canWrite || !typed}
         onPress={() => void run(value.current)}
       />
       {stored.kind === "known" && stored.stored ? (
         <SettingsAction
-          label="Remove stored key"
+          label={`Remove stored ${subject}`}
           hint={`Deletes ${trimmedName} from secrets.json. Other entries are kept.`}
           actionLabel="Remove"
           disabled={!canWrite}

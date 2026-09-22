@@ -1,4 +1,4 @@
-import type { ApiEndpoint, ApiKeySource, ApiProtocolId } from "../../shared/api-protocol.js";
+import { protocolNeedsAccountId, type ApiEndpoint, type ApiKeySource, type ApiProtocolId } from "../../shared/api-protocol.js";
 
 /**
  * Endpoint presets, so the common cases are one click instead of a form.
@@ -15,6 +15,8 @@ export interface EndpointPreset {
   readonly baseUrl: string;
   readonly keySource: ApiKeySource;
   readonly apiKeyEnv: string;
+  /** Variable holding the account id; empty unless the protocol needs one. */
+  readonly accountIdVar: string;
   /** A short note shown next to the preset in the picker. */
   readonly note: string;
 }
@@ -27,6 +29,7 @@ export const ENDPOINT_PRESETS: readonly EndpointPreset[] = [
     baseUrl: "https://api.openai.com/v1",
     keySource: "env",
     apiKeyEnv: "OPENAI_API_KEY",
+    accountIdVar: "",
     note: "Chat Completions",
   },
   {
@@ -36,6 +39,7 @@ export const ENDPOINT_PRESETS: readonly EndpointPreset[] = [
     baseUrl: "https://api.anthropic.com",
     keySource: "env",
     apiKeyEnv: "ANTHROPIC_API_KEY",
+    accountIdVar: "",
     note: "Messages API",
   },
   {
@@ -45,6 +49,7 @@ export const ENDPOINT_PRESETS: readonly EndpointPreset[] = [
     baseUrl: "https://generativelanguage.googleapis.com",
     keySource: "env",
     apiKeyEnv: "GEMINI_API_KEY",
+    accountIdVar: "",
     note: "AI Studio",
   },
   {
@@ -54,7 +59,18 @@ export const ENDPOINT_PRESETS: readonly EndpointPreset[] = [
     baseUrl: "https://openrouter.ai/api/v1",
     keySource: "env",
     apiKeyEnv: "OPENROUTER_API_KEY",
+    accountIdVar: "",
     note: "Many providers, one key",
+  },
+  {
+    id: "cloudflare",
+    label: "Cloudflare Workers AI",
+    protocol: "cloudflare",
+    baseUrl: "https://api.cloudflare.com/client/v4",
+    keySource: "env",
+    apiKeyEnv: "CLOUDFLARE_AUTH_TOKEN",
+    accountIdVar: "CLAUDFLARE_ACCOUNT_ID",
+    note: "Workers AI models",
   },
   {
     id: "local",
@@ -63,6 +79,7 @@ export const ENDPOINT_PRESETS: readonly EndpointPreset[] = [
     baseUrl: "http://127.0.0.1:1234/v1",
     keySource: "none",
     apiKeyEnv: "",
+    accountIdVar: "",
     note: "LM Studio, vLLM, llama.cpp — no key",
   },
 ];
@@ -79,10 +96,19 @@ export function isUsableSecretsDir(value: string): boolean {
   return text === "~" || text.startsWith("~/") || text.startsWith("/") || /^[A-Za-z]:[\\/]/.test(text);
 }
 
+/** Model id shown as a hint in the Model field, per protocol. */
+export const MODEL_PLACEHOLDER: Readonly<Record<ApiProtocolId, string>> = {
+  openai: "gpt-4.1-mini",
+  anthropic: "claude-haiku-4-5",
+  gemini: "gemini-2.5-flash-lite",
+  cloudflare: "@cf/meta/llama-3.1-8b-instruct-fp8",
+};
+
 export const PROTOCOL_OPTIONS = [
   { label: "OpenAI-compatible", value: "openai" },
   { label: "Anthropic", value: "anthropic" },
   { label: "Google Gemini", value: "gemini" },
+  { label: "Cloudflare Workers AI", value: "cloudflare" },
 ] as const;
 
 export function endpointFromPreset(preset: EndpointPreset): ApiEndpoint {
@@ -93,6 +119,7 @@ export function endpointFromPreset(preset: EndpointPreset): ApiEndpoint {
     baseUrl: preset.baseUrl,
     keySource: preset.keySource,
     apiKeyEnv: preset.apiKeyEnv,
+    accountIdVar: preset.accountIdVar,
     models: [],
   };
 }
@@ -118,6 +145,9 @@ export function validateEndpoint(
   if (endpoint.label.trim() === "") return "A label is required.";
   if (!/^https?:\/\/.+/.test(endpoint.baseUrl.trim())) {
     return "The base URL must start with http:// or https://.";
+  }
+  if (protocolNeedsAccountId(endpoint.protocol) && endpoint.accountIdVar.trim() === "") {
+    return "Enter the account ID variable.";
   }
   if (endpoint.keySource !== "none" && endpoint.apiKeyEnv.trim() === "") {
     return "Enter the key variable, or set Key source to No key.";
