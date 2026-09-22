@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.2 - 2026-09-23
+
+### Changed
+
+- Packaged for npm as `paseo-prompt-kit`: `package.json` is no longer private and carries the
+  package name, keywords, author, homepage, repository and bugs links. The plugin id stays
+  `prompt-kit`; no code changed.
+
 ## 0.5.1 - 2026-09-23
 
 ### Added

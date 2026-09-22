@@ -49,7 +49,7 @@ paseo plugin ls
 `--ref` chooses the initial branch, tag, or commit once; later `paseo plugin update prompt-kit` follows the remote's default HEAD. Pin a release instead of tracking `main` by giving `--ref` a tag:
 
 ```bash
-paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.5.1
+paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.5.2
 ```
 
 `paseo plugin ls` reports the installed commit.

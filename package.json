@@ -1,9 +1,24 @@
 {
-  "name": "prompt-kit",
-  "private": true,
-  "version": "0.5.1",
+  "name": "paseo-prompt-kit",
+  "version": "0.5.2",
   "license": "MIT",
   "description": "PromptKit - rewrite and transform prompts directly from the Paseo composer.",
+  "keywords": [
+    "paseo",
+    "paseo-plugin",
+    "prompt",
+    "prompt-engineering",
+    "rewrite"
+  ],
+  "author": "hungcuong9125",
+  "homepage": "https://github.com/hungcuong9125/paseo-prompt-kit#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hungcuong9125/paseo-prompt-kit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hungcuong9125/paseo-prompt-kit/issues"
+  },
   "type": "module",
   "files": [
     "paseo-plugin.json",
