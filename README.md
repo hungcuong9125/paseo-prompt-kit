@@ -77,8 +77,8 @@ Choose a preset (Groq, OpenAI, Anthropic, Google Gemini, OpenRouter, Local serve
 
 - `Timeout (ms)`: how long a rewrite may run, default `90000`, allowed range `1000`–`600000`. The daemon caps one plugin call at 30 s, so the screen notes when a budget above that cannot be reached.
 - `Secrets directory` (Direct API): where `secrets.json` lives. Empty means `<PASEO_HOME>/plugin-settings/prompt-kit`.
-- `CLI per provider` (Provider CLI): shows which CLI each provider id resolves to and lets you override it. A profile named after its CLI (`pi-peer`, `codex-lead`) resolves on its own; an unresolved provider is refused, never guessed.
-- `Endpoint per provider` (Direct API): sends a provider's own agent model to one of your endpoints. A mapped provider needs no dedicated model.
+- `CLI per provider` (Provider CLI): lists only the providers you have overridden, plus an Add row. A profile named after its CLI (`pi-peer`, `codex-lead`) resolves on its own and needs no entry; an unresolved provider is refused, never guessed.
+- `Endpoint per provider` (Direct API): lists only mapped providers, plus an Add row. Pressing the pill in an agent of a mapped provider sends that agent's own model to the endpoint over HTTP. A mapped provider needs no dedicated model.
 
 Settings are host-scoped and persist across plugin reload.
 

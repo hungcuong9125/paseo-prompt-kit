@@ -1,17 +1,12 @@
 import { useState } from "react";
-import {
-  SettingsCard,
-  SettingsInput,
-  SettingsRow,
-  SettingsSection,
-  SettingsSelect,
-} from "@getpaseo/plugin/client/ui";
+import { SettingsCard, SettingsInput, SettingsRow, SettingsSection } from "@getpaseo/plugin/client/ui";
 import type { PluginTheme } from "@getpaseo/plugin";
-import { CLI_FAMILY_IDS, isCliFamilyId, resolveCliFamilyId } from "../../../shared/cli-families.js";
+import { CLI_FAMILY_IDS, isCliFamilyId } from "../../../shared/cli-families.js";
 import type { ProviderCatalogOutput } from "../../../shared/rpc.js";
 import { TIMEOUT_MS, type PromptKitSettings } from "../../../shared/settings.js";
 import type { SettingsPatch } from "../draft.js";
 import { Button } from "../ui/button.js";
+import { ProviderMapCard } from "./provider-map-card.js";
 import { describeTimeout } from "../validation.js";
 
 type Providers = ProviderCatalogOutput["providers"];
@@ -35,7 +30,6 @@ const NONE = "";
 export function AdvancedSection({ theme, values, providers, disabled, epoch, patch }: AdvancedSectionProps) {
   const [open, setOpen] = useState(false);
   const timeout = describeTimeout(values.timeoutMs);
-  const available = (providers ?? []).filter((entry) => entry.available);
 
   return (
     <SettingsSection
@@ -82,81 +76,54 @@ export function AdvancedSection({ theme, values, providers, disabled, epoch, pat
           </SettingsCard>
 
           {values.transport === "cli" ? (
-            <SettingsCard>
-              <SettingsRow
-                label="CLI per provider"
-                hint="Paseo names most providers after their CLI, so the family is read from the id. Override only a provider whose id does not say which CLI runs it. An unresolved provider is refused, never guessed."
-              />
-              {providers === null ? (
-                <SettingsRow label="Loading providers…" />
-              ) : available.length === 0 ? (
-                <SettingsRow label="No provider is available on the daemon." />
-              ) : (
-                available.map((entry) => {
-                  const automatic = resolveCliFamilyId(entry.provider);
-                  return (
-                    <SettingsSelect
-                      key={entry.provider}
-                      label={entry.label}
-                      hint={entry.provider}
-                      error={
-                        resolveCliFamilyId(entry.provider, values.providerCli) === null
-                          ? "No CLI resolves for this id; rewrites from it are refused until one is chosen."
-                          : null
-                      }
-                      value={values.providerCli[entry.provider] ?? NONE}
-                      options={[
-                        { label: automatic === null ? "Automatic: none" : `Automatic: ${automatic}`, value: NONE },
-                        ...CLI_FAMILY_IDS.map((family) => ({ label: family, value: family })),
-                      ]}
-                      disabled={disabled}
-                      onValueChange={(family) =>
-                        patch((current) => {
-                          const next = { ...current.providerCli };
-                          if (isCliFamilyId(family)) next[entry.provider] = family;
-                          else delete next[entry.provider];
-                          return { providerCli: next };
-                        })
-                      }
-                    />
-                  );
+            <ProviderMapCard
+              title="CLI per provider"
+              hint="Paseo names most providers after their CLI, so the family is read from the id and no entry is needed. Map only a provider whose id does not say which CLI runs it; an unresolved provider is refused, never guessed."
+              providers={providers}
+              map={values.providerCli}
+              targets={CLI_FAMILY_IDS.map((family) => ({ label: family, value: family }))}
+              emptyTargetsLabel="No CLI family is available."
+              errorFor={(providerId, family) =>
+                isCliFamilyId(family) ? null : `"${family}" is not a supported CLI.`
+              }
+              disabled={disabled}
+              onSet={(providerId, family) =>
+                patch((current) => ({
+                  providerCli: isCliFamilyId(family)
+                    ? { ...current.providerCli, [providerId]: family }
+                    : current.providerCli,
+                }))
+              }
+              onRemove={(providerId) =>
+                patch((current) => {
+                  const next = { ...current.providerCli };
+                  delete next[providerId];
+                  return { providerCli: next };
                 })
-              )}
-            </SettingsCard>
+              }
+            />
           ) : (
-            <SettingsCard>
-              <SettingsRow
-                label="Endpoint per provider"
-                hint="Send a provider's own agent model to one of your endpoints instead of through its CLI. A mapped provider needs no dedicated model."
-              />
-              {providers === null ? (
-                <SettingsRow label="Loading providers…" />
-              ) : values.apiEndpoints.length === 0 ? (
-                <SettingsRow label="Add an endpoint above first." />
-              ) : (
-                (providers ?? []).map((entry) => (
-                  <SettingsSelect
-                    key={entry.provider}
-                    label={entry.label}
-                    hint={entry.provider}
-                    value={values.apiEndpointByProvider[entry.provider] ?? NONE}
-                    options={[
-                      { label: "Not mapped", value: NONE },
-                      ...values.apiEndpoints.map((endpoint) => ({ label: endpoint.label, value: endpoint.id })),
-                    ]}
-                    disabled={disabled}
-                    onValueChange={(endpointId) =>
-                      patch((current) => {
-                        const next = { ...current.apiEndpointByProvider };
-                        if (endpointId === NONE) delete next[entry.provider];
-                        else next[entry.provider] = endpointId;
-                        return { apiEndpointByProvider: next };
-                      })
-                    }
-                  />
-                ))
-              )}
-            </SettingsCard>
+            <ProviderMapCard
+              title="Endpoint per provider"
+              hint="When you press the pill in an agent of a mapped provider, that agent's own model is sent to the endpoint over HTTP instead of through its CLI. A mapped provider needs no dedicated model."
+              providers={providers}
+              map={values.apiEndpointByProvider}
+              targets={values.apiEndpoints.map((endpoint) => ({ label: endpoint.label, value: endpoint.id }))}
+              emptyTargetsLabel="Add an endpoint above first."
+              disabled={disabled}
+              onSet={(providerId, endpointId) =>
+                patch((current) => ({
+                  apiEndpointByProvider: { ...current.apiEndpointByProvider, [providerId]: endpointId },
+                }))
+              }
+              onRemove={(providerId) =>
+                patch((current) => {
+                  const next = { ...current.apiEndpointByProvider };
+                  delete next[providerId];
+                  return { apiEndpointByProvider: next };
+                })
+              }
+            />
           )}
         </>
       ) : (

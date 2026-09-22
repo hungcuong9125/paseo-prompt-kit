@@ -387,16 +387,18 @@ describe("API endpoint section", () => {
 });
 
 describe("advanced overrides", () => {
-  it("shows which CLI a provider id resolves to and lets the user override it", async () => {
+  const providers = {
+    providers: [
+      { provider: "pi-peer", label: "Pi peer", available: true, models: [] },
+      { provider: "mystery", label: "Mystery", available: true, models: [] },
+    ],
+  };
+
+  it("lists only mapped providers and adds one through the Add row", async () => {
     holder.state = readyState({});
-    holder.listProviders.mockResolvedValue({
-      providers: [
-        { provider: "pi-peer", label: "Pi peer", available: true, models: [] },
-        { provider: "mystery", label: "Mystery", available: true, models: [] },
-      ],
-    });
     holder.save.mockResolvedValue(true);
     holder.listActions.mockResolvedValue(actionCatalog);
+    holder.listProviders.mockResolvedValue(providers);
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -407,15 +409,42 @@ describe("advanced overrides", () => {
     const view = container;
 
     await press(view, "prompt-kit-advanced-toggle");
-    const pi = select(view, "Pi peer");
-    expect(pi.options[0]?.textContent).toBe("Automatic: pi");
-    const mystery = select(view, "Mystery");
-    expect(mystery.options[0]?.textContent).toBe("Automatic: none");
-    expect(mystery.parentElement?.querySelector("[data-error]")).not.toBeNull();
+    // The catalog has two providers; neither gets a row until it is mapped.
+    expect(view.querySelector('select[data-label="Pi peer"]')).toBeNull();
+    expect(view.querySelector('select[data-label="Mystery"]')).toBeNull();
 
+    await choose(view, "No provider is mapped", "mystery");
+    const mystery = select(view, "Mystery");
+    expect(mystery.value).toBe("pi");
     await choose(view, "Mystery", "opencode");
-    expect(mystery.parentElement?.querySelector("[data-error]")).toBeNull();
     await press(view, "prompt-kit-save");
     expect(holder.save.mock.calls[0]?.[0]).toMatchObject({ providerCli: { mystery: "opencode" } });
+  });
+
+  it("removes a mapping from its own row", async () => {
+    holder.state = readyState({
+      transport: "api",
+      apiEndpoints: [GROQ],
+      apiEndpointByProvider: { "pi-peer": "groq" },
+    });
+    holder.save.mockResolvedValue(true);
+    holder.listActions.mockResolvedValue(actionCatalog);
+    holder.listProviders.mockResolvedValue(providers);
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root!.render(<PromptKitSettingsScreen {...surfaceProps} />);
+    });
+    await flush();
+    const view = container;
+
+    await press(view, "prompt-kit-advanced-toggle");
+    expect(select(view, "Pi peer").value).toBe("groq");
+    expect(view.querySelector('select[data-label="Mystery"]')).toBeNull();
+    await choose(view, "Pi peer", "__remove__");
+    expect(view.querySelector('select[data-label="Pi peer"]')).toBeNull();
+    await press(view, "prompt-kit-save");
+    expect(holder.save.mock.calls[0]?.[0]).toMatchObject({ apiEndpointByProvider: {} });
   });
 });
