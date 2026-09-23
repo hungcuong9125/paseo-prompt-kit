@@ -71,12 +71,12 @@ export function stdoutFor(command: string, text: string): string {
 export function createRewriteHarness(input: HarnessInput = {}): Harness {
   const agent: FakeAgent = {
     id: "agent-1",
-    provider: "pi-work",
+    provider: "pi-custom",
     model: "acme/model-a",
     thinkingOptionId: "high",
     effectiveThinkingOptionId: "high",
     cwd: "/tmp/workspace",
-    runtimeInfo: { provider: "pi-work" },
+    runtimeInfo: { provider: "pi-custom" },
     ...input.agent,
   };
   const spawned: CliRunInput[] = [];

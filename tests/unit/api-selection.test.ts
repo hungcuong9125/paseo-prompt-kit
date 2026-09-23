@@ -55,11 +55,11 @@ describe("validateDedicatedSelection: cli transport", () => {
   it("refuses an unavailable provider and an unlisted model", async () => {
     const missingProvider = await values({
       modelMode: "dedicated",
-      dedicatedProvider: "grok",
-      dedicatedModel: "grok-4",
+      dedicatedProvider: "unknown",
+      dedicatedModel: "model-x",
     });
     expect(validateDedicatedSelection(missingProvider, CATALOG)).toBe(
-      "Provider is unavailable: grok",
+      "Provider is unavailable: unknown",
     );
 
     const missingModel = await values({

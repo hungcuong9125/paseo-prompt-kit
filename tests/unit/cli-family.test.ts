@@ -185,28 +185,28 @@ describe("resolveFamily", () => {
 
   // Paseo names a custom profile after its role, so the CLI is a segment.
   it("resolves a role-scoped profile id from its CLI segment", () => {
-    expect(resolveFamily("pi-work")?.id).toBe("pi");
-    expect(resolveFamily("codex-work")?.id).toBe("codex");
-    expect(resolveFamily("opencode-review")?.id).toBe("opencode");
-    expect(resolveFamily("claude-supervisor")?.id).toBe("claude");
+    expect(resolveFamily("pi-custom")?.id).toBe("pi");
+    expect(resolveFamily("codex-custom")?.id).toBe("codex");
+    expect(resolveFamily("opencode-custom")?.id).toBe("opencode");
+    expect(resolveFamily("claude-custom")?.id).toBe("claude");
   });
 
   it("prefers the longest matching id so a prefix cannot steal a family", () => {
     expect(resolveFamily("opencode")?.id).toBe("opencode");
-    expect(resolveFamily("opencode-work")?.id).toBe("opencode");
+    expect(resolveFamily("opencode-custom")?.id).toBe("opencode");
   });
 
   // A wrong guess would silently run the user's prompt through the wrong CLI.
   it("fails closed on a provider that names no supported CLI", () => {
-    expect(resolveFamily("grok")).toBeNull();
-    expect(resolveFamily("grok")).toBeNull();
-    expect(resolveFamily("antigravity-supervisor")).toBeNull();
+    expect(resolveFamily("unknown")).toBeNull();
+    expect(resolveFamily("unknown")).toBeNull();
+    expect(resolveFamily("unknown-custom")).toBeNull();
     expect(resolveFamily("")).toBeNull();
   });
 
   it("lets an explicit mapping override the id, and still fails closed on a bad target", () => {
-    expect(resolveFamily("compat", { "compat": "opencode" })?.id).toBe("opencode");
-    expect(resolveFamily("compat", { "compat": "gemini" })).toBeNull();
-    expect(resolveFamily("grok", { "grok": "pi" })?.id).toBe("pi");
+    expect(resolveFamily("gateway", { "gateway": "opencode" })?.id).toBe("opencode");
+    expect(resolveFamily("gateway", { "gateway": "gemini" })).toBeNull();
+    expect(resolveFamily("unknown", { "unknown": "pi" })?.id).toBe("pi");
   });
 });

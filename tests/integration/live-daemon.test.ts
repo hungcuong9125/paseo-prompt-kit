@@ -66,8 +66,9 @@ interface CatalogProvider {
 const CHEAP_MODELS = [
   { provider: "claude", model: "claude-haiku-4-5" },
   { provider: "codex", model: "gpt-5.6-luna" },
-  { provider: "pi", model: "workbuddy/deepseek-v4.1-flash" },
-  { provider: "opencode", model: "workbuddy/deepseek-v4.1-flash" },
+  // pi and opencode models depend on the machine's gateway; unset skips the row.
+  { provider: "pi", model: process.env.PASEO_LIVE_PI_MODEL ?? "" },
+  { provider: "opencode", model: process.env.PASEO_LIVE_OPENCODE_MODEL ?? "" },
 ] as const;
 
 interface DedicatedTarget {
@@ -368,7 +369,7 @@ describe("live daemon: failure paths", () => {
     const startedAt = new Date().toISOString();
     const result = await rewrite("fix the login bug", {
       modelMode: "dedicated",
-      dedicatedProvider: "pi-peer",
+      dedicatedProvider: "pi",
       dedicatedModel: "model-that-does-not-exist-9f31",
     });
     expect(result.status).toBe("error");
@@ -384,8 +385,8 @@ describe("live daemon: failure paths", () => {
     const startedAt = new Date().toISOString();
     const result = await rewrite("fix the login bug", {
       modelMode: "dedicated",
-      dedicatedProvider: "grok",
-      dedicatedModel: "grok-4",
+      dedicatedProvider: "unknown",
+      dedicatedModel: "model-x",
     });
     expect(result.status).toBe("error");
     expect(result.error?.code).toBe("unsupported_provider");

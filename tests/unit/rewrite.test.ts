@@ -24,7 +24,7 @@ describe("runRewrite: current model", () => {
     if (output.status !== "ok") throw new Error("expected ok");
     expect(output.rewrittenPrompt).toBe("rewritten text");
     expect(output.model).toEqual({
-      provider: "pi-work",
+      provider: "pi-custom",
       model: "acme/model-a",
       thinkingOptionId: "high",
     });
@@ -54,8 +54,8 @@ describe("runRewrite: current model", () => {
   it("splits a provider selector that already carries the model", async () => {
     const harness = createRewriteHarness({
       agent: {
-        provider: "pi-work",
-        runtimeInfo: { provider: "pi-work/acme/model-a" },
+        provider: "pi-custom",
+        runtimeInfo: { provider: "pi-custom/acme/model-a" },
       },
     });
     const output = await rewrite(harness);
@@ -65,7 +65,7 @@ describe("runRewrite: current model", () => {
 
   it("resolves a role-scoped provider id to its CLI", async () => {
     const harness = createRewriteHarness({
-      agent: { provider: "codex-work", runtimeInfo: { provider: "codex-work" }, model: "gpt-5.6-luna" },
+      agent: { provider: "codex-custom", runtimeInfo: { provider: "codex-custom" }, model: "gpt-5.6-luna" },
     });
     const output = await rewrite(harness);
     expect(output.status).toBe("ok");
@@ -75,16 +75,16 @@ describe("runRewrite: current model", () => {
 
   it("uses an explicit provider mapping when the id names no CLI", async () => {
     const harness = createRewriteHarness({
-      agent: { provider: "compat", runtimeInfo: { provider: "compat" } },
+      agent: { provider: "gateway", runtimeInfo: { provider: "gateway" } },
     });
-    const output = await rewrite(harness, { providerCli: { "compat": "opencode" } });
+    const output = await rewrite(harness, { providerCli: { "gateway": "opencode" } });
     expect(output.status).toBe("ok");
     expect(harness.spawned[0]?.command).toBe("opencode");
   });
 
   it("fails closed on a provider that names no supported CLI and runs nothing", async () => {
     const harness = createRewriteHarness({
-      agent: { provider: "grok", runtimeInfo: { provider: "grok" } },
+      agent: { provider: "unknown", runtimeInfo: { provider: "unknown" } },
     });
     const output = await rewrite(harness);
     expect(output.status).toBe("error");
@@ -122,7 +122,7 @@ describe("runRewrite: current model", () => {
     const harness = createRewriteHarness({
       agent: {
         model: "acme/model-a",
-        runtimeInfo: { provider: "pi-work", model: "acme/model-b" },
+        runtimeInfo: { provider: "pi-custom", model: "acme/model-b" },
       },
     });
     const output = await rewrite(harness);
@@ -139,7 +139,7 @@ describe("runRewrite: current model", () => {
     const harness = createRewriteHarness({
       agent: {
         model: null,
-        runtimeInfo: { provider: "pi-work", model: "acme/model-b" },
+        runtimeInfo: { provider: "pi-custom", model: "acme/model-b" },
       },
     });
     const output = await rewrite(harness);
@@ -153,7 +153,7 @@ describe("runRewrite: current model", () => {
     const harness = createRewriteHarness({
       agent: {
         model: "acme/model-a",
-        runtimeInfo: { provider: "pi-work", model: "  " },
+        runtimeInfo: { provider: "pi-custom", model: "  " },
       },
     });
     const output = await rewrite(harness);
@@ -209,7 +209,7 @@ describe("runRewrite: no agent (draft Composer)", () => {
             models: [],
           },
         ],
-        apiEndpointByProvider: { "pi-work": "groq" },
+        apiEndpointByProvider: { "pi-custom": "groq" },
       }),
       spawn: harness.spawn,
     });
@@ -411,7 +411,7 @@ describe("runRewrite: dedicated model", () => {
 
   it("uses the dedicated CLI even when the current agent runs a different one", async () => {
     const harness = createRewriteHarness({
-      agent: { provider: "pi-work", runtimeInfo: { provider: "pi-work" } },
+      agent: { provider: "pi-custom", runtimeInfo: { provider: "pi-custom" } },
       models: [{ provider: "codex", available: true, models: ["gpt-5.6-luna"] }],
     });
     const output = await rewrite(harness, {
@@ -470,12 +470,12 @@ describe("runRewrite: dedicated model", () => {
 
   it("fails closed when the dedicated provider names no supported CLI", async () => {
     const harness = createRewriteHarness({
-      models: [{ provider: "grok", available: true, models: ["grok-4"] }],
+      models: [{ provider: "unknown", available: true, models: ["model-x"] }],
     });
     const output = await rewrite(harness, {
       modelMode: "dedicated",
-      dedicatedProvider: "grok",
-      dedicatedModel: "grok-4",
+      dedicatedProvider: "unknown",
+      dedicatedModel: "model-x",
     });
     expect(output.status).toBe("error");
     if (output.status !== "error") throw new Error("expected error");
@@ -488,7 +488,7 @@ describe("runRewrite: dedicated model", () => {
   // selection for every agent whose provider has no CLI at all.
   it("runs the dedicated CLI even when the current agent's provider has no CLI family", async () => {
     const harness = createRewriteHarness({
-      agent: { provider: "grok", runtimeInfo: { provider: "grok" } },
+      agent: { provider: "unknown", runtimeInfo: { provider: "unknown" } },
       models: [{ provider: "claude", available: true, models: ["claude-haiku-4-5"] }],
     });
     const output = await rewrite(harness, {
@@ -623,14 +623,14 @@ describe("runRewrite: api transport", () => {
   // API path must not require one.
   it("works for a provider that has no CLI family", async () => {
     const harness = createRewriteHarness({
-      agent: { provider: "grok", runtimeInfo: { provider: "grok" } },
+      agent: { provider: "unknown", runtimeInfo: { provider: "unknown" } },
     });
     const { output } = await rewriteApi(
       harness,
       {
         transport: "api",
         apiEndpoints: [{ ...GROQ_ENDPOINT, models: [] }],
-        apiEndpointByProvider: { grok: "groq" },
+        apiEndpointByProvider: { unknown: "groq" },
       },
       { body: OK_BODY, env: { GROQ_API_KEY: "sk-test" } },
     );
