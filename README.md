@@ -1,8 +1,8 @@
 # PromptKit
 
-PromptKit is a Paseo plugin (id `prompt-kit`) that rewrites the prompt in your Composer. It adds one `PromptKit` pill to the Composer's track bar and a `/rewrite <prompt>` slash command; the default action is `General`. Running it rewrites the current Composer text in place, in your own voice (first person, speaking to the agent), keeps your language and every protected literal (URLs, absolute paths, shell commands, code blocks, model names, tool names), restores focus, and never sends the prompt. You review the result and send it yourself.
+PromptKit is a Paseo plugin that rewrites the prompt in your Composer before you send it. It adds a `PromptKit` pill to the Composer and a `/rewrite <prompt>` slash command. The rewrite replaces the Composer text in your own voice — first person, speaking to the agent — and keeps your language and every protected literal (URLs, absolute paths, shell commands, code blocks, model and tool names).
 
-Rewriting has three paths, chosen in Settings. The default runs the selected model through the provider's own CLI, headlessly, in a temporary directory — no Paseo agent, no tab, no archive. Your primary conversation never receives a rewrite turn and never changes provider or session. The third path posts straight to an API you configure (OpenAI, Anthropic, Google Gemini, Cloudflare Workers AI, or anything speaking one of those protocols) when a CLI cold start is too slow or no CLI exists.
+The rewrite runs one of three ways, chosen in Settings: the agent's own provider CLI with the model the Composer shows (the default), a provider CLI with a model you pick, or a direct request to an API you configure (OpenAI, Anthropic, Google Gemini, Cloudflare Workers AI, or anything speaking one of those protocols). A CLI runs headlessly in a temporary directory — no Paseo agent, no tab, no archive — so your conversation never receives a rewrite turn.
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
@@ -10,15 +10,19 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 - **The pill** — write your prompt, press `PromptKit`. The text is rewritten in place; a leading `/rewrite ` left in the text is ignored. Available once the agent exists, so on a new seat it appears after the first message.
 - **`/rewrite <prompt>`** — type the command with the prompt after it and press Enter. Paseo empties the Composer and hands the text to PromptKit, which puts the `/rewrite …` line straight back, dims it with a light sweep while it works, and then replaces it with the rewrite. A failed rewrite leaves your line in place. Available immediately, including on a new seat before its first message. Because no agent exists yet on a draft, `/rewrite` cannot use `Current agent model`; choose `Dedicated model` or `Direct API` with a selected endpoint and model in Settings, or use the pill once the agent exists.
-- **The PromptKit sheet** (mobile) — write in the Composer as usual and press the pill. A sheet slides up already holding your text and rewrites it at once. Press **Rewrite** again until it reads right, then **Send**: the message goes to the agent, the Composer is cleared, the sheet closes. **✕** closes the sheet and leaves the Composer untouched.
+- **The PromptKit sheet** (mobile) — write in the Composer as usual and press the pill. A sheet slides up holding your text. With one enabled action it rewrites at once and **Rewrite** runs it again; with several, each action has its own button and nothing runs until you press one. **Send** gives the message to the agent, clears the Composer and closes the sheet. **✕** closes the sheet and leaves the Composer untouched.
 
 No path sends the message on its own. You review the result and send it yourself.
 
+## The General action
+
+`General` is the one action that ships. It turns the draft into a clear instruction the agent can act on: the concrete action, each constraint made checkable, the working steps for that kind of task (find the cause first, follow the codebase's existing way, keep the change scoped), and how the agent knows it is done. It never invents files, numbers, requirements or decisions the draft does not contain, and it never writes about you as "the user". Add your own actions under Settings → **Custom actions**.
+
 ## Requirements
 
-- Paseo Desktop or Web, version `>=0.9.0` (`paseo-plugin.json`). The plugin is built and tested against the 0.9.0 SDK.
-- For the CLI transports: a provider/model reachable by the daemon, and that provider's CLI on the daemon's `PATH`.
-- For the API transport: an endpoint URL, a model id, and a key — see [API keys](#api-keys).
+- Paseo `>=0.9.0` (Desktop, Web or mobile). Built and tested against the 0.9.0 plugin SDK.
+- For **Provider CLI**: that provider's CLI on the daemon's `PATH`, and a model it can reach.
+- For **Direct API**: an endpoint URL, a model id, and a key — see [API keys](#api-keys).
 
 ## Install from npm (recommended)
 
@@ -55,7 +59,7 @@ paseo plugin logs prompt-kit
 
 ## Install from Git
 
-After the repository is published, install the managed Git checkout:
+Install a managed Git checkout:
 
 ```bash
 paseo plugin install hungcuong9125/paseo-prompt-kit --ref main
@@ -72,17 +76,17 @@ paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.5.4
 
 ## Settings
 
-Open it from Paseo Settings → Plugins → the `…` menu on `prompt-kit` → **Settings**. The bar at the top says whether a rewrite would run and over which path, names the reason when it would not, and holds **Save** / **Discard** once something has changed. Nothing is written until Save.
+Open PromptKit's settings from Paseo Settings → Plugins → the `…` menu on `prompt-kit` → **Settings**. The bar at the top says whether a rewrite would run and over which path, names the reason when it would not, and holds **Save** / **Discard** once something has changed. Nothing is written until Save.
 
 ![PromptKit settings with the default path: Provider CLI, current agent model, output in the prompt's language](docs/images/settings-provider-cli.png)
 
 The screen reads top to bottom in setup order:
 
-1. **Actions** — one switch per action, bundled or custom; up to 6 can be on. One enabled action makes the pill rewrite at once; two or more make it a menu (on mobile, one button per action in the sheet); none hides the pill. A lone action shows no switch. Saving updates every pill at once.
-   **Custom actions** — your own actions, written as action-pack JSON in a text box on the same screen: **Add** opens a sample (Blank template, Copy of General, Execution brief, Plan first, Review request, Make concise, or a copy of one of yours), you change the id, title and instructions, **Apply** checks the JSON, and **Save** stores it. They run through the same rewrite as the bundled ones.
-2. **Rewrite engine** — Transport, Model source (Provider CLI only) and Output language. Every other section appears only when these need it.
-3. **Dedicated model** (CLI + Dedicated) or **API endpoint** (Direct API).
-4. **Advanced** (collapsed) — timeout and the two per-provider overrides.
+1. **Actions** — one switch per action, bundled or custom; up to 6 can be on. One enabled action makes the pill rewrite at once; two or more make it a menu (on mobile, one button per action in the sheet); none hides the pill. A lone action shows as **Always on**, with no switch. Saving updates every pill at once.
+2. **Custom actions** — your own actions, written as action-pack JSON in a text box on the same screen. **Add** opens a sample (Blank template, Copy of General, Execution brief, Plan first, Review request, Make concise, or a copy of one of yours); change the id, title and instructions, press **Apply** to check the JSON, then **Save**. They run through the same rewrite as `General`.
+3. **Rewrite engine** — Transport, Model source (Provider CLI only) and Output language. Every other section appears only when these need it.
+4. **Dedicated model** (Provider CLI with Dedicated model) or **API endpoint** (Direct API).
+5. **Advanced** (collapsed) — timeout and the two per-provider overrides.
 
 ### Transport
 
@@ -117,7 +121,7 @@ Choose an endpoint — presets and your saved custom endpoints are listed A–Z 
 ### Advanced
 
 - `Timeout (ms)`: how long a rewrite may run, default `90000`, allowed range `1000`–`600000`. The daemon caps one plugin call at 30 s, so the screen notes when a budget above that cannot be reached.
-- `CLI per provider` (Provider CLI): lists only the providers you have overridden, plus an Add row. A profile named after its CLI (`pi-peer`, `codex-lead`) resolves on its own and needs no entry; an unresolved provider is refused, never guessed.
+- `CLI per provider` (Provider CLI): lists only the providers you have overridden, plus an Add row. A provider named after its CLI (for example `pi` or `codex`) resolves on its own and needs no entry; an unresolved provider is refused, never guessed.
 - `Endpoint per provider` (Direct API): lists only mapped providers, plus an Add row. Pressing the pill in an agent of a mapped provider sends that agent's own model to the endpoint over HTTP. A mapped provider ignores the Model chosen under API endpoint.
 
 Settings are host-scoped and persist across plugin reload.
@@ -177,7 +181,7 @@ Prefer, in this order:
 2. **Editing `secrets.json` yourself** on the daemon's machine, as above — the key never passes through the Paseo app.
 3. **The API key field** — only when neither of the above is practical.
 
-With Key source `secrets.json`, the API endpoint section shows an **API key** field (masked) and a **Store key** row. **Save** writes the value under the endpoint's Key variable in `secrets.json`: other entries and fields are kept, the directory is created `0700` and the file written `0600` through a temporary file and a rename, and a malformed file is refused rather than overwritten. The field is cleared after saving. The key is write-only: the screen only says whether a value is stored, and **Remove stored key** deletes that one entry. The value never enters the settings document, a log, or an RPC answer. Two clients saving at the same moment can overwrite each other's change.
+With Key source `secrets.json`, the API endpoint section shows an **API key** field (masked) and a **Store API key** row. **Save** writes the value under the endpoint's Key variable in `secrets.json`: other entries and fields are kept, the directory is created `0700` and the file written `0600` through a temporary file and a rename, and a malformed file is refused rather than overwritten. The field is cleared after saving. The key is write-only: the screen only says whether a value is stored, and **Remove stored API key** deletes that one entry. The value never enters the settings document, a log, or an RPC answer. Two clients saving at the same moment can overwrite each other's change.
 
 ### What PromptKit guarantees about keys
 
@@ -239,6 +243,7 @@ An endpoint that lists `models` restricts the choice to that list, and a model o
 |---|---|
 | `missing_api_key` | The endpoint's Key source has no value for its key variable, `secrets.json` is missing or malformed, or the secrets directory is not absolute |
 | `api_endpoint_unknown` | The selected or mapped endpoint id is not defined in `apiEndpoints` |
+| `invalid_model` | The model is not in the endpoint's `models` list |
 | `api_http_error` | The endpoint answered a non-2xx status, or was unreachable |
 | `api_bad_response` | The answer was not JSON, or carried no text |
 | `timeout` | The request exceeded `Timeout (ms)` |
@@ -249,9 +254,8 @@ Every one of these leaves the Composer text untouched.
 
 - In-place rewriting works on Desktop and Web only: the mobile app renders the Composer as a native text input with no DOM, and Paseo 0.9.0 exposes no plugin API for Composer text. On mobile the `PromptKit` pill opens the **PromptKit sheet** instead (see above); it reads and clears the Composer through the app's React tree rather than the DOM, which a Paseo update can break in the same way. Nothing is copied or sent on its own. `/rewrite` is not available on mobile. On Web, a refusal names what was found (no Composer, none visible, or more than one visible).
 - Requires Paseo `>=0.9.0`. Because text access depends on the Composer DOM (or, on mobile, the React tree), a Paseo UI change can break it even when the public plugin SDK is compatible.
-- No auto-send. PromptKit only replaces the Composer text; you send the message.
 - PromptKit refuses to replace text you edited while a rewrite was running, and refuses when more than one Composer (or none) is visible.
-- One bundled action: `General` turns the draft into a clear instruction the agent can act on — the concrete action, each constraint made checkable, the working steps for that kind of task (find the cause first, follow the codebase's existing way, keep the change scoped), and when it is done. It never invents files, numbers, requirements or decisions the draft does not contain, and it writes as you, speaking to the agent — never about "the user". Add your own under Settings → Custom actions, or bundle one as a JSON file — see `docs/EXTENDING.md`.
+- Only `General` ships. Any other action is a custom action you write in Settings, or a pack you bundle as a JSON file — see `docs/EXTENDING.md`.
 - The API transport does not stream: it makes one request and waits for the whole answer. A slow endpoint can exceed the daemon's 30-second plugin-call cap, in which case the host reports a timeout before PromptKit's own `Timeout (ms)` can fire.
 - No OAuth or token refresh: an endpoint uses a static key. A provider that needs an interactive login is better served by the CLI transport.
 

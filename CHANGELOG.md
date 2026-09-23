@@ -10,6 +10,15 @@
   that exits with a non-zero code or a signal is refused too, naming the first line of its
   stderr.
 
+### Changed
+
+- README: a shorter introduction that names all three rewrite paths, a **General action** section,
+  the mobile sheet with several actions, Custom actions as its own Settings entry, the current
+  **Store API key** row names, and `invalid_model` in the API failure codes. Repeated sentences and
+  stale lines were removed.
+- Examples in the README, code comments and tests use generic provider and model names
+  (`pi`, `codex`) instead of names from one machine's setup.
+
 ## 0.5.3 - 2026-09-23
 
 ### Added

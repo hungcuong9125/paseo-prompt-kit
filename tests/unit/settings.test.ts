@@ -32,9 +32,9 @@ describe("prompt kit settings", () => {
     // No mapping is invented: an id that names no supported CLI fails closed.
     expect(values.providerCli).toEqual({});
     const mapped = await promptKitSettingsSchema.parseAsync({
-      providerCli: { "compat-peer": "opencode" },
+      providerCli: { "compat": "opencode" },
     });
-    expect(mapped.providerCli).toEqual({ "compat-peer": "opencode" });
+    expect(mapped.providerCli).toEqual({ "compat": "opencode" });
   });
 
   it("treats an absent action toggle as the pack default and an explicit one as the user's choice", async () => {
@@ -76,11 +76,11 @@ describe("prompt kit settings", () => {
 describe("provider CLI mapping", () => {
   it("accepts a supported family id and rejects an unknown one", async () => {
     const values = await promptKitSettingsSchema.parseAsync({
-      providerCli: { "compat-peer": "opencode", "pi-peer": "pi" },
+      providerCli: { "compat": "opencode", "pi-work": "pi" },
     });
-    expect(values.providerCli).toEqual({ "compat-peer": "opencode", "pi-peer": "pi" });
+    expect(values.providerCli).toEqual({ "compat": "opencode", "pi-work": "pi" });
     await expect(
-      promptKitSettingsSchema.parseAsync({ providerCli: { "grok-peer": "gemini" } }),
+      promptKitSettingsSchema.parseAsync({ providerCli: { "grok": "gemini" } }),
     ).rejects.toThrow();
   });
 });

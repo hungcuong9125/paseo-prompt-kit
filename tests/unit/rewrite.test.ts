@@ -24,13 +24,13 @@ describe("runRewrite: current model", () => {
     if (output.status !== "ok") throw new Error("expected ok");
     expect(output.rewrittenPrompt).toBe("rewritten text");
     expect(output.model).toEqual({
-      provider: "pi-peer",
-      model: "workbuddy/deepseek-v4.1-flash",
+      provider: "pi-work",
+      model: "acme/model-a",
       thinkingOptionId: "high",
     });
     expect(harness.spawned).toHaveLength(1);
     expect(harness.spawned[0]?.command).toBe("pi");
-    expect(harness.spawned[0]?.args).toContain("workbuddy/deepseek-v4.1-flash");
+    expect(harness.spawned[0]?.args).toContain("acme/model-a");
     // The primary conversation is read once and never written.
     expect(harness.mainAgentCalls).toEqual(["refresh"]);
   });
@@ -54,18 +54,18 @@ describe("runRewrite: current model", () => {
   it("splits a provider selector that already carries the model", async () => {
     const harness = createRewriteHarness({
       agent: {
-        provider: "pi-peer",
-        runtimeInfo: { provider: "pi-peer/workbuddy/deepseek-v4.1-flash" },
+        provider: "pi-work",
+        runtimeInfo: { provider: "pi-work/acme/model-a" },
       },
     });
     const output = await rewrite(harness);
     expect(output.status).toBe("ok");
-    expect(harness.spawned[0]?.args).toContain("workbuddy/deepseek-v4.1-flash");
+    expect(harness.spawned[0]?.args).toContain("acme/model-a");
   });
 
   it("resolves a role-scoped provider id to its CLI", async () => {
     const harness = createRewriteHarness({
-      agent: { provider: "codex-peer", runtimeInfo: { provider: "codex-peer" }, model: "gpt-5.6-luna" },
+      agent: { provider: "codex-work", runtimeInfo: { provider: "codex-work" }, model: "gpt-5.6-luna" },
     });
     const output = await rewrite(harness);
     expect(output.status).toBe("ok");
@@ -75,16 +75,16 @@ describe("runRewrite: current model", () => {
 
   it("uses an explicit provider mapping when the id names no CLI", async () => {
     const harness = createRewriteHarness({
-      agent: { provider: "compat-peer", runtimeInfo: { provider: "compat-peer" } },
+      agent: { provider: "compat", runtimeInfo: { provider: "compat" } },
     });
-    const output = await rewrite(harness, { providerCli: { "compat-peer": "opencode" } });
+    const output = await rewrite(harness, { providerCli: { "compat": "opencode" } });
     expect(output.status).toBe("ok");
     expect(harness.spawned[0]?.command).toBe("opencode");
   });
 
   it("fails closed on a provider that names no supported CLI and runs nothing", async () => {
     const harness = createRewriteHarness({
-      agent: { provider: "grok-peer", runtimeInfo: { provider: "grok-peer" } },
+      agent: { provider: "grok", runtimeInfo: { provider: "grok" } },
     });
     const output = await rewrite(harness);
     expect(output.status).toBe("error");
@@ -121,16 +121,16 @@ describe("runRewrite: current model", () => {
   it("prefers the runtime model the Composer is showing over the configured one", async () => {
     const harness = createRewriteHarness({
       agent: {
-        model: "workbuddy/deepseek-v4.1-flash",
-        runtimeInfo: { provider: "pi-peer", model: "workbuddy/hy4-preview-f" },
+        model: "acme/model-a",
+        runtimeInfo: { provider: "pi-work", model: "acme/model-b" },
       },
     });
     const output = await rewrite(harness);
     expect(output.status).toBe("ok");
     if (output.status !== "ok") throw new Error("expected ok");
-    expect(output.model.model).toBe("workbuddy/hy4-preview-f");
-    expect(harness.spawned[0]?.args).toContain("workbuddy/hy4-preview-f");
-    expect(harness.spawned[0]?.args).not.toContain("workbuddy/deepseek-v4.1-flash");
+    expect(output.model.model).toBe("acme/model-b");
+    expect(harness.spawned[0]?.args).toContain("acme/model-b");
+    expect(harness.spawned[0]?.args).not.toContain("acme/model-a");
   });
 
   // A runtime model the CLI reports while the config is still empty is the only
@@ -139,27 +139,27 @@ describe("runRewrite: current model", () => {
     const harness = createRewriteHarness({
       agent: {
         model: null,
-        runtimeInfo: { provider: "pi-peer", model: "workbuddy/hy4-preview-f" },
+        runtimeInfo: { provider: "pi-work", model: "acme/model-b" },
       },
     });
     const output = await rewrite(harness);
     expect(output.status).toBe("ok");
     if (output.status !== "ok") throw new Error("expected ok");
-    expect(output.model.model).toBe("workbuddy/hy4-preview-f");
+    expect(output.model.model).toBe("acme/model-b");
   });
 
   // An empty runtime string is not a selection; the configured model still wins.
   it("falls back to the configured model when the runtime model is empty", async () => {
     const harness = createRewriteHarness({
       agent: {
-        model: "workbuddy/deepseek-v4.1-flash",
-        runtimeInfo: { provider: "pi-peer", model: "  " },
+        model: "acme/model-a",
+        runtimeInfo: { provider: "pi-work", model: "  " },
       },
     });
     const output = await rewrite(harness);
     expect(output.status).toBe("ok");
     if (output.status !== "ok") throw new Error("expected ok");
-    expect(output.model.model).toBe("workbuddy/deepseek-v4.1-flash");
+    expect(output.model.model).toBe("acme/model-a");
   });
 });
 
@@ -209,7 +209,7 @@ describe("runRewrite: no agent (draft Composer)", () => {
             models: [],
           },
         ],
-        apiEndpointByProvider: { "pi-peer": "groq" },
+        apiEndpointByProvider: { "pi-work": "groq" },
       }),
       spawn: harness.spawn,
     });
@@ -411,7 +411,7 @@ describe("runRewrite: dedicated model", () => {
 
   it("uses the dedicated CLI even when the current agent runs a different one", async () => {
     const harness = createRewriteHarness({
-      agent: { provider: "pi-peer", runtimeInfo: { provider: "pi-peer" } },
+      agent: { provider: "pi-work", runtimeInfo: { provider: "pi-work" } },
       models: [{ provider: "codex", available: true, models: ["gpt-5.6-luna"] }],
     });
     const output = await rewrite(harness, {
@@ -600,7 +600,7 @@ describe("runRewrite: api transport", () => {
     const harness = createRewriteHarness({
       agent: {
         provider: "opencode",
-        model: "workbuddy/deepseek-v4.1-flash",
+        model: "acme/model-a",
         runtimeInfo: { provider: "opencode" },
       },
     });
@@ -615,7 +615,7 @@ describe("runRewrite: api transport", () => {
     );
 
     expect(output.status).toBe("ok");
-    expect(JSON.parse(calls[0]!.body).model).toBe("workbuddy/deepseek-v4.1-flash");
+    expect(JSON.parse(calls[0]!.body).model).toBe("acme/model-a");
     expect(harness.spawned).toEqual([]);
   });
 

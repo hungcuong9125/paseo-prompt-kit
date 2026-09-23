@@ -15,7 +15,7 @@ export interface CliInvocation {
 }
 
 export interface CliRequest {
-  /** The model id as the agent snapshot reports it, e.g. `workbuddy/deepseek-v4.1-flash`. */
+  /** The model id as the agent snapshot reports it, e.g. `openai/gpt-4.1-mini`. */
   readonly model: string;
   readonly thinkingOptionId: string | null;
   /** Instruction text. Replaces the CLI's own default system prompt where supported. */

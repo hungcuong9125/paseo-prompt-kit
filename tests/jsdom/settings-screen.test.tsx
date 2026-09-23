@@ -550,7 +550,7 @@ describe("API endpoint section", () => {
 describe("advanced overrides", () => {
   const providers = {
     providers: [
-      { provider: "pi-peer", label: "Pi peer", available: true, models: [] },
+      { provider: "pi-work", label: "Pi work", available: true, models: [] },
       { provider: "mystery", label: "Mystery", available: true, models: [] },
     ],
   };
@@ -571,7 +571,7 @@ describe("advanced overrides", () => {
 
     await press(view, "prompt-kit-advanced-toggle");
     // The catalog has two providers; neither gets a row until it is mapped.
-    expect(view.querySelector('select[data-label="Pi peer"]')).toBeNull();
+    expect(view.querySelector('select[data-label="Pi work"]')).toBeNull();
     expect(view.querySelector('select[data-label="Mystery"]')).toBeNull();
 
     await choose(view, "No provider is mapped", "mystery");
@@ -586,7 +586,7 @@ describe("advanced overrides", () => {
     holder.state = readyState({
       transport: "api",
       apiEndpoints: [GEMINI],
-      apiEndpointByProvider: { "pi-peer": "gemini" },
+      apiEndpointByProvider: { "pi-work": "gemini" },
     });
     holder.save.mockResolvedValue(true);
     holder.listActions.mockResolvedValue(actionCatalog);
@@ -601,10 +601,10 @@ describe("advanced overrides", () => {
     const view = container;
 
     await press(view, "prompt-kit-advanced-toggle");
-    expect(select(view, "Pi peer").value).toBe("gemini");
+    expect(select(view, "Pi work").value).toBe("gemini");
     expect(view.querySelector('select[data-label="Mystery"]')).toBeNull();
-    await choose(view, "Pi peer", "__remove__");
-    expect(view.querySelector('select[data-label="Pi peer"]')).toBeNull();
+    await choose(view, "Pi work", "__remove__");
+    expect(view.querySelector('select[data-label="Pi work"]')).toBeNull();
     await press(view, "prompt-kit-save");
     expect(holder.save.mock.calls[0]?.[0]).toMatchObject({ apiEndpointByProvider: {} });
   });

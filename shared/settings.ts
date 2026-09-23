@@ -38,11 +38,10 @@ export const promptKitSettingsSchema = z.object({
   dedicatedModel: z.string().min(1).nullable().default(null),
   dedicatedThinkingOptionId: z.string().min(1).nullable().default(null),
   /**
-   * Maps a Paseo provider id to the CLI family that runs it. Paseo names a
-   * built-in provider after its CLI (`pi`, `codex`) and a custom profile after
-   * the role it plays (`pi-peer`, `codex-lead`), so the leading segment resolves
-   * most ids without an entry here. An entry is needed only for a profile whose
-   * id does not mention its CLI, and an unknown id fails closed either way.
+   * Maps a Paseo provider id to the CLI family that runs it. A provider named
+   * after its CLI (`pi`, `codex`), or whose id starts with that name, resolves
+   * without an entry here. An entry is needed only for a provider whose id does
+   * not mention its CLI, and an unknown id fails closed either way.
    */
   providerCli: z.record(z.string(), z.enum(CLI_FAMILY_IDS)).default({}),
   /** The API endpoints this host can reach. Key values are never stored here. */

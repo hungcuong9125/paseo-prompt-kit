@@ -108,7 +108,7 @@ describe("real command lines stay protected", () => {
 describe("model and tool names stay protected", () => {
   // Fails if the prefixed model-name rule is removed.
   it("keeps a vendor-prefixed model name", () => {
-    for (const model of ["claude-sonnet-5", "gpt-5.6-luna", "deepseek-v4.1-flash"]) {
+    for (const model of ["claude-sonnet-5", "gpt-5.6-luna", "deepseek-chat"]) {
       expect(valuesOf(`use ${model}`), model).toContain(model);
     }
   });

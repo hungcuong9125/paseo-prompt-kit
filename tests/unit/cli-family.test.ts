@@ -185,28 +185,28 @@ describe("resolveFamily", () => {
 
   // Paseo names a custom profile after its role, so the CLI is a segment.
   it("resolves a role-scoped profile id from its CLI segment", () => {
-    expect(resolveFamily("pi-peer")?.id).toBe("pi");
-    expect(resolveFamily("codex-lead")?.id).toBe("codex");
+    expect(resolveFamily("pi-work")?.id).toBe("pi");
+    expect(resolveFamily("codex-work")?.id).toBe("codex");
     expect(resolveFamily("opencode-review")?.id).toBe("opencode");
     expect(resolveFamily("claude-supervisor")?.id).toBe("claude");
   });
 
   it("prefers the longest matching id so a prefix cannot steal a family", () => {
     expect(resolveFamily("opencode")?.id).toBe("opencode");
-    expect(resolveFamily("opencode-peer")?.id).toBe("opencode");
+    expect(resolveFamily("opencode-work")?.id).toBe("opencode");
   });
 
   // A wrong guess would silently run the user's prompt through the wrong CLI.
   it("fails closed on a provider that names no supported CLI", () => {
     expect(resolveFamily("grok")).toBeNull();
-    expect(resolveFamily("grok-peer")).toBeNull();
+    expect(resolveFamily("grok")).toBeNull();
     expect(resolveFamily("antigravity-supervisor")).toBeNull();
     expect(resolveFamily("")).toBeNull();
   });
 
   it("lets an explicit mapping override the id, and still fails closed on a bad target", () => {
-    expect(resolveFamily("compat-peer", { "compat-peer": "opencode" })?.id).toBe("opencode");
-    expect(resolveFamily("compat-peer", { "compat-peer": "gemini" })).toBeNull();
-    expect(resolveFamily("grok-peer", { "grok-peer": "pi" })?.id).toBe("pi");
+    expect(resolveFamily("compat", { "compat": "opencode" })?.id).toBe("opencode");
+    expect(resolveFamily("compat", { "compat": "gemini" })).toBeNull();
+    expect(resolveFamily("grok", { "grok": "pi" })?.id).toBe("pi");
   });
 });
