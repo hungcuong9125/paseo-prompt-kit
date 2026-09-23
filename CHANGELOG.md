@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.5 - 2026-09-23
+
+### Fixed
+
+- The **Groq** preset is back in the API endpoint list: OpenAI-compatible,
+  `https://api.groq.com/openai/v1`, key variable `GROQ_API_KEY`, listed A–Z between Google Gemini
+  and Local server. 0.3.1 removed it by mistake; Groq was only meant to stop being the example
+  in the documentation, which still uses Gemini.
+- Mobile sheet: with several enabled actions, the action buttons now sit in two equal columns.
+  A lone button on the last row keeps its column's width instead of stretching past it.
+
 ## 0.5.4 - 2026-09-23
 
 ### Fixed

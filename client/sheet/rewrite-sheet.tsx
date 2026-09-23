@@ -32,6 +32,8 @@ const drafts = new Map<string, string>();
 
 /** Action buttons per row when several actions are enabled. */
 const ACTIONS_PER_ROW = 2;
+/** One grid cell: every cell, filled or empty, takes an equal share of the row. */
+const GRID_CELL = { flexGrow: 1, flexShrink: 1, flexBasis: 0 } as const;
 
 function rows<T>(items: readonly T[]): T[][] {
   const out: T[][] = [];
@@ -206,17 +208,17 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
           ? rows(choices).map((row) => (
               <View key={row.map((action) => action.id).join(",")} style={{ flexDirection: "row", gap: SPACE.md }}>
                 {row.map((action) => (
-                  <Button
-                    key={action.id}
-                    theme={theme}
-                    label={action.title}
-                    fill
-                    onPress={() => void runRewrite(value, action.id)}
-                    disabled={busy !== "idle" || value.trim() === ""}
-                    testID={`prompt-kit-sheet-action-${action.id}`}
-                  />
+                  <View key={action.id} style={GRID_CELL}>
+                    <Button
+                      theme={theme}
+                      label={action.title}
+                      onPress={() => void runRewrite(value, action.id)}
+                      disabled={busy !== "idle" || value.trim() === ""}
+                      testID={`prompt-kit-sheet-action-${action.id}`}
+                    />
+                  </View>
                 ))}
-                {row.length < ACTIONS_PER_ROW ? <View style={{ flex: 1 }} /> : null}
+                {row.length < ACTIONS_PER_ROW ? <View style={GRID_CELL} /> : null}
               </View>
             ))
           : null}

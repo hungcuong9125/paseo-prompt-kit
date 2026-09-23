@@ -53,6 +53,16 @@ export const ENDPOINT_PRESETS: readonly EndpointPreset[] = [
     note: "AI Studio",
   },
   {
+    id: "groq",
+    label: "Groq",
+    protocol: "openai",
+    baseUrl: "https://api.groq.com/openai/v1",
+    keySource: "env",
+    apiKeyEnv: "GROQ_API_KEY",
+    accountIdVar: "",
+    note: "OpenAI-compatible, very fast",
+  },
+  {
     id: "openrouter",
     label: "OpenRouter",
     protocol: "openai",

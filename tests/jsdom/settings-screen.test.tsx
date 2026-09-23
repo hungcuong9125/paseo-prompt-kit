@@ -481,7 +481,7 @@ describe("API endpoint section", () => {
   it("lists endpoints A–Z, saved custom ones with their protocol, and Custom endpoint… last", async () => {
     holder.state = readyState({
       transport: "api",
-      apiEndpoints: [{ ...GEMINI, id: "groq", label: "Groq", protocol: "openai", models: [] }],
+      apiEndpoints: [{ ...GEMINI, id: "together", label: "Together", protocol: "openai", models: [] }],
     });
     const view = await render();
     const labels = Array.from(select(view, "Endpoint").options, (option) => option.textContent ?? "");
@@ -489,7 +489,8 @@ describe("API endpoint section", () => {
     expect(labels.at(-1)).toBe("Custom endpoint…");
     const middle = labels.slice(1, -1);
     expect(middle).toEqual([...middle].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })));
-    expect(middle).toContain("Groq — OpenAI-compatible");
+    expect(middle).toContain("Together — OpenAI-compatible");
+    expect(middle).toContain("Groq — OpenAI-compatible, very fast");
   });
 
   it("asks Cloudflare for an account ID variable above the key variable, prefilled", async () => {

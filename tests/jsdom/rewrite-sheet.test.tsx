@@ -192,6 +192,25 @@ describe("rewrite sheet with several enabled actions", () => {
     );
     expect(field(view).value).toBe("planned");
   });
+
+  // Fails if a lone button on the last row can grow past its column.
+  it("lays the action buttons out in two equal columns, keeping an empty cell on a short row", async () => {
+    holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
+    const summary = actions.actions[0]!;
+    holder.listActions.mockResolvedValue({
+      actions: ["a", "b", "c"].map((id) => ({ ...summary, id, title: id.toUpperCase(), custom: true })),
+      rejected: [],
+    });
+    const view = await render(() => ({ ok: true, handle: fakeComposer("draft").handle }));
+    const cell = (id: string) =>
+      view.querySelector(`[data-testid="prompt-kit-sheet-action-${id}"]`)!.parentElement!;
+    const lastRow = cell("c").parentElement!;
+    expect(lastRow.children).toHaveLength(2);
+    for (const node of [cell("a"), cell("b"), cell("c"), lastRow.children[1] as HTMLElement]) {
+      expect(node.style.flexBasis).toBe("0px");
+      expect(node.style.flexGrow).toBe("1");
+    }
+  });
 });
 
 describe("rewrite sheet", () => {
