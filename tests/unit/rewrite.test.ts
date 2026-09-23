@@ -312,6 +312,34 @@ describe("runRewrite: output language", () => {
 });
 
 describe("runRewrite: CLI failure paths", () => {
+  // Fails if the CLI's own error text can reach the Composer as a rewrite.
+  it("refuses a Claude result flagged is_error, with the CLI's reason", async () => {
+    const harness = createRewriteHarness({
+      agent: { provider: "claude", runtimeInfo: { provider: "claude" } },
+      cliResult: {
+        stdout: '{"type":"result","is_error":true,"result":"Failed to authenticate: OAuth session expired"}',
+        exitCode: 1,
+      },
+    });
+    const output = await rewrite(harness);
+    expect(output.status).toBe("error");
+    if (output.status !== "error") throw new Error("expected error");
+    expect(output.error.code).toBe("generation_failed");
+    expect(output.error.message).toContain("Failed to authenticate: OAuth session expired");
+  });
+
+  // Fails if a CLI that exits non-zero has its stdout treated as an answer.
+  it("refuses any run that exits non-zero, naming stderr's first line", async () => {
+    const harness = createRewriteHarness({
+      cliResult: { exitCode: 2, stderr: "\nmodel not found: x\nstack…" },
+    });
+    const output = await rewrite(harness);
+    expect(output.status).toBe("error");
+    if (output.status !== "error") throw new Error("expected error");
+    expect(output.error.code).toBe("generation_failed");
+    expect(output.error.message).toBe('The rewrite CLI "pi" exited with code 2: model not found: x');
+  });
+
   it("maps a CLI timeout to a timeout error and never replaces the composer", async () => {
     const harness = createRewriteHarness({
       cliResult: { stdout: "", timedOut: true, exitCode: null },

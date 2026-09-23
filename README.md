@@ -29,7 +29,7 @@ paseo plugin add npm:paseo-prompt-kit
 paseo plugin ls
 ```
 
-Pin a release by adding its version, for example `npm:paseo-prompt-kit@0.5.3`. The plugin id stays `prompt-kit`, so reload and logs use that id:
+Pin a release by adding its version, for example `npm:paseo-prompt-kit@0.5.4`. The plugin id stays `prompt-kit`, so reload and logs use that id:
 
 ```bash
 paseo plugin reload prompt-kit
@@ -65,7 +65,7 @@ paseo plugin ls
 `--ref` chooses the initial branch, tag, or commit once; later `paseo plugin update prompt-kit` follows the remote's default HEAD. Pin a release instead of tracking `main` by giving `--ref` a tag:
 
 ```bash
-paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.5.3
+paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.5.4
 ```
 
 `paseo plugin ls` reports the installed commit.

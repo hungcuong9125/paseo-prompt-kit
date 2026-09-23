@@ -34,6 +34,8 @@ export interface CliFamily {
   buildInvocation(request: CliRequest): CliInvocation;
   /** Extracts the final answer from captured stdout, or null when there is none. */
   parseOutput(stdout: string): string | null;
+  /** The failure the CLI itself reports in stdout, or null when it reports none. */
+  parseError(stdout: string): string | null;
 }
 
 /** Collects the text parts of a pi/opencode-style JSONL event stream. */
@@ -104,7 +106,20 @@ export const piFamily: CliFamily = {
     lastJsonlText(stdout, (event) =>
       event.type === "turn_end" ? piMessageText(event.message) : null,
     ),
+  parseError: () => null,
 };
+
+/** The single JSON result object `claude -p --output-format json` prints, or null. */
+function claudeResult(stdout: string): { result?: unknown; is_error?: unknown } | null {
+  const start = stdout.indexOf("{");
+  if (start === -1) return null;
+  try {
+    const parsed: unknown = JSON.parse(stdout.slice(start));
+    return parsed !== null && typeof parsed === "object" ? (parsed as { result?: unknown; is_error?: unknown }) : null;
+  } catch {
+    return null;
+  }
+}
 
 export const claudeFamily: CliFamily = {
   id: "claude",
@@ -128,17 +143,16 @@ export const claudeFamily: CliFamily = {
     return { command: "claude", args };
   },
   parseOutput: (stdout) => {
-    const start = stdout.indexOf("{");
-    if (start === -1) return null;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(stdout.slice(start));
-    } catch {
-      return null;
-    }
-    if (parsed === null || typeof parsed !== "object") return null;
-    const result = (parsed as { result?: unknown }).result;
-    return typeof result === "string" ? result : null;
+    const parsed = claudeResult(stdout);
+    if (parsed === null || parsed.is_error === true) return null;
+    return typeof parsed.result === "string" ? parsed.result : null;
+  },
+  // An auth or API failure still prints a result object, flagged `is_error`, whose
+  // `result` is the error text rather than an answer.
+  parseError: (stdout) => {
+    const parsed = claudeResult(stdout);
+    if (parsed === null || parsed.is_error !== true) return null;
+    return typeof parsed.result === "string" && parsed.result.trim() !== "" ? parsed.result : "Claude reported an error.";
   },
 };
 
@@ -171,6 +185,7 @@ export const codexFamily: CliFamily = {
       const typed = item as { type?: unknown; text?: unknown };
       return typed.type === "agent_message" && typeof typed.text === "string" ? typed.text : null;
     }),
+  parseError: () => null,
 };
 
 export const opencodeFamily: CliFamily = {
@@ -190,6 +205,7 @@ export const opencodeFamily: CliFamily = {
       const text = (part as { text?: unknown }).text;
       return typeof text === "string" ? text : null;
     }),
+  parseError: () => null,
 };
 
 const FAMILIES: readonly CliFamily[] = [piFamily, claudeFamily, codexFamily, opencodeFamily];

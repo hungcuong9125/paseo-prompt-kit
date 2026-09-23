@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.4 - 2026-09-23
+
+### Fixed
+
+- A failed Provider CLI run no longer replaces the Composer text with the CLI's error. A Claude
+  Code result flagged `is_error` (for example "Failed to authenticate: OAuth session expired")
+  used to be taken as the rewritten prompt; it is now refused with the CLI's reason. Any CLI run
+  that exits with a non-zero code or a signal is refused too, naming the first line of its
+  stderr.
+
 ## 0.5.3 - 2026-09-23
 
 ### Added

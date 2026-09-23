@@ -22,7 +22,17 @@ export interface CliRewriteDependencies {
 
 export type CliRewriteResult =
   | { readonly ok: true; readonly text: string }
-  | { readonly ok: false; readonly code: "timeout" | "spawn_failed" | "empty_output"; readonly message: string };
+  | {
+      readonly ok: false;
+      readonly code: "timeout" | "spawn_failed" | "empty_output" | "generation_failed";
+      readonly message: string;
+    };
+
+/** Enough of a CLI's own error text to recognise it, on one line. */
+function firstLine(text: string, max = 200): string {
+  const line = text.split("\n").map((part) => part.trim()).find((part) => part !== "") ?? "";
+  return line.length <= max ? line : `${line.slice(0, max - 1)}…`;
+}
 
 /**
  * Runs one rewrite through a CLI in a scratch directory.
@@ -72,6 +82,27 @@ export async function runCliRewrite(
 
     if (result.timedOut) {
       return { ok: false, code: "timeout", message: "The rewrite timed out." };
+    }
+
+    // A failed run never becomes a rewrite: its stdout can hold an error text
+    // that would otherwise read like an answer.
+    const reported = input.family.parseError(result.stdout);
+    if (reported !== null) {
+      return {
+        ok: false,
+        code: "generation_failed",
+        message: `The rewrite CLI "${input.family.id}" reported an error: ${firstLine(reported)}`,
+      };
+    }
+    if (result.exitCode !== 0) {
+      const detail = firstLine(result.stderr);
+      return {
+        ok: false,
+        code: "generation_failed",
+        message: `The rewrite CLI "${input.family.id}" exited with ${
+          result.exitCode === null ? "a signal" : `code ${result.exitCode}`
+        }${detail === "" ? "." : `: ${detail}`}`,
+      };
     }
 
     const text = input.family.parseOutput(result.stdout);

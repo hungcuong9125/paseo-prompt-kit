@@ -24,6 +24,9 @@ export const myCliFamily: CliFamily = {
     lastJsonlText(stdout, (event) =>
       event.type === "final" && typeof event.text === "string" ? event.text : null,
     ),
+  // The failure the CLI prints in stdout (e.g. an auth error object), or null. The runner
+  // refuses the run on it, and on any non-zero exit code, before reading an answer.
+  parseError: () => null,
 };
 ```
 

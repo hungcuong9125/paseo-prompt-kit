@@ -1,6 +1,6 @@
 {
   "name": "paseo-prompt-kit",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "license": "MIT",
   "description": "PromptKit - rewrite and transform prompts directly from the Paseo composer.",
   "keywords": [

@@ -119,6 +119,14 @@ describe("CLI families", () => {
       expect(claudeFamily.parseOutput("plain text")).toBeNull();
       expect(claudeFamily.parseOutput('{"type":"result"}')).toBeNull();
     });
+
+    // Fails if an auth or API failure is read as the rewritten prompt.
+    it("reports an is_error result as a failure, never as an answer", () => {
+      const failed = '{"type":"result","is_error":true,"result":"Failed to authenticate: OAuth session expired"}';
+      expect(claudeFamily.parseOutput(failed)).toBeNull();
+      expect(claudeFamily.parseError(failed)).toBe("Failed to authenticate: OAuth session expired");
+      expect(claudeFamily.parseError('{"type":"result","result":"rewritten"}')).toBeNull();
+    });
   });
 
   describe("codex", () => {
