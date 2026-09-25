@@ -2,6 +2,10 @@
 
 PromptKit is a Paseo plugin that rewrites the prompt in your Composer before you send it. It adds a `PromptKit` pill to the Composer and a `/rewrite <prompt>` slash command. The rewrite replaces the Composer text in your own voice — first person, speaking to the agent — and keeps your language and every protected literal (URLs, absolute paths, shell commands, code blocks, model and tool names).
 
+![PromptKit rewriting a prompt in the Paseo Composer](docs/images/promptkit-promo.gif)
+
+[Watch the demo video (MP4)](docs/images/promptkit-promo.mp4)
+
 The rewrite runs one of three ways, chosen in Settings: the agent's own provider CLI with the model the Composer shows (the default), a provider CLI with a model you pick, or a direct request to an API you configure (OpenAI, Anthropic, Google Gemini, Cloudflare Workers AI, or anything speaking one of those protocols). A CLI runs headlessly in a temporary directory — no Paseo agent, no tab, no archive — so your conversation never receives a rewrite turn.
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
