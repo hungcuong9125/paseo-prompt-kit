@@ -16,7 +16,7 @@ No path sends the message on its own. You review the result and send it yourself
 
 ## The General action
 
-`General` is the one action that ships. It turns the draft into a clear instruction the agent can act on: the concrete action, each constraint made checkable, the working steps for that kind of task (find the cause first, follow the codebase's existing way, keep the change scoped), and how the agent knows it is done. It never invents files, numbers, requirements or decisions the draft does not contain, and it never writes about you as "the user". Add your own actions under Settings → **Custom actions**.
+`General` is the one action that ships. It turns the draft into a clear instruction the agent can act on: the concrete action, each constraint made checkable, the working steps for that kind of task (find the cause first, follow the codebase's existing way, keep the change scoped), and how the agent knows it is done. A question stays a question: it is made clear, never turned into an instruction. It never invents files, numbers, requirements or decisions the draft does not contain, and it never writes about you as "the user". Add your own actions under Settings → **Custom actions**.
 
 ## Requirements
 
@@ -33,7 +33,7 @@ paseo plugin add npm:paseo-prompt-kit
 paseo plugin ls
 ```
 
-Pin a release by adding its version, for example `npm:paseo-prompt-kit@0.5.5`. The plugin id stays `prompt-kit`, so reload and logs use that id:
+Pin a release by adding its version, for example `npm:paseo-prompt-kit@0.5.6`. The plugin id stays `prompt-kit`, so reload and logs use that id:
 
 ```bash
 paseo plugin reload prompt-kit
@@ -69,7 +69,7 @@ paseo plugin ls
 `--ref` chooses the initial branch, tag, or commit once; later `paseo plugin update prompt-kit` follows the remote's default HEAD. Pin a release instead of tracking `main` by giving `--ref` a tag:
 
 ```bash
-paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.5.5
+paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.5.6
 ```
 
 `paseo plugin ls` reports the installed commit.

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.6 - 2026-09-25
+
+### Fixed
+
+- **General** no longer turns a question into an instruction. A draft such as "did you already
+  run the migration? does billing need anything else?" kept only the imperative reading and
+  dropped the question; the rewrite now keeps a question a question, states it clearly, and
+  never appends steps or a "done" check to it. Draft parts that do ask for an action are still
+  turned into clear instructions as before.
+
 ## 0.5.5 - 2026-09-23
 
 ### Fixed
