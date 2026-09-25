@@ -6,6 +6,7 @@ vi.mock("@getpaseo/plugin/client/ui", async () => (await import("./mocks.js")).p
 import contribute from "../../index.client.js";
 import { promptKitSettingsSchema } from "../../shared/settings.js";
 import { createFakeClient, mountComposer, unmountComposer } from "./fakes.js";
+import { createRewriteStatusBus } from "../../client/pills/rewrite-status.js";
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -175,6 +176,7 @@ describe("/rewrite slash command", () => {
     const cleanup = registerRewriteCommand(fake.client, {
       listActions: async () => summarizeActions([]).actions,
       readSettings: async () => ({ status: "ready", values }),
+      statuses: createRewriteStatusBus(),
     });
     await expect(fake.slashCommands[0]!.onSubmit(commandContext(rpc, "fix it"))).rejects.toThrow(
       "press the PromptKit pill",

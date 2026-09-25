@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createRewriteRunner } from "../../client/pills/rewrite-runner.js";
 import type { ComposerAdapter } from "../../client/composer-bridge/adapter.js";
 import { promptKitSettingsSchema } from "../../shared/settings.js";
+import type { RewriteStatus } from "../../client/pills/rewrite-status.js";
 
 const settings = promptKitSettingsSchema.parse({});
 
@@ -21,6 +22,7 @@ function runner(input: {
   adapter?: ComposerAdapter;
   rpc?: (contract: { name: string }, value: unknown) => Promise<unknown>;
   isActive?: () => boolean;
+  onStatus?: (status: RewriteStatus) => void;
 }) {
   return createRewriteRunner({
     adapter: input.adapter ?? adapter(),
@@ -29,6 +31,7 @@ function runner(input: {
     agentId: "agent-a",
     workspaceId: "ws-1",
     isActive: input.isActive ?? (() => true),
+    onStatus: input.onStatus ?? (() => {}),
   });
 }
 
@@ -79,6 +82,24 @@ describe("rewrite runner", () => {
     expect(current.isBusy()).toBe(false);
     await expect(current.run("general")).resolves.toBeUndefined();
     expect(attempts).toBe(2);
+  });
+
+  it("reports rewriting, then rewritten once the Composer holds the result", async () => {
+    const seen: RewriteStatus[] = [];
+    await runner({ onStatus: (status) => seen.push(status) }).run("general");
+    expect(seen).toEqual(["rewriting", "rewritten"]);
+  });
+
+  it("reports rewriting, then idle when the rewrite fails", async () => {
+    const seen: RewriteStatus[] = [];
+    const current = runner({
+      rpc: async () => {
+        throw new Error("daemon offline");
+      },
+      onStatus: (status) => seen.push(status),
+    });
+    await expect(current.run("general")).rejects.toThrow("daemon offline");
+    expect(seen).toEqual(["rewriting", "idle"]);
   });
 
   it("drops a leftover /rewrite prefix before rewriting from the pill", async () => {

@@ -9,6 +9,7 @@ vi.mock(
 import contribute from "../../index.client.js";
 import { createFakeClient, unmountComposer, type FakePill } from "./fakes.js";
 import { promptKitSettingsSchema } from "../../shared/settings.js";
+import { createRewriteStatusBus } from "../../client/pills/rewrite-status.js";
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -259,6 +260,7 @@ describe("registry read economy", () => {
       {
         listActions,
         onSettingsSaved: () => () => {},
+        statuses: createRewriteStatusBus(),
         readSettings: async () => ({
           status: "ready",
           values: promptKitSettingsSchema.parse({}),
@@ -268,6 +270,58 @@ describe("registry read economy", () => {
     await flush();
     expect(fake.live()).toHaveLength(5);
     expect(listActions).toHaveBeenCalledTimes(1);
+    cleanup();
+  });
+});
+
+describe("pill follows rewrite status", () => {
+  async function mountPills(statuses: ReturnType<typeof createRewriteStatusBus>) {
+    const fake = createFakeClient({
+      agents: [agentA, agentB, { id: "agent-c", workspaceId: "ws-1" }],
+      rpc: async () => {
+        throw new Error("unexpected rpc");
+      },
+    });
+    const { registerAgentPills } = await import("../../client/pills/agent-pills.js");
+    const cleanup = registerAgentPills(fake.client, () => async () => {}, {
+      listActions: async () => [
+        { id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I", custom: false },
+      ],
+      onSettingsSaved: () => () => {},
+      readSettings: async () => ({ status: "ready", values: promptKitSettingsSchema.parse({}) }),
+      statuses,
+    });
+    await flush();
+    const label = (agentId: string) => fake.live().find((pill) => pill.agentId === agentId)!.button.label;
+    return { cleanup, label };
+  }
+
+  it("updates only the targeted agent's pill and returns it to idle after Rewritten", async () => {
+    const statuses = createRewriteStatusBus();
+    const { cleanup, label } = await mountPills(statuses);
+    vi.useFakeTimers();
+    try {
+      statuses.publish({ workspaceId: "ws-1", agentId: "agent-a" }, "rewriting");
+      expect([label("agent-a"), label("agent-c")]).toEqual(["Rewriting...", "PromptKit"]);
+      statuses.publish({ workspaceId: "ws-1", agentId: "agent-a" }, "rewritten");
+      expect(label("agent-a")).toBe("Rewritten");
+      vi.advanceTimersByTime(2000);
+      expect(label("agent-a")).toBe("PromptKit");
+    } finally {
+      vi.useRealTimers();
+      cleanup();
+    }
+  });
+
+  it("reaches every pill in the workspace from the slash path", async () => {
+    const statuses = createRewriteStatusBus();
+    const { cleanup, label } = await mountPills(statuses);
+    statuses.publish({ workspaceId: "ws-1", agentId: null }, "rewriting");
+    expect([label("agent-a"), label("agent-c"), label("agent-b")]).toEqual([
+      "Rewriting...",
+      "Rewriting...",
+      "PromptKit",
+    ]);
     cleanup();
   });
 });

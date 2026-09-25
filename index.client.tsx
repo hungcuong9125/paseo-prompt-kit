@@ -8,6 +8,8 @@ import { onSettingsSaved } from "./client/settings/settings-saved.js";
 import { registerRewriteCommand } from "./client/commands/rewrite-command.js";
 import { registerAgentPills } from "./client/pills/agent-pills.js";
 import { createRewriteRunner } from "./client/pills/rewrite-runner.js";
+import { createRewriteStatusBus } from "./client/pills/rewrite-status.js";
+import { watchPillTint } from "./client/pills/pill-tint.js";
 import { PromptKitSettingsScreen } from "./client/settings/settings-screen.js";
 import { createRewriteSheet, locateComposerFromProbe } from "./client/sheet/rewrite-sheet.js";
 
@@ -30,6 +32,7 @@ export default function contribute(client: PluginClientContext): () => void {
     return output.actions;
   };
 
+  const statuses = createRewriteStatusBus();
   const composerSupported = createWebComposerAdapter().isSupported();
   const removePills = registerAgentPills(
     client,
@@ -41,6 +44,7 @@ export default function contribute(client: PluginClientContext): () => void {
         agentId: agent.agentId,
         workspaceId: agent.workspaceId,
         isActive,
+        onStatus: (status) => statuses.publish(agent, status),
       });
       return (actionId) => runner.run(actionId);
     },
@@ -48,11 +52,13 @@ export default function contribute(client: PluginClientContext): () => void {
       listActions,
       readSettings,
       onSettingsSaved,
+      statuses,
       ...(composerSupported ? {} : { popover: createRewriteSheet(locateComposerFromProbe) }),
     },
   );
 
-  const removeCommand = registerRewriteCommand(client, { listActions, readSettings });
+  const stopTint = composerSupported ? watchPillTint(document) : () => {};
+  const removeCommand = registerRewriteCommand(client, { listActions, readSettings, statuses });
 
   const removeSettingsScreen = client.addSettingsScreen({
     id: "prompt-kit",
@@ -64,6 +70,7 @@ export default function contribute(client: PluginClientContext): () => void {
   return () => {
     removePills();
     removeCommand();
+    stopTint();
     removeSettingsScreen();
   };
 }

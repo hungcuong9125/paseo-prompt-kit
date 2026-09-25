@@ -11,6 +11,7 @@ import type { ActionSummary } from "../../shared/rpc.js";
 import { enabledActions } from "../actions/enabled.js";
 import { PLUGIN_ICON } from "../icon.js";
 import type { SettingsRead } from "../settings/read-settings.js";
+import { reachesPill, type RewriteStatus, type RewriteStatusBus } from "./rewrite-status.js";
 
 export interface AgentPillAgent {
   workspaceId: string;
@@ -27,22 +28,28 @@ export interface AgentPillDependencies {
   popover?: ComponentType<PluginButtonContentProps>;
   /** Fires after this client saves the settings, so every pill re-reads its enabled set. */
   onSettingsSaved: (listener: () => void) => () => void;
+  statuses: RewriteStatusBus;
 }
 
 const PILL_ID = "prompt-kit";
+const REWRITTEN_MS = 2000;
+
+/** The label that shows a rewrite's progress on the pill; `pill-tint` colors it by label. */
+export function pillPresentation(status: RewriteStatus): Pick<PluginButton, "label"> {
+  if (status === "rewriting") return { label: "Rewriting..." };
+  if (status === "rewritten") return { label: "Rewritten" };
+  return { label: "PromptKit" };
+}
 
 /** Pill for the enabled set `E`: one action → button, several → menu, popover → sheet. */
 export function pillButton(
   enabled: readonly ActionSummary[],
   run: AgentPillRunner,
   popover?: ComponentType<PluginButtonContentProps>,
+  status: RewriteStatus = "idle",
 ): PluginButton {
   const first = enabled[0]!;
-  const base = {
-    title: "PromptKit",
-    icon: PLUGIN_ICON,
-    label: "PromptKit",
-  } as const;
+  const base = { title: "PromptKit", icon: PLUGIN_ICON, ...pillPresentation(status) };
 
   if (popover !== undefined) {
     return { ...base, behavior: { kind: "popover", Content: popover } };
@@ -80,7 +87,13 @@ export function registerAgentPills(
 ): () => void {
   const entries = new Map<
     string,
-    { workspaceId: string; registration: PluginButtonRegistration; run: AgentPillRunner }
+    {
+      workspaceId: string;
+      registration: PluginButtonRegistration;
+      run: AgentPillRunner;
+      status: RewriteStatus;
+      reset: ReturnType<typeof setTimeout> | null;
+    }
   >();
   /** Every live agent, with or without a pill, so a save can add a pill that was missing. */
   const live = new Map<string, AgentPillAgent>();
@@ -105,6 +118,7 @@ export function registerAgentPills(
   function remove(agentId: string): void {
     const entry = entries.get(agentId);
     if (!entry) return;
+    if (entry.reset !== null) clearTimeout(entry.reset);
     entry.registration.remove();
     entries.delete(agentId);
   }
@@ -149,7 +163,7 @@ export function registerAgentPills(
       agentId: agent.agentId,
       button: pillButton(enabled, run, dependencies.popover),
     });
-    entries.set(agent.agentId, { workspaceId: agent.workspaceId, registration, run });
+    entries.set(agent.agentId, { workspaceId: agent.workspaceId, registration, run, status: "idle", reset: null });
   }
 
   /** After a save: each live agent's pill follows the new `E` — updated, added, or dropped. */
@@ -159,9 +173,19 @@ export function registerAgentPills(
     for (const agent of live.values()) {
       const entry = entries.get(agent.agentId);
       if (enabled.length === 0) remove(agent.agentId);
-      else if (entry) entry.registration.update(pillButton(enabled, entry.run, dependencies.popover));
+      else if (entry) entry.registration.update(pillButton(enabled, entry.run, dependencies.popover, entry.status));
       else void upsert(agent);
     }
+  }
+
+  /** "Rewritten" holds for REWRITTEN_MS, then the pill returns to idle. */
+  function show(agentId: string, status: RewriteStatus): void {
+    const entry = entries.get(agentId);
+    if (!entry) return;
+    if (entry.reset !== null) clearTimeout(entry.reset);
+    entry.reset = status === "rewritten" ? setTimeout(() => show(agentId, "idle"), REWRITTEN_MS) : null;
+    entry.status = status;
+    entry.registration.update(pillPresentation(status));
   }
 
   function accept(agent: {
@@ -188,6 +212,11 @@ export function registerAgentPills(
     }
   });
   const stopFollowingSaves = dependencies.onSettingsSaved(() => void refresh());
+  const stopFollowingStatus = dependencies.statuses.subscribe((target, status) => {
+    for (const [agentId, entry] of entries) {
+      if (reachesPill(target, { workspaceId: entry.workspaceId, agentId })) show(agentId, status);
+    }
+  });
 
   void client.paseo.agents
     .list({ subscribe: {}, page: { limit: 200 } })
@@ -202,6 +231,7 @@ export function registerAgentPills(
     cancelled = true;
     unsubscribe();
     stopFollowingSaves();
+    stopFollowingStatus();
     for (const agentId of [...entries.keys()]) remove(agentId);
   };
 }

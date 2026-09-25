@@ -4,6 +4,7 @@ import type { ActionSummary } from "../../shared/rpc.js";
 import { enabledActions } from "../actions/enabled.js";
 import { createWebComposerAdapter } from "../composer-bridge/web.js";
 import { createRewriteRunner } from "../pills/rewrite-runner.js";
+import type { RewriteStatusBus } from "../pills/rewrite-status.js";
 import { createSettingsReader, type SettingsRead } from "../settings/read-settings.js";
 
 export const REWRITE_COMMAND = "rewrite";
@@ -11,6 +12,7 @@ export const REWRITE_COMMAND = "rewrite";
 export interface RewriteCommandDependencies {
   listActions: (customActions: readonly ActionPack[]) => Promise<readonly ActionSummary[]>;
   readSettings: () => Promise<SettingsRead>;
+  statuses: RewriteStatusBus;
 }
 
 /**
@@ -47,6 +49,8 @@ export function registerRewriteCommand(
         agentId: null,
         workspaceId: context.workspace.id,
         isActive: () => true,
+        onStatus: (status) =>
+          dependencies.statuses.publish({ workspaceId: context.workspace.id, agentId: null }, status),
       });
       await runner.runText(action.id, context.args);
     },

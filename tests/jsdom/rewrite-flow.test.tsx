@@ -143,6 +143,33 @@ describe("rewrite flow", () => {
     fake.cleanup();
   });
 
+  it("labels the pill Rewriting... while in flight and Rewritten after", async () => {
+    const pendingRewrite = deferred<RpcResult>();
+    const fake = await mountWithRewrite(() => pendingRewrite.promise, "original");
+    const pill = () => fake.fake.live()[0]!.button;
+    expect(pill().label).toBe("PromptKit");
+
+    const pending = itemPress(fake.fake.live()[0]!)();
+    await flush();
+    expect(pill().label).toBe("Rewriting...");
+
+    pendingRewrite.resolve({ status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1 });
+    await pending;
+    expect(pill().label).toBe("Rewritten");
+    expect(pill().icon).toBe("Sparkles");
+    fake.cleanup();
+  });
+
+  it("returns the pill to PromptKit when the rewrite fails", async () => {
+    const fake = await mountWithRewrite(async () => {
+      throw new Error("daemon offline");
+    }, "keep me");
+    await expect(itemPress(fake.fake.live()[0]!)()).rejects.toThrow("daemon offline");
+    expect(fake.fake.live()[0]!.button.label).toBe("PromptKit");
+    expect(fake.fake.live()[0]!.button.icon).toBe("Sparkles");
+    fake.cleanup();
+  });
+
   it("blocks re-entry while a rewrite is in flight", async () => {
     const pendingRewrite = deferred<RpcResult>();
     const fake = await mountWithRewrite(() => pendingRewrite.promise, "original");

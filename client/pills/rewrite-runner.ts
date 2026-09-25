@@ -4,6 +4,7 @@ import { providerCatalogRpc, rewriteRpc, type RewriteInput } from "../../shared/
 import { promptKitSettingsSchema } from "../../shared/settings.js";
 import type { SettingsRead } from "../settings/read-settings.js";
 import { validateDedicatedSelection } from "../settings/selection.js";
+import type { RewriteStatus } from "./rewrite-status.js";
 
 export interface RewriteRunnerInput {
   adapter: ComposerAdapter;
@@ -14,6 +15,7 @@ export interface RewriteRunnerInput {
   workspaceId: string;
   /** False once this runner's owner is gone, so a late result is never applied. */
   isActive: () => boolean;
+  onStatus: (status: RewriteStatus) => void;
 }
 
 export interface RewriteRunner {
@@ -75,6 +77,21 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
     input.adapter.focus();
   }
 
+  /** Rewrites `prompt` while the Composer shows `shown`; reports progress through `onStatus`. */
+  async function rewriteInPlace(actionId: string, prompt: string, shown: string): Promise<void> {
+    const endEffect = input.adapter.beginRewriteEffect();
+    input.onStatus("rewriting");
+    let status: RewriteStatus = "idle";
+    try {
+      const rewritten = await rewrite(actionId, prompt);
+      apply(shown, rewritten, "The prompt changed while PromptKit was rewriting; your text was kept.");
+      status = "rewritten";
+    } finally {
+      endEffect();
+      input.onStatus(status);
+    }
+  }
+
   async function guarded<T>(work: () => Promise<T>): Promise<T> {
     if (busy) throw new Error("PromptKit is already rewriting this prompt.");
     busy = true;
@@ -92,13 +109,7 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
         if (source === null) throw new Error(input.adapter.describeFailure());
         const prompt = stripSlashPrefix(source);
         if (prompt.trim() === "") throw new Error("Write a prompt first.");
-        const endEffect = input.adapter.beginRewriteEffect();
-        try {
-          const rewritten = await rewrite(actionId, prompt);
-          apply(source, rewritten, "The prompt changed while PromptKit was rewriting; your text was kept.");
-        } finally {
-          endEffect();
-        }
+        await rewriteInPlace(actionId, prompt, source);
       }),
     runText: (actionId, text) =>
       guarded(async () => {
@@ -110,13 +121,7 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
         if (current === "" && !input.adapter.replaceText(restored)) {
           throw new Error("PromptKit could not find the Composer to update.");
         }
-        const endEffect = input.adapter.beginRewriteEffect();
-        try {
-          const rewritten = await rewrite(actionId, text);
-          apply(restored, rewritten, "The prompt changed while PromptKit was rewriting; your text was kept.");
-        } finally {
-          endEffect();
-        }
+        await rewriteInPlace(actionId, text, restored);
       }),
     isBusy: () => busy,
   };

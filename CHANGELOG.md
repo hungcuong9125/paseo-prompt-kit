@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.7 - 2026-09-25
+
+### Added
+
+- The PromptKit pill now shows a rewrite's progress: **Rewriting...** with a purple border,
+  label and icon while a request is in flight, then **Rewritten** in green for 2 seconds once
+  the Composer holds the result. Both the pill and `/rewrite` drive the same status, so a
+  `/rewrite` run colors every pill in the workspace since it has no single agent to target.
+
 ## 0.5.6 - 2026-09-25
 
 ### Fixed
