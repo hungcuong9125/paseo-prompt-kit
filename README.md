@@ -4,8 +4,6 @@ PromptKit is a Paseo plugin that rewrites the prompt in your Composer before you
 
 ![PromptKit rewriting a prompt in the Paseo Composer](docs/images/promptkit-promo.gif)
 
-[Watch the demo video (MP4)](docs/images/promptkit-promo.mp4)
-
 The rewrite runs one of three ways, chosen in Settings: the agent's own provider CLI with the model the Composer shows (the default), a provider CLI with a model you pick, or a direct request to an API you configure (OpenAI, Anthropic, Google Gemini, Cloudflare Workers AI, or anything speaking one of those protocols). A CLI runs headlessly in a temporary directory — no Paseo agent, no tab, no archive — so your conversation never receives a rewrite turn.
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
@@ -37,7 +35,7 @@ paseo plugin add npm:paseo-prompt-kit
 paseo plugin ls
 ```
 
-Pin a release by adding its version, for example `npm:paseo-prompt-kit@0.5.6`. The plugin id stays `prompt-kit`, so reload and logs use that id:
+Pin a release by adding its version, for example `npm:paseo-prompt-kit@0.5.7`. The plugin id stays `prompt-kit`, so reload and logs use that id:
 
 ```bash
 paseo plugin reload prompt-kit
@@ -73,7 +71,7 @@ paseo plugin ls
 `--ref` chooses the initial branch, tag, or commit once; later `paseo plugin update prompt-kit` follows the remote's default HEAD. Pin a release instead of tracking `main` by giving `--ref` a tag:
 
 ```bash
-paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.5.6
+paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.5.7
 ```
 
 `paseo plugin ls` reports the installed commit.
@@ -225,6 +223,31 @@ Example — a Google Gemini endpoint with `gemini-2.5-flash-lite`, from the sett
       "keySource": "env",
       "apiKeyEnv": "GEMINI_API_KEY",
       "models": ["gemini-2.5-flash-lite"]
+    }
+  ]
+}
+```
+
+**Fast, stable-quality testing.** For a quick feedback loop while trying out actions or a
+custom action pack, Groq's `openai`-protocol endpoint with `qwen/qwen3.8-27b` returns a rewrite
+in roughly 1–2 seconds and holds up well against the `General` action's instruction-shape and
+protected-literal checks — a good default before switching to a slower, higher-quality model for
+the final pass. Example, from the settings document:
+
+```json
+{
+  "transport": "api",
+  "apiEndpointId": "groq",
+  "apiModel": "qwen/qwen3.8-27b",
+  "apiEndpoints": [
+    {
+      "id": "groq",
+      "label": "Groq",
+      "protocol": "openai",
+      "baseUrl": "https://api.groq.com/openai/v1",
+      "keySource": "env",
+      "apiKeyEnv": "GROQ_API_KEY",
+      "models": ["qwen/qwen3.8-27b"]
     }
   ]
 }
