@@ -40,10 +40,10 @@ export function describeTimeout(timeoutMs: number): { error: string | null; note
       note: null,
     };
   }
-  if (timeoutMs > TIMEOUT_MS.hostRpcCapMs) {
+  if (timeoutMs > TIMEOUT_MS.runCapMs) {
     return {
       error: null,
-      note: `Paseo stops waiting for a plugin call after ${TIMEOUT_MS.hostRpcCapMs / 1000} s, so a longer budget is not reached in practice.`,
+      note: `Paseo stops waiting for a plugin call after ${TIMEOUT_MS.hostRpcCapMs / 1000} s, so a rewrite stops at ${TIMEOUT_MS.runCapMs / 1000} s and reports a timeout.`,
     };
   }
   return { error: null, note: null };

@@ -39,6 +39,10 @@ export const cloudflareProtocol: ApiProtocol = {
     const content = at(payload, "result", "choices", 0, "message", "content");
     return typeof content === "string" ? content : null;
   },
+  isTruncated(payload: unknown): boolean {
+    // Only the OpenAI-shaped answer reports why it stopped.
+    return at(payload, "result", "choices", 0, "finish_reason") === "length";
+  },
   buildModelsRequest(call: ApiModelsCall): ApiHttpRequest {
     return {
       url: joinUrl(call.baseUrl, `${accountPath(call.accountId)}/models/search?task=Text%20Generation&per_page=100`),

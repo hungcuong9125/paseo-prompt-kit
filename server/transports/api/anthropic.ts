@@ -1,4 +1,4 @@
-import { at, authHeaders, joinUrl, stringFieldAt, type ApiCall, type ApiHttpRequest, type ApiModelsCall, type ApiProtocol } from "./protocol.js";
+import { at, authHeaders, joinUrl, outputTokenCap, stringFieldAt, type ApiCall, type ApiHttpRequest, type ApiModelsCall, type ApiProtocol } from "./protocol.js";
 
 /**
  * The Anthropic Messages protocol.
@@ -8,12 +8,9 @@ import { at, authHeaders, joinUrl, stringFieldAt, type ApiCall, type ApiHttpRequ
  * plus an explicit version header. It is also the shape z.ai, Alibaba/Qwen and
  * most Anthropic-compatible gateways expose, so those are `baseUrl` entries.
  *
- * `max_tokens` is required here and cannot be omitted, so a rewrite budget is
- * fixed at a value far above any rewritten prompt; the response stops on its own
- * well before it.
+ * `max_tokens` is required, and Anthropic counts it against the per-minute output
+ * limit when the request starts, so it is sized from the draft.
  */
-const MAX_TOKENS = 4_096;
-
 export const anthropicProtocol: ApiProtocol = {
   id: "anthropic",
   buildRequest(call: ApiCall): ApiHttpRequest {
@@ -26,7 +23,7 @@ export const anthropicProtocol: ApiProtocol = {
       },
       body: JSON.stringify({
         model: call.model,
-        max_tokens: MAX_TOKENS,
+        max_tokens: outputTokenCap(call.draft),
         temperature: 0,
         system: call.systemPrompt,
         messages: [{ role: "user", content: call.taskPrompt }],
@@ -44,6 +41,9 @@ export const anthropicProtocol: ApiProtocol = {
       if (typed.type === "text" && typeof typed.text === "string") parts.push(typed.text);
     }
     return parts.length === 0 ? null : parts.join("\n");
+  },
+  isTruncated(payload: unknown): boolean {
+    return at(payload, "stop_reason") === "max_tokens";
   },
   buildModelsRequest(call: ApiModelsCall): ApiHttpRequest {
     return {

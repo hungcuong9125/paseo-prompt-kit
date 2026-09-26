@@ -59,8 +59,8 @@ describe("findSaveProblem", () => {
 
 describe("describeTimeout", () => {
   it("is silent inside the host's cap, notes above it, and errors outside the schema", () => {
-    expect(describeTimeout(TIMEOUT_MS.hostRpcCapMs)).toEqual({ error: null, note: null });
-    const above = describeTimeout(TIMEOUT_MS.hostRpcCapMs + 1);
+    expect(describeTimeout(TIMEOUT_MS.runCapMs)).toEqual({ error: null, note: null });
+    const above = describeTimeout(TIMEOUT_MS.runCapMs + 1);
     expect(above.error).toBeNull();
     expect(above.note).toContain(`${TIMEOUT_MS.hostRpcCapMs / 1000} s`);
     expect(describeTimeout(TIMEOUT_MS.max + 1).error).not.toBeNull();

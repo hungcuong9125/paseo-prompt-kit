@@ -7,6 +7,7 @@ import {
   opencodeFamily,
   piFamily,
   resolveFamily,
+  TRUNCATED_MESSAGE,
 } from "../../server/transports/cli/family.js";
 
 const REQUEST = {
@@ -87,6 +88,18 @@ describe("CLI families", () => {
       expect(piFamily.parseOutput(stdout)).toBe("rewritten");
     });
 
+    // pi exits 0 in json mode after a failed request; only the turn says it failed.
+    it("reports a failed or cut-off turn instead of an empty answer", () => {
+      const turn = (message: Record<string, unknown>) => `${JSON.stringify({ type: "turn_end", message })}\n`;
+      const failed = turn({ role: "assistant", content: [], stopReason: "error", errorMessage: "429 rate limited" });
+      expect(piFamily.parseError(failed)).toBe("429 rate limited");
+      expect(piFamily.parseError(turn({ role: "assistant", content: [], stopReason: "aborted" }))).toBe("Request aborted.");
+      expect(piFamily.parseError(turn({ role: "assistant", content: [{ type: "text", text: "half" }], stopReason: "length" }))).toBe(
+        TRUNCATED_MESSAGE,
+      );
+      expect(piFamily.parseError(turn({ role: "assistant", content: [{ type: "text", text: "done" }], stopReason: "stop" }))).toBeNull();
+    });
+
     it("returns null when no assistant text is present", () => {
       expect(piFamily.parseOutput('{"type":"turn_start"}\n')).toBeNull();
       expect(piFamily.parseOutput("not json at all")).toBeNull();
@@ -108,7 +121,17 @@ describe("CLI families", () => {
           "json",
         ]),
       );
+      expect(args[args.indexOf("--tools") + 1]).toBe("");
       expect(claudeFamily.promptDelivery).toBe("stdin");
+    });
+
+    // The user's MCP servers, hooks and skills load on every cold start and push it past the host's cap.
+    it("starts without the user's MCP servers, hooks, skills or a saved session", () => {
+      const { args } = argv(claudeFamily);
+      expect(args).toEqual(
+        expect.arrayContaining(["--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence"]),
+      );
+      expect(JSON.parse(args[args.indexOf("--settings") + 1]!)).toEqual({ disableAllHooks: true });
     });
 
     it("reads the result field of the JSON envelope", () => {
@@ -126,6 +149,15 @@ describe("CLI families", () => {
       expect(claudeFamily.parseOutput(failed)).toBeNull();
       expect(claudeFamily.parseError(failed)).toBe("Failed to authenticate: OAuth session expired");
       expect(claudeFamily.parseError('{"type":"result","result":"rewritten"}')).toBeNull();
+    });
+
+    it("reports an error subtype or a max_tokens stop, never the partial result", () => {
+      const subtype = '{"type":"result","subtype":"error_during_execution","is_error":false}';
+      expect(claudeFamily.parseOutput(subtype)).toBeNull();
+      expect(claudeFamily.parseError(subtype)).toBe("Claude reported an error (error_during_execution).");
+      const cut = '{"type":"result","subtype":"success","stop_reason":"max_tokens","result":"half"}';
+      expect(claudeFamily.parseOutput(cut)).toBeNull();
+      expect(claudeFamily.parseError(cut)).toBe(TRUNCATED_MESSAGE);
     });
   });
 
@@ -153,6 +185,20 @@ describe("CLI families", () => {
     it("returns null when no agent message completed", () => {
       expect(codexFamily.parseOutput('{"type":"turn.completed"}\n')).toBeNull();
     });
+
+    // Shape of a real codex 0.157 run with an unsupported model: stderr only says "Reading prompt from stdin...".
+    it("reports the provider's message from turn.failed", () => {
+      const provider = JSON.stringify({ type: "error", status: 400, error: { type: "invalid_request_error", message: "The model is not supported." } });
+      const stdout = [
+        JSON.stringify({ type: "thread.started", thread_id: "t" }),
+        JSON.stringify({ type: "item.completed", item: { id: "item_0", type: "error", message: "Model metadata not found." } }),
+        JSON.stringify({ type: "turn.started" }),
+        JSON.stringify({ type: "error", message: provider }),
+        JSON.stringify({ type: "turn.failed", error: { message: provider } }),
+      ].join("\n");
+      expect(codexFamily.parseError(stdout)).toBe("The model is not supported.");
+      expect(codexFamily.parseError('{"type":"turn.completed"}\n')).toBeNull();
+    });
   });
 
   describe("opencode", () => {
@@ -173,6 +219,20 @@ describe("CLI families", () => {
         JSON.stringify({ type: "text", part: { type: "text", text: "final" } }),
       ].join("\n");
       expect(opencodeFamily.parseOutput(stdout)).toBe("final");
+    });
+
+    // Shape of a real opencode 1.18 failure: exit 1, empty stderr, one error event.
+    it("reports the error event, since stderr is empty", () => {
+      const stdout = `${JSON.stringify({
+        type: "error",
+        sessionID: "ses_1",
+        error: { name: "UnknownError", data: { message: "Unexpected server error." } },
+      })}\n`;
+      expect(opencodeFamily.parseError(stdout)).toBe("Unexpected server error.");
+      expect(opencodeFamily.parseError(`${JSON.stringify({ type: "error", error: { name: "ProviderAuthError" } })}\n`)).toBe(
+        "ProviderAuthError",
+      );
+      expect(opencodeFamily.parseError('{"type":"text","part":{"text":"ok"}}\n')).toBeNull();
     });
   });
 });

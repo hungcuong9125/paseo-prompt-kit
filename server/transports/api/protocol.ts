@@ -19,6 +19,8 @@ export interface ApiCall {
   /** The rewrite instruction. */
   readonly systemPrompt: string;
   readonly taskPrompt: string;
+  /** The author's draft alone, without the wrapper; sizes an output cap where a protocol sends one. */
+  readonly draft: string;
 }
 
 export interface ApiHttpRequest {
@@ -39,6 +41,8 @@ export interface ApiProtocol {
   /** `null` means the answer could not be read; the runner maps that to a code. */
   buildRequest(call: ApiCall): ApiHttpRequest;
   parseResponse(payload: unknown): string | null;
+  /** True when the model stopped at its output limit, so the answer is cut short. */
+  isTruncated(payload: unknown): boolean;
   /**
    * The request that lists the models this endpoint offers. Used by the settings
    * screen's test button, which is the only way a user learns whether a key and a
@@ -46,6 +50,18 @@ export interface ApiProtocol {
    */
   buildModelsRequest(input: ApiModelsCall): ApiHttpRequest;
   parseModelsResponse(payload: unknown): string[];
+}
+
+const MIN_OUTPUT_TOKENS = 512;
+const MAX_OUTPUT_TOKENS = 8_192;
+
+/**
+ * The output cap for one rewrite: about one token per 3 UTF-8 bytes in any script, doubled
+ * for a rewrite that grows. Providers reserve per-minute output quota from the cap, so it stays small.
+ */
+export function outputTokenCap(draft: string): number {
+  const draftTokens = Math.ceil(new TextEncoder().encode(draft).length / 3);
+  return Math.min(MIN_OUTPUT_TOKENS + 2 * draftTokens, MAX_OUTPUT_TOKENS);
 }
 
 /** Strips a trailing slash so a base URL and a path cannot produce a double slash. */

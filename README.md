@@ -122,7 +122,8 @@ Choose an endpoint — presets and your saved custom endpoints are listed A–Z 
 
 ### Advanced
 
-- `Timeout (ms)`: how long a rewrite may run, default `90000`, allowed range `1000`–`600000`. The daemon caps one plugin call at 30 s, so the screen notes when a budget above that cannot be reached.
+- `Timeout (ms)`: how long a rewrite may run, default `25000`, allowed range `1000`–`600000`. The daemon drops a plugin call at 30 s, so a rewrite stops at 27 s whatever the setting says and reports its own timeout; the screen notes when a budget above that cannot be reached.
+- `Debug log`: off by default. Off, the plugin log gets one line per rewrite, `rewrite success` or `rewrite failed` with the error code. On, it also gets `debug` lines tagged with one `request=` id: the resolved target, the CLI command line (system prompt reduced to its length) with exit code, timing and stdout/stderr excerpts, or the HTTP URL, status, rate-limit headers and a body excerpt. Keys and Cloudflare account ids are never written; the excerpts can contain the model's answer, so read them before sharing. See [Reporting a bug](#reporting-a-bug).
 - `CLI per provider` (Provider CLI): lists only the providers you have overridden, plus an Add row. A provider named after its CLI (for example `pi` or `codex`) resolves on its own and needs no entry; an unresolved provider is refused, never guessed.
 - `Endpoint per provider` (Direct API): lists only mapped providers, plus an Add row. Pressing the pill in an agent of a mapped provider sends that agent's own model to the endpoint over HTTP. A mapped provider ignores the Model chosen under API endpoint.
 
@@ -205,6 +206,8 @@ Each endpoint is one of four protocols. Adding a vendor that speaks one of them 
 | `gemini` | `POST <baseUrl>/v1beta/models/<model>:generateContent`, `x-goog-api-key` | Google AI Studio, Vertex |
 | `cloudflare` | `POST <baseUrl>/accounts/<account id>/ai/run/<model>`, `Authorization: Bearer` | Cloudflare Workers AI (`@cf/...` models) |
 
+The `openai` protocol sends `max_completion_tokens` and the `anthropic` protocol `max_tokens`, both sized from the draft (512 plus about twice the draft's tokens, at most 8192). Groq and Anthropic reserve per-minute output quota from that number, so a small one keeps a short rewrite inside a low tier's limit. An answer that stops at the limit is refused, never pasted.
+
 **Cloudflare Workers AI.** Base URL `https://api.cloudflare.com/client/v4`. The endpoint has an extra **Account ID** row, above Key variable, holding the **name** of the variable with your account id — prefilled `CLAUDFLARE_ACCOUNT_ID`, change it if yours differs. The account id is read from the same **Key source** as the token, so with `secrets.json` both live in the file and work however Paseo was started. The key variable defaults to `CLOUDFLARE_AUTH_TOKEN`, an API token with Workers AI permission. Models are the full `@cf/...` ids, for example `@cf/meta/llama-3.1-8b-instruct-fp8`; **Test** lists the account's text-generation models. PromptKit sends `max_tokens: 2048` because the service default of 256 tokens would cut a rewrite short.
 
 Example — a Google Gemini endpoint with `gemini-2.5-flash-lite`, from the settings document:
@@ -272,7 +275,7 @@ An endpoint that lists `models` restricts the choice to that list, and a model o
 | `api_endpoint_unknown` | The selected or mapped endpoint id is not defined in `apiEndpoints` |
 | `invalid_model` | The model is not in the endpoint's `models` list |
 | `api_http_error` | The endpoint answered a non-2xx status, or was unreachable |
-| `api_bad_response` | The answer was not JSON, or carried no text |
+| `api_bad_response` | The answer was not JSON, carried no text, or stopped at the model's output token limit |
 | `timeout` | The request exceeded `Timeout (ms)` |
 
 Every one of these leaves the Composer text untouched.
@@ -283,8 +286,15 @@ Every one of these leaves the Composer text untouched.
 - Requires Paseo `>=0.9.0`. Because text access depends on the Composer DOM (or, on mobile, the React tree), a Paseo UI change can break it even when the public plugin SDK is compatible.
 - PromptKit refuses to replace text you edited while a rewrite was running, and refuses when more than one Composer (or none) is visible.
 - Only `General` ships. Any other action is a custom action you write in Settings, or a pack you bundle as a JSON file — see `docs/EXTENDING.md`.
-- The API transport does not stream: it makes one request and waits for the whole answer. A slow endpoint can exceed the daemon's 30-second plugin-call cap, in which case the host reports a timeout before PromptKit's own `Timeout (ms)` can fire.
+- A rewrite has at most 27 seconds, because the daemon drops a plugin call at 30 s. The API transport does not stream, and a cold CLI start (notably `codex` and `opencode`) can take longer; PromptKit then reports its own timeout. Use a faster model or the Direct API transport.
 - No OAuth or token refresh: an endpoint uses a static key. A provider that needs an interactive login is better served by the CLI transport.
+
+## Reporting a bug
+
+1. Settings → Advanced → turn **Debug log** on and save.
+2. Reproduce the failure once.
+3. Run `paseo plugin logs prompt-kit` and copy the lines with the failing `request=` id, from `debug rewrite start` to `rewrite failed`.
+4. Read the excerpts, remove anything private, and attach them to the issue. Turn Debug log off again.
 
 ## Project layout
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runRewrite } from "../../server/rewrite-engine/engine.js";
+import { TIMEOUT_MS } from "../../shared/settings.js";
 import {
   cliStdout,
   createRewriteHarness,
@@ -348,6 +349,18 @@ describe("runRewrite: CLI failure paths", () => {
     expect(output.status).toBe("error");
     if (output.status !== "error") throw new Error("expected error");
     expect(output.error.code).toBe("timeout");
+  });
+
+  // The daemon drops a plugin call at 30 s; a longer budget would hide the timeout behind the host's.
+  it("runs a CLI no longer than the cap under the host's RPC limit, whatever the setting says", async () => {
+    const harness = createRewriteHarness({});
+    await rewrite(harness, { timeoutMs: TIMEOUT_MS.max });
+    expect(harness.spawned[0]?.timeoutMs).toBe(TIMEOUT_MS.runCapMs);
+    expect(TIMEOUT_MS.runCapMs).toBeLessThan(TIMEOUT_MS.hostRpcCapMs);
+
+    const short = createRewriteHarness({});
+    await rewrite(short, { timeoutMs: TIMEOUT_MS.min });
+    expect(short.spawned[0]?.timeoutMs).toBe(TIMEOUT_MS.min);
   });
 
   it("maps an unusable CLI answer to empty_output", async () => {

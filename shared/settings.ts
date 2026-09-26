@@ -15,13 +15,22 @@ export const modelModeSchema = z.enum(["current", "dedicated"]);
  */
 export const transportSchema = z.enum(["cli", "api"]);
 
-/** Rewrite budget bounds. `hostRpcCapMs` is the daemon's own 30 s plugin-RPC cap. */
+/**
+ * Rewrite budget bounds. `hostRpcCapMs` is the daemon's own 30 s plugin-RPC cap; a rewrite
+ * stops at `runCapMs` so PromptKit reports its own timeout before the host drops the call.
+ */
 export const TIMEOUT_MS = {
   min: 1_000,
   max: 600_000,
-  default: 90_000,
+  default: 25_000,
+  runCapMs: 27_000,
   hostRpcCapMs: 30_000,
 } as const;
+
+/** The budget a rewrite actually runs with. */
+export function effectiveTimeoutMs(timeoutMs: number): number {
+  return Math.min(timeoutMs, TIMEOUT_MS.runCapMs);
+}
 
 /**
  * Host-scoped PromptKit settings. Every field has a default so `{}` parses and
@@ -63,6 +72,8 @@ export const promptKitSettingsSchema = z.object({
    */
   secretsDir: z.string().min(1).nullable().default(null),
   timeoutMs: z.number().int().min(TIMEOUT_MS.min).max(TIMEOUT_MS.max).default(TIMEOUT_MS.default),
+  /** Writes per-rewrite detail lines (target, request, CLI or HTTP result) to the plugin log. */
+  debugLog: z.boolean().default(false),
   /**
    * Per-action user toggle, keyed by action id. An id absent here falls back to
    * the pack's `enabledByDefault`, so a newly added pack is usable without a

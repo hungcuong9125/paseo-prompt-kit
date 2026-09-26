@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import { buildTaskPrompt } from "../../shared/action-registry/wrapper.js";
 import { resolveAction } from "../../shared/action-registry/registry.js";
@@ -5,7 +6,7 @@ import { buildSystemPrompt } from "../../shared/action-registry/rewrite-contract
 import { resolveLanguage } from "../../shared/language-registry/registry.js";
 import type { RewriteInput, RewriteOutput } from "../../shared/rpc.js";
 import type { CliSpawner } from "../transports/cli/process.js";
-import { pluginLog } from "../log.js";
+import { createTrace, pluginLog } from "../log.js";
 import { runRewrite } from "./engine.js";
 
 export interface RewriteHandlerDependencies {
@@ -54,10 +55,18 @@ export function createRewriteHandler(dependencies: RewriteHandlerDependencies = 
       };
     }
 
-    pluginLog.info(
-      { action: input.actionId, agentId: input.agentId, language: input.settings.outputLanguage },
-      "rewrite start",
-    );
+    const startedAt = Date.now();
+    const trace = createTrace(input.settings.debugLog, randomUUID().slice(0, 8));
+    trace("rewrite start", {
+      action: input.actionId,
+      agentId: input.agentId,
+      workspaceId: input.workspaceId,
+      language: input.settings.outputLanguage,
+      transport: input.settings.transport,
+      modelMode: input.settings.modelMode,
+      timeoutMs: input.settings.timeoutMs,
+      draftChars: input.originalPrompt.length,
+    });
 
     const output = await runRewrite(
       paseo,
@@ -73,6 +82,7 @@ export function createRewriteHandler(dependencies: RewriteHandlerDependencies = 
         ...(dependencies.spawn === undefined ? {} : { spawn: dependencies.spawn }),
         ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
         ...(dependencies.env === undefined ? {} : { env: dependencies.env }),
+        trace,
       },
     );
 
@@ -80,6 +90,7 @@ export function createRewriteHandler(dependencies: RewriteHandlerDependencies = 
       pluginLog.info(
         {
           action: input.actionId,
+          transport: input.settings.transport,
           provider: output.model.provider,
           model: output.model.model,
           durationMs: output.durationMs,
@@ -87,7 +98,16 @@ export function createRewriteHandler(dependencies: RewriteHandlerDependencies = 
         "rewrite success",
       );
     } else {
-      pluginLog.error({ action: input.actionId, code: output.error.code }, "rewrite failed");
+      pluginLog.error(
+        {
+          action: input.actionId,
+          transport: input.settings.transport,
+          code: output.error.code,
+          durationMs: Date.now() - startedAt,
+        },
+        "rewrite failed",
+      );
+      trace("rewrite failed", { code: output.error.code, message: output.error.message });
     }
     return output;
   };

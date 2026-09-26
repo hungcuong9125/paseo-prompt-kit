@@ -21,7 +21,8 @@ describe("prompt kit settings", () => {
       customActions: [],
       apiEndpointByProvider: {},
       secretsDir: null,
-      timeoutMs: 90_000,
+      timeoutMs: 25_000,
+      debugLog: false,
       actionEnabled: {},
       outputLanguage: "source",
     });

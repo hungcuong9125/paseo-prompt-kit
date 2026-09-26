@@ -7,6 +7,7 @@ import { anthropicProtocol } from "../../server/transports/api/anthropic.js";
 import { cloudflareProtocol } from "../../server/transports/api/cloudflare.js";
 import { geminiProtocol } from "../../server/transports/api/gemini.js";
 import { openAiProtocol } from "../../server/transports/api/openai.js";
+import { outputTokenCap } from "../../server/transports/api/protocol.js";
 import { resolveApiKey, resolveSecretsDir } from "../../server/transports/api/key.js";
 import { runApiRewrite, testApiEndpoint } from "../../server/transports/api/runner.js";
 
@@ -17,6 +18,7 @@ const CALL = {
   model: "openai/gpt-oss-20b",
   systemPrompt: "SYSTEM",
   taskPrompt: "TASK",
+  draft: "DRAFT",
 };
 
 describe("openai protocol", () => {
@@ -33,13 +35,26 @@ describe("openai protocol", () => {
     expect(body.stream).toBe(false);
   });
 
-  // OpenAI's newer models require `max_completion_tokens` and reject `max_tokens`,
-  // while older compatible endpoints understand only `max_tokens`. Sending
-  // neither is the one form every endpoint accepts.
-  it("sends no token limit, so every compatible endpoint accepts the body", () => {
-    const body = JSON.parse(openAiProtocol.buildRequest(CALL).body);
-    expect(body.max_tokens).toBeUndefined();
-    expect(body.max_completion_tokens).toBeUndefined();
+  // Without a cap Groq reserves its own output estimate, which a free tier's
+  // per-minute output limit (1000 tokens) rejects with HTTP 429.
+  it("caps completion tokens from the draft, not the wrapper", () => {
+    const short = JSON.parse(openAiProtocol.buildRequest({ ...CALL, taskPrompt: "T".repeat(8_000) }).body);
+    expect(short.max_completion_tokens).toBe(outputTokenCap(CALL.draft));
+    expect(short.max_completion_tokens).toBeLessThan(1_000);
+    expect(short.max_tokens).toBeUndefined();
+  });
+
+  it("grows the cap with the draft in bytes, up to a ceiling", () => {
+    const ascii = outputTokenCap("a".repeat(300));
+    expect(outputTokenCap("ố".repeat(300))).toBeGreaterThan(ascii);
+    expect(ascii).toBeGreaterThan(outputTokenCap(""));
+    expect(outputTokenCap("a".repeat(1_000_000))).toBe(outputTokenCap("a".repeat(2_000_000)));
+  });
+
+  it("reports an answer cut at the output limit", () => {
+    expect(openAiProtocol.isTruncated({ choices: [{ finish_reason: "length" }] })).toBe(true);
+    expect(openAiProtocol.isTruncated({ choices: [{ finish_reason: "stop" }] })).toBe(false);
+    expect(openAiProtocol.isTruncated({})).toBe(false);
   });
 
   // Groq is the same protocol, so only the base URL changes.
@@ -78,8 +93,8 @@ describe("anthropic protocol", () => {
     const body = JSON.parse(request.body);
     expect(body.system).toBe("SYSTEM");
     expect(body.messages).toEqual([{ role: "user", content: "TASK" }]);
-    // Anthropic requires max_tokens, unlike the OpenAI protocol.
-    expect(body.max_tokens).toBeGreaterThan(0);
+    // Required, and reserved against the per-minute output limit, so sized from the draft.
+    expect(body.max_tokens).toBe(outputTokenCap(CALL.draft));
   });
 
   it("joins text blocks and ignores thinking blocks", () => {
@@ -96,6 +111,11 @@ describe("anthropic protocol", () => {
   it("returns null when there is no text block", () => {
     expect(anthropicProtocol.parseResponse({ content: [{ type: "thinking" }] })).toBeNull();
     expect(anthropicProtocol.parseResponse({})).toBeNull();
+  });
+
+  it("reports an answer cut at max_tokens", () => {
+    expect(anthropicProtocol.isTruncated({ stop_reason: "max_tokens" })).toBe(true);
+    expect(anthropicProtocol.isTruncated({ stop_reason: "end_turn" })).toBe(false);
   });
 });
 
@@ -131,6 +151,11 @@ describe("gemini protocol", () => {
   it("returns null when there is no candidate text", () => {
     expect(geminiProtocol.parseResponse({ candidates: [] })).toBeNull();
     expect(geminiProtocol.parseResponse({})).toBeNull();
+  });
+
+  it("reports an answer cut at MAX_TOKENS", () => {
+    expect(geminiProtocol.isTruncated({ candidates: [{ finishReason: "MAX_TOKENS" }] })).toBe(true);
+    expect(geminiProtocol.isTruncated({ candidates: [{ finishReason: "STOP" }] })).toBe(false);
   });
 });
 
@@ -169,6 +194,11 @@ describe("cloudflare protocol", () => {
       cloudflareProtocol.parseResponse({ result: { choices: [{ message: { content: "chat" } }] } }),
     ).toBe("chat");
     expect(cloudflareProtocol.parseResponse({ result: {}, success: false })).toBeNull();
+  });
+
+  it("reports an OpenAI-shaped answer cut at the output limit", () => {
+    expect(cloudflareProtocol.isTruncated({ result: { choices: [{ finish_reason: "length" }] } })).toBe(true);
+    expect(cloudflareProtocol.isTruncated({ result: { response: "rewritten" } })).toBe(false);
   });
 
   it("lists the account's text-generation models by name", () => {
@@ -214,6 +244,24 @@ describe("cloudflare protocol", () => {
     );
     await rm(dir, { recursive: true, force: true });
     expect(String(fromFile.mock.calls[0]?.[0])).toContain("/accounts/acc-file/ai/");
+  });
+
+  it("keeps the account id and the token out of a debug trace", async () => {
+    const lines: string[] = [];
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ result: { response: "ok" } })));
+    const result = await runApiRewrite(
+      { endpoint: ENDPOINT, model: "@cf/m", systemPrompt: "s", taskPrompt: "t", draft: "d", timeoutMs: 1_000, secretsDir: null },
+      {
+        fetch: fetch as unknown as typeof globalThis.fetch,
+        env: { CLOUDFLARE_AUTH_TOKEN: "tok-secret", CLAUDFLARE_ACCOUNT_ID: "acc-secret" },
+        trace: (message, fields) => lines.push(`${message} ${JSON.stringify(typeof fields === "function" ? fields() : fields)}`),
+      },
+    );
+    expect(result.ok).toBe(true);
+    const text = lines.join("\n");
+    expect(text).toContain("/accounts/<account>/ai/run/@cf/m");
+    expect(text).not.toContain("acc-secret");
+    expect(text).not.toContain("tok-secret");
   });
 
   it("names an unset account id variable and sends nothing", async () => {
@@ -306,6 +354,7 @@ describe("api key resolution", () => {
         model: "m",
         systemPrompt: "s",
         taskPrompt: "t",
+        draft: "d",
         timeoutMs: 1000,
         secretsDir: dir,
       },
@@ -317,6 +366,38 @@ describe("api key resolution", () => {
     expect(result.message).toContain("secrets.json exists but could not be read");
     expect(result.message).not.toContain("has no value");
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  // A cut-off rewrite is still text; pasting it would send half a message as the author's.
+  it("refuses an answer cut at the output limit instead of returning the partial text", async () => {
+    const payload = { choices: [{ message: { content: "Xoá các tệp trong" }, finish_reason: "length" }] };
+    const fetch = vi.fn(async () => new Response(JSON.stringify(payload)));
+    const result = await runApiRewrite(
+      {
+        endpoint: {
+          id: "local",
+          label: "Local",
+          protocol: "openai",
+          baseUrl: "http://127.0.0.1:1234/v1",
+          keySource: "none",
+          apiKeyEnv: "",
+          accountIdVar: "",
+          models: [],
+        },
+        model: "m",
+        systemPrompt: "s",
+        taskPrompt: "t",
+        draft: "d",
+        timeoutMs: 1000,
+        secretsDir: null,
+      },
+      { fetch: fetch as unknown as typeof globalThis.fetch, env: {} },
+    );
+    expect(result).toEqual({
+      ok: false,
+      code: "api_bad_response",
+      message: "The model stopped at its output token limit before the rewrite was complete.",
+    });
   });
 
   it("ignores a non-string entry instead of sending it as a header", async () => {

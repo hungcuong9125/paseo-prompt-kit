@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { piFamily, claudeFamily } from "../../server/transports/cli/family.js";
+import { piFamily, claudeFamily, codexFamily } from "../../server/transports/cli/family.js";
 import { spawnCli, type CliRunInput } from "../../server/transports/cli/process.js";
 import { runCliRewrite } from "../../server/transports/cli/runner.js";
 
@@ -81,7 +81,10 @@ describe("runCliRewrite", () => {
         }),
       },
     );
-    expect(result).toEqual({ ok: false, code: "timeout", message: "The rewrite timed out." });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected failure");
+    expect(result.code).toBe("timeout");
+    expect(result.message).toContain(`did not answer within ${Math.round(BASE.timeoutMs / 1000)} s`);
   });
 
   it("reports empty output when the CLI answered with nothing usable", async () => {
@@ -100,6 +103,42 @@ describe("runCliRewrite", () => {
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected failure");
     expect(result.code).toBe("empty_output");
+    expect(result.message).toBe('The rewrite CLI "pi" finished without an answer.');
+  });
+
+  it("names a silent CLI and carries its stderr when it printed no answer", async () => {
+    const result = await runCliRewrite(
+      { ...BASE, family: claudeFamily },
+      {
+        spawn: async () => ({ stdout: "", stderr: "\nNo credentials found\n", exitCode: 0, timedOut: false, truncated: false }),
+      },
+    );
+    expect(result).toEqual({
+      ok: false,
+      code: "empty_output",
+      message: 'The rewrite CLI "claude" finished without an answer and printed nothing: No credentials found',
+    });
+  });
+
+  // codex exits 1 with only progress text on stderr; the reason is in stdout.
+  it("prefers the failure a CLI reports in stdout over its exit code and stderr", async () => {
+    const result = await runCliRewrite(
+      { ...BASE, family: codexFamily },
+      {
+        spawn: async () => ({
+          stdout: `${JSON.stringify({ type: "turn.failed", error: { message: "usage limit reached" } })}\n`,
+          stderr: "Reading prompt from stdin...\n",
+          exitCode: 1,
+          timedOut: false,
+          truncated: false,
+        }),
+      },
+    );
+    expect(result).toEqual({
+      ok: false,
+      code: "generation_failed",
+      message: 'The rewrite CLI "codex" reported an error: usage limit reached',
+    });
   });
 
   it("reports a spawn failure instead of throwing", async () => {

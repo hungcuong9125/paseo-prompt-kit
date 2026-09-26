@@ -341,7 +341,7 @@ describe("draft, save and discard", () => {
   });
 
   it("notes the host's own cap when the timeout is legal but unreachable", async () => {
-    holder.state = readyState({ timeoutMs: TIMEOUT_MS.hostRpcCapMs + 1 });
+    holder.state = readyState({ timeoutMs: TIMEOUT_MS.runCapMs + 1 });
     const view = await render();
     await press(view, "prompt-kit-advanced-toggle");
     const row = view.querySelector('[data-row="Timeout (ms)"]');

@@ -1,7 +1,7 @@
 # Template — `server/transports/api/<protocol>.ts`
 
-A protocol module owns exactly three things: building the request, reading the answer, listing
-models. Everything else (key, timeout, error codes, validator) belongs to `runner.ts` and must
+A protocol module owns exactly three things: building the request, reading the answer (and
+whether it was cut at the output limit), listing models. Everything else (key, timeout, error codes, validator) belongs to `runner.ts` and must
 not be repeated here.
 
 ```ts
@@ -9,6 +9,7 @@ import {
   at,
   authHeaders,
   joinUrl,
+  outputTokenCap,
   stringFieldAt,
   type ApiCall,
   type ApiHttpRequest,
@@ -38,12 +39,18 @@ export const myProtocol: ApiProtocol = {
         system: call.systemPrompt,
         input: call.taskPrompt,
         temperature: 0, // rewrite is transformation, not composition
+        // Providers reserve per-minute output quota from the cap; size it from the draft.
+        max_output_tokens: outputTokenCap(call.draft),
       }),
     };
   },
   parseResponse(payload: unknown): string | null {
     const text = at(payload, "output", 0, "text");
     return typeof text === "string" ? text : null; // null ⇒ the runner reports api_bad_response
+  },
+  isTruncated(payload: unknown): boolean {
+    // true ⇒ the runner refuses the partial answer with api_bad_response
+    return at(payload, "output", 0, "stop_reason") === "max_output_tokens";
   },
   buildModelsRequest(call: ApiModelsCall): ApiHttpRequest {
     return {

@@ -1,4 +1,4 @@
-import { at, authHeaders, joinUrl, stringFieldAt, type ApiCall, type ApiHttpRequest, type ApiModelsCall, type ApiProtocol } from "./protocol.js";
+import { at, authHeaders, joinUrl, outputTokenCap, stringFieldAt, type ApiCall, type ApiHttpRequest, type ApiModelsCall, type ApiProtocol } from "./protocol.js";
 
 /**
  * The OpenAI Chat Completions protocol.
@@ -7,10 +7,8 @@ import { at, authHeaders, joinUrl, stringFieldAt, type ApiCall, type ApiHttpRequ
  * llama.cpp, LM Studio, Together, Fireworks and most internal gateways all speak
  * this shape, so each of them is a `baseUrl` in settings rather than a module.
  *
- * No token limit is sent. OpenAI's newer models require `max_completion_tokens`
- * and reject `max_tokens`, while older compatible endpoints only understand
- * `max_tokens`; omitting the field entirely is the one form every endpoint
- * accepts, and a rewrite is short enough not to need it.
+ * `max_completion_tokens` is sized from the draft. Without it Groq reserves an
+ * output estimate that can exceed a free tier's per-minute output limit (HTTP 429).
  */
 export const openAiProtocol: ApiProtocol = {
   id: "openai",
@@ -29,6 +27,7 @@ export const openAiProtocol: ApiProtocol = {
         ],
         // A rewrite is a transformation, not a creative task.
         temperature: 0,
+        max_completion_tokens: outputTokenCap(call.draft),
         stream: false,
       }),
     };
@@ -36,6 +35,9 @@ export const openAiProtocol: ApiProtocol = {
   parseResponse(payload: unknown): string | null {
     const content = at(payload, "choices", 0, "message", "content");
     return typeof content === "string" ? content : null;
+  },
+  isTruncated(payload: unknown): boolean {
+    return at(payload, "choices", 0, "finish_reason") === "length";
   },
   buildModelsRequest(call: ApiModelsCall): ApiHttpRequest {
     return {

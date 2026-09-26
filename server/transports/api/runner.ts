@@ -1,3 +1,4 @@
+import { excerpt, noTrace, type Trace } from "../../log.js";
 import { protocolNeedsAccountId, type ApiEndpoint, type ApiProtocolId } from "../../../shared/api-protocol.js";
 import { anthropicProtocol } from "./anthropic.js";
 import { cloudflareProtocol } from "./cloudflare.js";
@@ -89,6 +90,8 @@ export interface ApiRewriteInput {
   readonly model: string;
   readonly systemPrompt: string;
   readonly taskPrompt: string;
+  /** The author's draft alone; a protocol sizes its output cap from it. */
+  readonly draft: string;
   readonly timeoutMs: number;
   /** Directory holding `secrets.json`; null means the default under `PASEO_HOME`. */
   readonly secretsDir: string | null;
@@ -99,6 +102,8 @@ export interface ApiRewriteDependencies {
   fetch?: typeof globalThis.fetch;
   /** Test seam: replaces the environment the key is read from. */
   env?: NodeJS.ProcessEnv;
+  /** Debug detail lines; a no-op unless `debugLog` is on. */
+  trace?: Trace;
 }
 
 export type ApiRewriteResult =
@@ -127,6 +132,15 @@ function describeHttpError(status: number, body: string): string {
   return trimmed === ""
     ? `The endpoint answered HTTP ${status}.`
     : `The endpoint answered HTTP ${status}: ${trimmed}`;
+}
+
+/** Rate-limit and retry headers, the part of a response that explains a 429. */
+function limitHeaders(headers: Headers): string {
+  const picked: string[] = [];
+  headers.forEach((value, name) => {
+    if (/ratelimit|retry-after|request-id/i.test(name)) picked.push(`${name}: ${value}`);
+  });
+  return picked.join("; ");
 }
 
 /**
@@ -229,8 +243,20 @@ export async function runApiRewrite(
     model: input.model,
     systemPrompt: input.systemPrompt,
     taskPrompt: input.taskPrompt,
+    draft: input.draft,
   });
 
+  const trace = dependencies.trace ?? noTrace;
+  // The URL and body size only: headers carry the key, and a shared log should not name the account.
+  trace("api request", {
+    endpoint: input.endpoint.id,
+    protocol: protocol.id,
+    url: credentials.accountId === "" ? request.url : request.url.split(credentials.accountId).join("<account>"),
+    model: input.model,
+    bodyChars: request.body.length,
+    timeoutMs: input.timeoutMs,
+  });
+  const startedAt = Date.now();
   const doFetch = dependencies.fetch ?? globalThis.fetch;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), input.timeoutMs);
@@ -245,18 +271,29 @@ export async function runApiRewrite(
     });
   } catch (error) {
     const aborted = controller.signal.aborted;
+    const reason = error instanceof Error ? error.message : String(error);
+    trace("api no response", { endpoint: input.endpoint.id, aborted, durationMs: Date.now() - startedAt, error: reason });
     return {
       ok: false,
       code: aborted ? "timeout" : "api_http_error",
       message: aborted
-        ? "The rewrite timed out."
-        : `Could not reach the endpoint: ${error instanceof Error ? error.message : String(error)}`,
+        ? `The endpoint "${input.endpoint.id}" did not answer within ${Math.round(input.timeoutMs / 1000)} s.`
+        : `Could not reach the endpoint: ${reason}`,
     };
   } finally {
     clearTimeout(timer);
   }
 
   const body = await response.text().catch(() => "");
+  const durationMs = Date.now() - startedAt;
+  trace("api response", () => ({
+    endpoint: input.endpoint.id,
+    status: response.status,
+    durationMs,
+    bodyChars: body.length,
+    limits: limitHeaders(response.headers),
+  }));
+  trace("api body", () => ({ endpoint: input.endpoint.id, text: excerpt(body) }));
   if (!response.ok) {
     return { ok: false, code: "api_http_error", message: describeHttpError(response.status, body) };
   }
@@ -269,6 +306,15 @@ export async function runApiRewrite(
       ok: false,
       code: "api_bad_response",
       message: "The endpoint answered with something that is not JSON.",
+    };
+  }
+
+  // A cut-off rewrite still passes as text, so it must never reach the Composer.
+  if (protocol.isTruncated(payload)) {
+    return {
+      ok: false,
+      code: "api_bad_response",
+      message: "The model stopped at its output token limit before the rewrite was complete.",
     };
   }
 

@@ -192,8 +192,10 @@ the CLI transport only; the API transport never reads it. The remaining fields f
   is not mapped), `apiEndpointByProvider` (a mapped provider sends its agent's own model),
   `secretsDir` (shared by endpoints whose `keySource` is `secrets_file`). Each endpoint reads its
   key from exactly one `keySource`: `env`, `secrets_file` or `none`; there is no fallback.
-- Shared: `timeoutMs` (`TIMEOUT_MS.min..max`, default 90,000; the host caps the RPC at 30s —
-  DEF-008), `actionEnabled`, `customActions` (action packs written in Settings, same
+- Shared: `timeoutMs` (`TIMEOUT_MS.min..max`, default 25,000; a rewrite runs at most
+  `TIMEOUT_MS.runCapMs` = 27,000 because the host drops the RPC at 30s — DEF-008), `debugLog`
+  (per-rewrite `debug` lines in the plugin log; off ⇒ only `rewrite success` / `rewrite failed`),
+  `actionEnabled`, `customActions` (action packs written in Settings, same
   schema as `shared/packs/`; an id that collides with another loaded action rejects both),
   `outputLanguage` (`source` or a loaded id; an unknown id ⇒
   `invalid_selection`).

@@ -41,6 +41,9 @@ export const geminiProtocol: ApiProtocol = {
     }
     return text.length === 0 ? null : text.join("");
   },
+  isTruncated(payload: unknown): boolean {
+    return at(payload, "candidates", 0, "finishReason") === "MAX_TOKENS";
+  },
   buildModelsRequest(call: ApiModelsCall): ApiHttpRequest {
     // Google's model list is large, so only the fields the picker needs are asked
     // for; the page size keeps a long catalogue from being pulled in one call.

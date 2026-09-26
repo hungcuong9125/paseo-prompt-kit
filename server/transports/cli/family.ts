@@ -38,7 +38,7 @@ export interface CliFamily {
   parseError(stdout: string): string | null;
 }
 
-/** Collects the text parts of a pi/opencode-style JSONL event stream. */
+/** The value `pick` finds in the last event of a JSONL stream that has one. */
 function lastJsonlText(
   stdout: string,
   pick: (event: Record<string, unknown>) => string | null,
@@ -58,6 +58,35 @@ function lastJsonlText(
     if (text !== null && text.trim() !== "") found = text;
   }
   return found;
+}
+
+/** Reported when a model stopped at its output limit; the partial text is never a rewrite. */
+export const TRUNCATED_MESSAGE = "The model stopped at its output token limit before the rewrite was complete.";
+
+/** A provider error often arrives as JSON text; its innermost `message` is the readable part. */
+function innermostMessage(text: string): string {
+  let current = text;
+  for (let depth = 0; depth < 3; depth += 1) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(current);
+    } catch {
+      return current;
+    }
+    const nested = at(parsed, "error", "message") ?? at(parsed, "message");
+    if (typeof nested !== "string" || nested.trim() === "") return current;
+    current = nested;
+  }
+  return current;
+}
+
+function at(value: unknown, ...path: readonly string[]): unknown {
+  let current = value;
+  for (const step of path) {
+    if (current === null || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[step];
+  }
+  return current;
 }
 
 /** Joins the text blocks of a pi message object, ignoring thinking blocks. */
@@ -106,19 +135,44 @@ export const piFamily: CliFamily = {
     lastJsonlText(stdout, (event) =>
       event.type === "turn_end" ? piMessageText(event.message) : null,
     ),
-  parseError: () => null,
+  // In json mode pi exits 0 after a failed request; the turn's stopReason is the only signal.
+  parseError: (stdout) =>
+    lastJsonlText(stdout, (event) => {
+      if (event.type !== "turn_end") return null;
+      const reason = at(event, "message", "stopReason");
+      if (reason === "length") return TRUNCATED_MESSAGE;
+      if (reason !== "error" && reason !== "aborted") return null;
+      const message = at(event, "message", "errorMessage");
+      return typeof message === "string" && message.trim() !== "" ? innermostMessage(message) : `Request ${reason}.`;
+    }),
 };
 
+interface ClaudeResult {
+  result?: unknown;
+  is_error?: unknown;
+  subtype?: unknown;
+  stop_reason?: unknown;
+}
+
 /** The single JSON result object `claude -p --output-format json` prints, or null. */
-function claudeResult(stdout: string): { result?: unknown; is_error?: unknown } | null {
+function claudeResult(stdout: string): ClaudeResult | null {
   const start = stdout.indexOf("{");
   if (start === -1) return null;
   try {
     const parsed: unknown = JSON.parse(stdout.slice(start));
-    return parsed !== null && typeof parsed === "object" ? (parsed as { result?: unknown; is_error?: unknown }) : null;
+    return parsed !== null && typeof parsed === "object" ? (parsed as ClaudeResult) : null;
   } catch {
     return null;
   }
+}
+
+/** The failure a result object reports, or null for a finished answer. */
+function claudeFailure(parsed: ClaudeResult): string | null {
+  if (parsed.stop_reason === "max_tokens") return TRUNCATED_MESSAGE;
+  const subtype = typeof parsed.subtype === "string" ? parsed.subtype : "";
+  if (parsed.is_error !== true && !subtype.startsWith("error")) return null;
+  if (typeof parsed.result === "string" && parsed.result.trim() !== "") return parsed.result;
+  return subtype === "" ? "Claude reported an error." : `Claude reported an error (${subtype}).`;
 }
 
 export const claudeFamily: CliFamily = {
@@ -135,8 +189,16 @@ export const claudeFamily: CliFamily = {
       request.systemPrompt,
       // No tool use: a rewrite never needs one, and this closes the path where a
       // prompt could steer the model into running a command.
+      "--tools",
+      "",
       "--disallowedTools",
       "*",
+      // The user's MCP servers, hooks and skills only slow a cold start toward the host's 30 s cap.
+      "--strict-mcp-config",
+      "--settings",
+      JSON.stringify({ disableAllHooks: true }),
+      "--disable-slash-commands",
+      "--no-session-persistence",
       "--output-format",
       "json",
     ];
@@ -144,15 +206,14 @@ export const claudeFamily: CliFamily = {
   },
   parseOutput: (stdout) => {
     const parsed = claudeResult(stdout);
-    if (parsed === null || parsed.is_error === true) return null;
+    if (parsed === null || claudeFailure(parsed) !== null) return null;
     return typeof parsed.result === "string" ? parsed.result : null;
   },
-  // An auth or API failure still prints a result object, flagged `is_error`, whose
-  // `result` is the error text rather than an answer.
+  // An auth or API failure still prints a result object, flagged `is_error` or an
+  // `error_*` subtype, whose `result` is the error text rather than an answer.
   parseError: (stdout) => {
     const parsed = claudeResult(stdout);
-    if (parsed === null || parsed.is_error !== true) return null;
-    return typeof parsed.result === "string" && parsed.result.trim() !== "" ? parsed.result : "Claude reported an error.";
+    return parsed === null ? null : claudeFailure(parsed);
   },
 };
 
@@ -185,7 +246,13 @@ export const codexFamily: CliFamily = {
       const typed = item as { type?: unknown; text?: unknown };
       return typed.type === "agent_message" && typeof typed.text === "string" ? typed.text : null;
     }),
-  parseError: () => null,
+  // codex prints the provider's failure as `turn.failed` in stdout; stderr holds only progress text.
+  parseError: (stdout) =>
+    lastJsonlText(stdout, (event) => {
+      const message =
+        event.type === "turn.failed" ? at(event, "error", "message") : event.type === "error" ? event.message : null;
+      return typeof message === "string" && message.trim() !== "" ? innermostMessage(message) : null;
+    }),
 };
 
 export const opencodeFamily: CliFamily = {
@@ -205,7 +272,15 @@ export const opencodeFamily: CliFamily = {
       const text = (part as { text?: unknown }).text;
       return typeof text === "string" ? text : null;
     }),
-  parseError: () => null,
+  // opencode exits 1 with an empty stderr; the failure is an `error` event in stdout.
+  parseError: (stdout) =>
+    lastJsonlText(stdout, (event) => {
+      if (event.type !== "error") return null;
+      const message = at(event, "error", "data", "message") ?? at(event, "error", "message");
+      if (typeof message === "string" && message.trim() !== "") return innermostMessage(message);
+      const name = at(event, "error", "name");
+      return typeof name === "string" ? name : "opencode reported an error.";
+    }),
 };
 
 const FAMILIES: readonly CliFamily[] = [piFamily, claudeFamily, codexFamily, opencodeFamily];

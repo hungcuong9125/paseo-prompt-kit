@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Debug log** switch under Settings → Advanced. Off, the plugin log keeps one line per rewrite
+  (`rewrite success`, or `rewrite failed` with the error code, transport and duration; the old
+  `rewrite start` line is gone). On, every rewrite also writes `debug` lines tagged with one
+  `request=` id: resolved target, CLI command line with exit code, timing and stdout/stderr
+  excerpts, or HTTP URL, status, rate-limit headers and a body excerpt. Keys and Cloudflare
+  account ids are never written. README has a new **Reporting a bug** section.
+
+### Fixed
+
+- A short rewrite through Groq no longer fails with HTTP 429 "Request too large ... output tokens
+  per minute (OTPM)". The `openai` protocol sent no output limit, so Groq reserved its own output
+  estimate, which a free tier's 1000-token OTPM limit rejected even for a short draft. It now
+  sends `max_completion_tokens` sized from the draft (512 plus about twice the draft's tokens, at
+  most 8192). The `anthropic` protocol uses the same size for `max_tokens` instead of a fixed
+  4096, which Anthropic also reserves against the per-minute output limit.
+- A rewrite the model cut off at its output token limit is refused with `api_bad_response` (API)
+  or `generation_failed` (CLI) instead of reaching the Composer half-written.
+- A slow rewrite now ends with PromptKit's own timeout message instead of Paseo's bare
+  "Plugin RPC timed out". The daemon drops a plugin call at 30 s while the default timeout was
+  90 s; a rewrite now stops at 27 s whatever the setting says, and the default is 25 s.
+- The `claude` CLI starts faster and more predictably: it runs with no tools, without your MCP
+  servers, hooks and skills, and without saving a session. Loading those on a cold start could
+  push `claude-haiku-4-5` past the 30 s cap.
+- CLI failures now name their real cause. `codex` printed only "Reading prompt from stdin..." on
+  stderr while the provider error sat in stdout; `opencode` exited 1 with an empty stderr; `pi`
+  exited 0 after a failed request; `claude` could end with an `error_*` subtype. Each is now read
+  from the CLI's own output, and a CLI that prints no answer names itself and its stderr.
+
 ## 0.5.7 - 2026-09-25
 
 ### Added

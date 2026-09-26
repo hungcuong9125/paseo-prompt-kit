@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { SettingsCard, SettingsInput, SettingsRow, SettingsSection } from "@getpaseo/plugin/client/ui";
+import { SettingsCard, SettingsInput, SettingsRow, SettingsSection, SettingsSwitch } from "@getpaseo/plugin/client/ui";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { CLI_FAMILY_IDS, isCliFamilyId } from "../../../shared/cli-families.js";
 import type { ProviderCatalogOutput } from "../../../shared/rpc.js";
@@ -22,7 +22,7 @@ export interface AdvancedSectionProps {
 
 const NONE = "";
 
-/** Timeout, secrets dir, per-provider maps. Collapsed by default. */
+/** Timeout, debug log, per-provider maps. Collapsed by default. */
 export function AdvancedSection({ theme, values, providers, disabled, epoch, patch }: AdvancedSectionProps) {
   const [open, setOpen] = useState(false);
   const timeout = describeTimeout(values.timeoutMs);
@@ -30,7 +30,7 @@ export function AdvancedSection({ theme, values, providers, disabled, epoch, pat
   return (
     <SettingsSection
       title="Advanced"
-      info="Timeout, where secrets.json lives, and per-provider overrides. Most setups never need these."
+      info="Timeout, debug log, and per-provider overrides. Most setups never need these."
       trailing={
         <Button
           theme={theme}
@@ -55,6 +55,13 @@ export function AdvancedSection({ theme, values, providers, disabled, epoch, pat
                 const parsed = Number(text.trim());
                 patch({ timeoutMs: Number.isFinite(parsed) ? parsed : Number.NaN });
               }}
+            />
+            <SettingsSwitch
+              label="Debug log"
+              hint="Writes each rewrite's target, request and CLI or HTTP result to `paseo plugin logs prompt-kit`. Lines can hold excerpts of the model's answer; read them before you share them."
+              value={values.debugLog}
+              disabled={disabled}
+              onValueChange={(next) => patch({ debugLog: next })}
             />
           </SettingsCard>
 
@@ -112,7 +119,7 @@ export function AdvancedSection({ theme, values, providers, disabled, epoch, pat
       ) : (
         <SettingsCard>
           <SettingsRow
-            label={`Timeout ${values.timeoutMs.toLocaleString()} ms · ${
+            label={`Timeout ${values.timeoutMs.toLocaleString()} ms${values.debugLog ? " · Debug log on" : ""} · ${
               values.transport === "cli"
                 ? `${Object.keys(values.providerCli).length} CLI override${Object.keys(values.providerCli).length === 1 ? "" : "s"}`
                 : `${Object.keys(values.apiEndpointByProvider).length} mapped provider${Object.keys(values.apiEndpointByProvider).length === 1 ? "" : "s"}`

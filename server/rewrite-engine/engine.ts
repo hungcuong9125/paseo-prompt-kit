@@ -1,5 +1,6 @@
 import type { RewriteOutput } from "../../shared/rpc.js";
-import type { PromptKitSettings } from "../../shared/settings.js";
+import { effectiveTimeoutMs, type PromptKitSettings } from "../../shared/settings.js";
+import { noTrace, type Trace } from "../log.js";
 import { resolveTarget } from "../model-resolver/resolver.js";
 import type { PaseoApi } from "../paseo-types.js";
 import { runApiRewrite } from "../transports/api/runner.js";
@@ -27,6 +28,8 @@ export interface RewriteDependencies {
   fetch?: typeof globalThis.fetch;
   /** Test seam: replaces the environment an API key is read from. */
   env?: NodeJS.ProcessEnv;
+  /** Debug detail lines; a no-op unless `debugLog` is on. */
+  trace?: Trace;
 }
 
 /** resolve target → run transport → validate. Every failure is a typed error. */
@@ -37,10 +40,21 @@ export async function runRewrite(
 ): Promise<RewriteOutput> {
   const startedAt = Date.now();
   const settings = dependencies.settings;
-  const timeoutMs = dependencies.timeoutMs ?? settings.timeoutMs;
+  const timeoutMs = dependencies.timeoutMs ?? effectiveTimeoutMs(settings.timeoutMs);
+  const trace = dependencies.trace ?? noTrace;
 
   const target = await resolveTarget(paseo, request.agentId, settings);
-  if (!target.ok) return { status: "error", error: target.error };
+  if (!target.ok) {
+    trace("target refused", { code: target.error.code, message: target.error.message });
+    return { status: "error", error: target.error };
+  }
+  trace("target", {
+    via: target.via,
+    ...(target.via === "api"
+      ? { endpoint: target.endpoint.id, model: target.model }
+      : { family: target.family.id, model: target.model.model, thinking: target.model.thinkingOptionId }),
+    timeoutMs,
+  });
 
   const generated =
     target.via === "api"
@@ -50,12 +64,14 @@ export async function runRewrite(
             model: target.model,
             systemPrompt: request.systemPrompt,
             taskPrompt: request.taskPrompt,
+            draft: request.originalPrompt,
             timeoutMs,
             secretsDir: settings.secretsDir,
           },
           {
             ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
             ...(dependencies.env === undefined ? {} : { env: dependencies.env }),
+            trace,
           },
         )
       : await runCliRewrite(
@@ -67,7 +83,7 @@ export async function runRewrite(
             taskPrompt: request.taskPrompt,
             timeoutMs,
           },
-          dependencies.spawn === undefined ? {} : { spawn: dependencies.spawn },
+          { ...(dependencies.spawn === undefined ? {} : { spawn: dependencies.spawn }), trace },
         );
   if (!generated.ok) {
     return { status: "error", error: { code: generated.code, message: generated.message } };
@@ -77,7 +93,10 @@ export async function runRewrite(
     originalPrompt: request.originalPrompt,
     output: generated.text,
   });
-  if (!validated.ok) return { status: "error", error: validated.error };
+  if (!validated.ok) {
+    trace("output refused", { code: validated.error.code, message: validated.error.message, outputChars: generated.text.length });
+    return { status: "error", error: validated.error };
+  }
 
   return {
     status: "ok",
