@@ -7,11 +7,16 @@ import { resolveCliFamilyId, type CliFamilyId } from "../../../shared/cli-famili
  * plugin never speaks a provider API directly: Paseo already runs the provider
  * the user selected, so the same binary the agent runs on is the one PromptKit
  * shells out to. That is why `Current agent model` keeps working unchanged.
+ *
+ * A `process` family starts one process per rewrite. A `session` family (codex) answers
+ * on a long-lived server process, see `codex-sessions.ts`.
  */
 
 export interface CliInvocation {
   readonly command: string;
   readonly args: readonly string[];
+  /** Variables added to the daemon's environment for this run only. */
+  readonly env: Readonly<Record<string, string>>;
 }
 
 export interface CliRequest {
@@ -24,7 +29,8 @@ export interface CliRequest {
   readonly promptFilePath: string | null;
 }
 
-export interface CliFamily {
+export interface ProcessCliFamily {
+  readonly kind: "process";
   readonly id: CliFamilyId;
   /**
    * How the user prompt reaches the process. `file` keeps the prompt out of
@@ -37,6 +43,13 @@ export interface CliFamily {
   /** The failure the CLI itself reports in stdout, or null when it reports none. */
   parseError(stdout: string): string | null;
 }
+
+export interface SessionCliFamily {
+  readonly kind: "session";
+  readonly id: CliFamilyId;
+}
+
+export type CliFamily = ProcessCliFamily | SessionCliFamily;
 
 /** The value `pick` finds in the last event of a JSONL stream that has one. */
 function lastJsonlText(
@@ -64,7 +77,7 @@ function lastJsonlText(
 export const TRUNCATED_MESSAGE = "The model stopped at its output token limit before the rewrite was complete.";
 
 /** A provider error often arrives as JSON text; its innermost `message` is the readable part. */
-function innermostMessage(text: string): string {
+export function innermostMessage(text: string): string {
   let current = text;
   for (let depth = 0; depth < 3; depth += 1) {
     let parsed: unknown;
@@ -103,7 +116,8 @@ function piMessageText(message: unknown): string | null {
   return parts.length === 0 ? null : parts.join("\n");
 }
 
-export const piFamily: CliFamily = {
+export const piFamily: ProcessCliFamily = {
+  kind: "process",
   id: "pi",
   promptDelivery: "file",
   buildInvocation: (request) => {
@@ -129,7 +143,7 @@ export const piFamily: CliFamily = {
       throw new Error("pi requires a prompt file");
     }
     args.push(`@${request.promptFilePath}`);
-    return { command: "pi", args };
+    return { command: "pi", args, env: {} };
   },
   parseOutput: (stdout) =>
     lastJsonlText(stdout, (event) =>
@@ -175,7 +189,8 @@ function claudeFailure(parsed: ClaudeResult): string | null {
   return subtype === "" ? "Claude reported an error." : `Claude reported an error (${subtype}).`;
 }
 
-export const claudeFamily: CliFamily = {
+export const claudeFamily: ProcessCliFamily = {
+  kind: "process",
   id: "claude",
   promptDelivery: "stdin",
   buildInvocation: (request) => {
@@ -202,7 +217,7 @@ export const claudeFamily: CliFamily = {
       "--output-format",
       "json",
     ];
-    return { command: "claude", args };
+    return { command: "claude", args, env: {} };
   },
   parseOutput: (stdout) => {
     const parsed = claudeResult(stdout);
@@ -217,51 +232,27 @@ export const claudeFamily: CliFamily = {
   },
 };
 
-export const codexFamily: CliFamily = {
-  id: "codex",
-  promptDelivery: "stdin",
-  buildInvocation: (request) => {
-    const args = [
-      "exec",
-      "--model",
-      request.model,
-      // Read-only sandbox: the rewrite cannot write, and no approval prompt can
-      // stall a headless run.
-      "--sandbox",
-      "read-only",
-      // The runner executes in a scratch directory, which is not a git repo.
-      "--skip-git-repo-check",
-      "--json",
-    ];
-    if (request.thinkingOptionId !== null) {
-      args.push("-c", `model_reasoning_effort="${request.thinkingOptionId}"`);
-    }
-    return { command: "codex", args };
-  },
-  parseOutput: (stdout) =>
-    lastJsonlText(stdout, (event) => {
-      if (event.type !== "item.completed") return null;
-      const item = event.item;
-      if (item === null || typeof item !== "object") return null;
-      const typed = item as { type?: unknown; text?: unknown };
-      return typed.type === "agent_message" && typeof typed.text === "string" ? typed.text : null;
-    }),
-  // codex prints the provider's failure as `turn.failed` in stdout; stderr holds only progress text.
-  parseError: (stdout) =>
-    lastJsonlText(stdout, (event) => {
-      const message =
-        event.type === "turn.failed" ? at(event, "error", "message") : event.type === "error" ? event.message : null;
-      return typeof message === "string" && message.trim() !== "" ? innermostMessage(message) : null;
-    }),
-};
+/** codex answers on a warm `codex app-server`; see `codex-sessions.ts`. */
+export const codexFamily: SessionCliFamily = { kind: "session", id: "codex" };
 
-export const opencodeFamily: CliFamily = {
+const OPENCODE_AGENT = "promptkit-rewrite";
+
+/**
+ * `opencode run` has no system-prompt flag, so the instruction becomes the prompt of an
+ * inline agent with every tool off, layered onto the user's config for this run only.
+ */
+function opencodeAgentConfig(systemPrompt: string): string {
+  return JSON.stringify({ agent: { [OPENCODE_AGENT]: { mode: "primary", prompt: systemPrompt, tools: { "*": false } } } });
+}
+
+export const opencodeFamily: ProcessCliFamily = {
+  kind: "process",
   id: "opencode",
   promptDelivery: "stdin",
   buildInvocation: (request) => {
-    const args = ["run", "--model", request.model, "--format", "json"];
+    const args = ["run", "--model", request.model, "--agent", OPENCODE_AGENT, "--format", "json"];
     if (request.thinkingOptionId !== null) args.push("--variant", request.thinkingOptionId);
-    return { command: "opencode", args };
+    return { command: "opencode", args, env: { OPENCODE_CONFIG_CONTENT: opencodeAgentConfig(request.systemPrompt) } };
   },
   parseOutput: (stdout) =>
     lastJsonlText(stdout, (event) => {

@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { piFamily, claudeFamily, codexFamily } from "../../server/transports/cli/family.js";
+import { piFamily, claudeFamily, codexFamily, opencodeFamily } from "../../server/transports/cli/family.js";
 import { spawnCli, type CliRunInput } from "../../server/transports/cli/process.js";
 import { runCliRewrite } from "../../server/transports/cli/runner.js";
 
@@ -120,14 +120,14 @@ describe("runCliRewrite", () => {
     });
   });
 
-  // codex exits 1 with only progress text on stderr; the reason is in stdout.
+  // opencode exits 1 with an empty stderr; the reason is in stdout.
   it("prefers the failure a CLI reports in stdout over its exit code and stderr", async () => {
     const result = await runCliRewrite(
-      { ...BASE, family: codexFamily },
+      { ...BASE, family: opencodeFamily },
       {
         spawn: async () => ({
-          stdout: `${JSON.stringify({ type: "turn.failed", error: { message: "usage limit reached" } })}\n`,
-          stderr: "Reading prompt from stdin...\n",
+          stdout: `${JSON.stringify({ type: "error", error: { name: "UnknownError", data: { message: "usage limit reached" } } })}\n`,
+          stderr: "",
           exitCode: 1,
           timedOut: false,
           truncated: false,
@@ -137,8 +137,31 @@ describe("runCliRewrite", () => {
     expect(result).toEqual({
       ok: false,
       code: "generation_failed",
-      message: 'The rewrite CLI "codex" reported an error: usage limit reached',
+      message: 'The rewrite CLI "opencode" reported an error: usage limit reached',
     });
+  });
+
+  it("hands a session family to its warm server and spawns nothing", async () => {
+    const runs: unknown[] = [];
+    const result = await runCliRewrite(
+      { ...BASE, thinkingOptionId: "low", family: codexFamily },
+      {
+        spawn: async () => {
+          throw new Error("a session family must not spawn a process");
+        },
+        codex: {
+          run: async (run) => {
+            runs.push(run);
+            return { ok: true, text: "warm" };
+          },
+          close: () => undefined,
+        },
+      },
+    );
+    expect(result).toEqual({ ok: true, text: "warm" });
+    expect(runs).toEqual([
+      { model: "m", effort: "low", systemPrompt: "SYSTEM", taskPrompt: "TASK PROMPT", timeoutMs: BASE.timeoutMs },
+    ]);
   });
 
   it("reports a spawn failure instead of throwing", async () => {
@@ -171,12 +194,29 @@ describe("runCliRewrite", () => {
   });
 });
 
+// claude carries the system prompt in argv; a trace must not print it.
+it("keeps the system prompt out of a debug trace", async () => {
+  const lines: string[] = [];
+  const systemPrompt = 'Rules:\n- keep "literals"\n- never add facts';
+  await runCliRewrite(
+    { ...BASE, systemPrompt, family: claudeFamily },
+    {
+      spawn: async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false, truncated: false }),
+      trace: (message, fields) => lines.push(`${message} ${JSON.stringify(typeof fields === "function" ? fields() : fields)}`),
+    },
+  );
+  const text = lines.join("\n");
+  expect(text).toContain(`<system prompt, ${systemPrompt.length} chars>`);
+  expect(text).not.toContain("never add facts");
+});
+
 describe("spawnCli", () => {
   it("captures stdout, pipes stdin and reports the exit code", async () => {
     const result = await spawnCli({
       command: process.execPath,
       args: ["-e", "process.stdin.pipe(process.stdout)"],
       stdin: "hello",
+      env: {},
       cwd: process.cwd(),
       timeoutMs: 10_000,
     });
@@ -185,11 +225,25 @@ describe("spawnCli", () => {
     expect(result.timedOut).toBe(false);
   });
 
+  it("adds the invocation's variables to the daemon's environment for this run", async () => {
+    const result = await spawnCli({
+      command: process.execPath,
+      args: ["-e", "process.stdout.write(`${process.env.PK_RUN_ONLY}|${Boolean(process.env.PATH)}`)"],
+      stdin: null,
+      env: { PK_RUN_ONLY: "yes" },
+      cwd: process.cwd(),
+      timeoutMs: 10_000,
+    });
+    expect(result.stdout).toBe("yes|true");
+    expect(process.env.PK_RUN_ONLY).toBeUndefined();
+  });
+
   it("captures a non-zero exit without rejecting", async () => {
     const result = await spawnCli({
       command: process.execPath,
       args: ["-e", "process.stderr.write('boom'); process.exit(3)"],
       stdin: null,
+      env: {},
       cwd: process.cwd(),
       timeoutMs: 10_000,
     });
@@ -204,6 +258,7 @@ describe("spawnCli", () => {
       command: process.execPath,
       args: ["-e", "setInterval(() => {}, 1000)"],
       stdin: null,
+      env: {},
       cwd: process.cwd(),
       timeoutMs: 300,
     });
@@ -216,6 +271,7 @@ describe("spawnCli", () => {
       command: "prompt-kit-does-not-exist-9f31",
       args: [],
       stdin: null,
+      env: {},
       cwd: process.cwd(),
       timeoutMs: 5_000,
     });

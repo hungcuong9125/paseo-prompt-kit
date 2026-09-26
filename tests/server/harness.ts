@@ -1,6 +1,7 @@
 import type { PaseoApi } from "@getpaseo/client";
 import { promptKitSettingsSchema, type PromptKitSettings } from "../../shared/settings.js";
 import type { CliRunInput, CliRunResult, CliSpawner } from "../../server/transports/cli/process.js";
+import type { CodexRewriteInput, CodexSessions } from "../../server/transports/cli/codex-sessions.js";
 
 export interface FakeAgent {
   id: string;
@@ -29,6 +30,10 @@ export interface Harness {
   scratchDirs: string[];
   /** Calls that would touch the primary conversation; must stay at ["refresh"]. */
   mainAgentCalls: string[];
+  /** The warm codex server, faked: records each rewrite instead of starting `codex app-server`. */
+  codex: CodexSessions;
+  /** Every rewrite the codex server was asked for, in order. */
+  codexRuns: CodexRewriteInput[];
 }
 
 export interface HarnessInput {
@@ -56,11 +61,6 @@ export function stdoutFor(command: string, text: string): string {
   switch (command) {
     case "claude":
       return JSON.stringify({ type: "result", subtype: "success", result: text });
-    case "codex":
-      return `${JSON.stringify({
-        type: "item.completed",
-        item: { id: "item_0", type: "agent_message", text },
-      })}\n`;
     case "opencode":
       return `${JSON.stringify({ type: "text", part: { type: "text", text } })}\n`;
     default:
@@ -148,7 +148,16 @@ export function createRewriteHarness(input: HarnessInput = {}): Harness {
     };
   };
 
-  return { paseo, spawn, spawned, scratchDirs, mainAgentCalls };
+  const codexRuns: CodexRewriteInput[] = [];
+  const codex: CodexSessions = {
+    run: async (run) => {
+      codexRuns.push(run);
+      return { ok: true, text: "rewritten text" };
+    },
+    close: () => undefined,
+  };
+
+  return { paseo, spawn, spawned, scratchDirs, mainAgentCalls, codex, codexRuns };
 }
 
 export async function settings(overrides: Record<string, unknown> = {}): Promise<PromptKitSettings> {

@@ -52,16 +52,17 @@ export interface ApiProtocol {
   parseModelsResponse(payload: unknown): string[];
 }
 
-const MIN_OUTPUT_TOKENS = 512;
+const MIN_OUTPUT_TOKENS = 256;
 const MAX_OUTPUT_TOKENS = 8_192;
 
 /**
- * The output cap for one rewrite: about one token per 3 UTF-8 bytes in any script, doubled
- * for a rewrite that grows. Providers reserve per-minute output quota from the cap, so it stays small.
+ * The output cap for one rewrite: 256 plus about 1.5x the draft's tokens (one token per 3
+ * UTF-8 bytes in any script). Groq and Anthropic reserve rolling per-minute output quota
+ * from the cap, so a tight cap lets more rewrites fit in a free tier's minute.
  */
 export function outputTokenCap(draft: string): number {
-  const draftTokens = Math.ceil(new TextEncoder().encode(draft).length / 3);
-  return Math.min(MIN_OUTPUT_TOKENS + 2 * draftTokens, MAX_OUTPUT_TOKENS);
+  const draftBytes = new TextEncoder().encode(draft).length;
+  return Math.min(MIN_OUTPUT_TOKENS + Math.ceil(draftBytes / 2), MAX_OUTPUT_TOKENS);
 }
 
 /** Strips a trailing slash so a base URL and a path cannot produce a double slash. */

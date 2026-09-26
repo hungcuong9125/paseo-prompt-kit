@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.8 - 2026-09-27
 
 ### Added
 
@@ -10,15 +10,31 @@
   `request=` id: resolved target, CLI command line with exit code, timing and stdout/stderr
   excerpts, or HTTP URL, status, rate-limit headers and a body excerpt. Keys and Cloudflare
   account ids are never written. README has a new **Reporting a bug** section.
+- README notes how to keep text exactly as written: wrap it in backticks or a fenced block, or
+  attach long material as a file and refer to it.
+
+### Changed
+
+- `codex` rewrites run on a warm `codex app-server` instead of one `codex exec` per rewrite.
+  codex keys the prompt cache by thread, so reusing a thread that already carries the rewrite
+  rules takes a rewrite from about 7 s to 2.4–3 s after the first one (measured with
+  `gpt-6-luna`, low effort). A thread serves one model and one set of rules, runs at most 8
+  rewrites and is dropped; concurrent rewrites get their own thread; a timed-out rewrite is
+  interrupted and its thread dropped. Threads live in memory only, and the server stops after 10
+  idle minutes or with the plugin.
 
 ### Fixed
 
 - A short rewrite through Groq no longer fails with HTTP 429 "Request too large ... output tokens
   per minute (OTPM)". The `openai` protocol sent no output limit, so Groq reserved its own output
   estimate, which a free tier's 1000-token OTPM limit rejected even for a short draft. It now
-  sends `max_completion_tokens` sized from the draft (512 plus about twice the draft's tokens, at
-  most 8192). The `anthropic` protocol uses the same size for `max_tokens` instead of a fixed
+  sends `max_completion_tokens` sized from the draft (256 plus about 1.5 times the draft's tokens,
+  at most 8192). The `anthropic` protocol uses the same size for `max_tokens` instead of a fixed
   4096, which Anthropic also reserves against the per-minute output limit.
+- `codex` and `opencode` rewrites now run under the rewrite rules. Both families dropped the
+  system prompt, so the model saw only the task and the draft: nothing kept the author's voice,
+  the literals or the output-only shape. `codex` gets it as the thread's developer instructions;
+  `opencode` gets an inline agent through `OPENCODE_CONFIG_CONTENT` with every tool off.
 - A rewrite the model cut off at its output token limit is refused with `api_bad_response` (API)
   or `generation_failed` (CLI) instead of reaching the Composer half-written.
 - A slow rewrite now ends with PromptKit's own timeout message instead of Paseo's bare
@@ -27,10 +43,10 @@
 - The `claude` CLI starts faster and more predictably: it runs with no tools, without your MCP
   servers, hooks and skills, and without saving a session. Loading those on a cold start could
   push `claude-haiku-4-5` past the 30 s cap.
-- CLI failures now name their real cause. `codex` printed only "Reading prompt from stdin..." on
-  stderr while the provider error sat in stdout; `opencode` exited 1 with an empty stderr; `pi`
-  exited 0 after a failed request; `claude` could end with an `error_*` subtype. Each is now read
-  from the CLI's own output, and a CLI that prints no answer names itself and its stderr.
+- CLI failures now name their real cause. `opencode` exited 1 with an empty stderr; `pi` exited 0
+  after a failed request; `claude` could end with an `error_*` subtype; `codex` hid the provider
+  error behind "Reading prompt from stdin...". Each is now read from the CLI's own output (for
+  codex, the failed turn's message), and a CLI that prints no answer names itself and its stderr.
 
 ## 0.5.7 - 2026-09-25
 

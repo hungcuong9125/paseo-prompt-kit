@@ -91,11 +91,11 @@ with the same shape is just a preset — see §5.)
 1. `shared/cli-families.ts`: add the id to `CLI_FAMILY_IDS`. This id is also the **binary
    name** and the string `resolveCliFamilyId` matches against the provider id (`<id>`,
    `<id>-*`, `*-<id>`).
-2. `server/transports/cli/family.ts`: add a `CliFamily` following
+2. `server/transports/cli/family.ts`: add a `ProcessCliFamily` following
    `docs/templates/cli-family.template.ts.md` and put it in the `FAMILIES` array. Required: the
-   prompt goes through `stdin` or a file, **never** through `argv`; disable
-   tools/context/session if the CLI has a flag for it; parse that CLI's exact JSON output
-   format.
+   prompt goes through `stdin` or a file, **never** through `argv`; the system prompt reaches
+   the model (a flag, or `env` when the CLI has none); disable tools/context/session if the
+   CLI has a flag for it; parse that CLI's exact JSON output format.
 3. Test: `tests/unit/cli-family.test.ts` (no prompt in argv, correct flags, correct parser),
    `tests/server/harness.ts` → add a stdout sample for the new CLI to `stdoutFor()`.
 4. Optional live probe: `npx tsx scripts/probe-cli.ts` with a cheap model (DLF-013).

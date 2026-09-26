@@ -1,7 +1,11 @@
-# Template — a `CliFamily` in `server/transports/cli/family.ts`
+# Template — a `ProcessCliFamily` in `server/transports/cli/family.ts`
+
+A process family starts one CLI process per rewrite. codex is the one `session` family: it
+answers on a warm server (`server/transports/cli/codex-sessions.ts`), not through this shape.
 
 ```ts
-export const myCliFamily: CliFamily = {
+export const myCliFamily: ProcessCliFamily = {
+  kind: "process",
   id: "mycli", // add to CLI_FAMILY_IDS (shared/cli-families.ts); also the binary name
   // "stdin" or "file": the prompt NEVER goes through argv (readable via ps).
   promptDelivery: "stdin",
@@ -17,7 +21,8 @@ export const myCliFamily: CliFamily = {
     ];
     if (request.thinkingOptionId !== null) args.push("--reasoning", request.thinkingOptionId);
     // With promptDelivery "file": args.push(`@${request.promptFilePath}`) and throw if null.
-    return { command: "mycli", args };
+    // `env` is added to the daemon's environment for this run only; `{}` when none is needed.
+    return { command: "mycli", args, env: {} };
   },
   // Returns the final answer from stdout, or null ⇒ the runner reports empty_output.
   parseOutput: (stdout) =>

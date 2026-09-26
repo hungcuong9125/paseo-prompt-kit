@@ -6,6 +6,8 @@ const MAX_CAPTURE_CHARS = 2 * 1024 * 1024;
 export interface CliRunInput {
   readonly command: string;
   readonly args: readonly string[];
+  /** Added to the daemon's environment for this run only. */
+  readonly env: Readonly<Record<string, string>>;
   /** Written to the child's stdin and then closed. Null leaves stdin empty. */
   readonly stdin: string | null;
   readonly cwd: string;
@@ -37,7 +39,7 @@ function append(captured: string[], chunk: string): boolean {
  * settles. The child is started in its own process group so the group can be
  * signalled as a unit.
  */
-function killTree(child: ReturnType<typeof spawn>): void {
+export function killTree(child: ReturnType<typeof spawn>): void {
   if (child.pid === undefined) return;
   try {
     if (process.platform === "win32") child.kill("SIGKILL");
@@ -59,7 +61,7 @@ export const spawnCli: CliSpawner = (input) =>
   new Promise<CliRunResult>((resolve) => {
     const child = spawn(input.command, [...input.args], {
       cwd: input.cwd,
-      env: process.env,
+      env: { ...process.env, ...input.env },
       // Own process group on POSIX so the whole tree can be signalled.
       detached: process.platform !== "win32",
       stdio: [input.stdin === null ? "ignore" : "pipe", "pipe", "pipe"],

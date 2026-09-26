@@ -8,6 +8,7 @@ import {
   piFamily,
   resolveFamily,
   TRUNCATED_MESSAGE,
+  type ProcessCliFamily,
 } from "../../server/transports/cli/family.js";
 
 const REQUEST = {
@@ -17,9 +18,9 @@ const REQUEST = {
   promptFilePath: "/scratch/prompt.txt",
 };
 
-function argv(family: typeof piFamily, overrides: Partial<typeof REQUEST> = {}) {
+function argv(family: ProcessCliFamily, overrides: Partial<typeof REQUEST> = {}) {
   const invocation = family.buildInvocation({ ...REQUEST, ...overrides });
-  return { command: invocation.command, args: [...invocation.args] };
+  return { command: invocation.command, args: [...invocation.args], env: invocation.env };
 }
 
 describe("CLI families", () => {
@@ -33,8 +34,8 @@ describe("CLI families", () => {
   });
 
   // The prompt must never reach `argv`, or another user's `ps` can read it.
-  it("keeps the prompt out of argv for every family", () => {
-    for (const family of [piFamily, claudeFamily, codexFamily, opencodeFamily]) {
+  it("keeps the prompt out of argv for every process family", () => {
+    for (const family of [piFamily, claudeFamily, opencodeFamily]) {
       const { args } = argv(family);
       for (const arg of args) {
         expect(arg).not.toContain("fix the bug");
@@ -161,44 +162,19 @@ describe("CLI families", () => {
     });
   });
 
-  describe("codex", () => {
-    it("runs exec in a read-only sandbox and skips the git check", () => {
-      const { command, args } = argv(codexFamily);
-      expect(command).toBe("codex");
-      expect(args[0]).toBe("exec");
-      expect(args).toEqual(
-        expect.arrayContaining(["--sandbox", "read-only", "--skip-git-repo-check", "--json"]),
-      );
-      expect(codexFamily.promptDelivery).toBe("stdin");
-    });
+  // The rewrite contract is the only instruction in play; a family that drops it rewrites freely.
+  it("delivers the system prompt to every process family", () => {
+    for (const family of [piFamily, claudeFamily, opencodeFamily]) {
+      const { args, env } = family.buildInvocation({ ...REQUEST, promptFilePath: "/tmp/p.txt" });
+      const carried = [...args, ...Object.values(env)].some((value) => value.includes(REQUEST.systemPrompt));
+      expect(carried, family.id).toBe(true);
+    }
+  });
 
-    it("reads the last agent_message item", () => {
-      const stdout = [
-        JSON.stringify({ type: "turn.started" }),
-        JSON.stringify({ type: "item.completed", item: { type: "reasoning", text: "no" } }),
-        JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "first" } }),
-        JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "final" } }),
-      ].join("\n");
-      expect(codexFamily.parseOutput(stdout)).toBe("final");
-    });
-
-    it("returns null when no agent message completed", () => {
-      expect(codexFamily.parseOutput('{"type":"turn.completed"}\n')).toBeNull();
-    });
-
-    // Shape of a real codex 0.157 run with an unsupported model: stderr only says "Reading prompt from stdin...".
-    it("reports the provider's message from turn.failed", () => {
-      const provider = JSON.stringify({ type: "error", status: 400, error: { type: "invalid_request_error", message: "The model is not supported." } });
-      const stdout = [
-        JSON.stringify({ type: "thread.started", thread_id: "t" }),
-        JSON.stringify({ type: "item.completed", item: { id: "item_0", type: "error", message: "Model metadata not found." } }),
-        JSON.stringify({ type: "turn.started" }),
-        JSON.stringify({ type: "error", message: provider }),
-        JSON.stringify({ type: "turn.failed", error: { message: provider } }),
-      ].join("\n");
-      expect(codexFamily.parseError(stdout)).toBe("The model is not supported.");
-      expect(codexFamily.parseError('{"type":"turn.completed"}\n')).toBeNull();
-    });
+  // codex runs on a warm app-server (codex-sessions.ts), never as a one-shot process.
+  it("runs codex as a session family", () => {
+    expect(codexFamily).toEqual({ kind: "session", id: "codex" });
+    expect(findFamily("codex")?.kind).toBe("session");
   });
 
   describe("opencode", () => {
@@ -209,6 +185,9 @@ describe("CLI families", () => {
         expect.arrayContaining(["run", "--model", "some-model", "--format", "json"]),
       );
       expect(args[args.indexOf("--variant") + 1]).toBe("high");
+      const agent = args[args.indexOf("--agent") + 1]!;
+      const config = JSON.parse(argv(opencodeFamily).env.OPENCODE_CONFIG_CONTENT!);
+      expect(config.agent[agent]).toEqual({ mode: "primary", prompt: REQUEST.systemPrompt, tools: { "*": false } });
       expect(opencodeFamily.promptDelivery).toBe("stdin");
     });
 

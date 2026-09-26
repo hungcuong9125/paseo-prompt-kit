@@ -4,7 +4,7 @@ PromptKit is a Paseo plugin that rewrites the prompt in your Composer before you
 
 ![PromptKit rewriting a prompt in the Paseo Composer](docs/images/promptkit-promo.gif)
 
-The rewrite runs one of three ways, chosen in Settings: the agent's own provider CLI with the model the Composer shows (the default), a provider CLI with a model you pick, or a direct request to an API you configure (OpenAI, Anthropic, Google Gemini, Cloudflare Workers AI, or anything speaking one of those protocols). A CLI runs headlessly in a temporary directory — no Paseo agent, no tab, no archive — so your conversation never receives a rewrite turn.
+The rewrite runs one of three ways, chosen in Settings: the agent's own provider CLI with the model the Composer shows (the default), a provider CLI with a model you pick, or a direct request to an API you configure (OpenAI, Anthropic, Google Gemini, Cloudflare Workers AI, or anything speaking one of those protocols). A CLI runs headlessly in a temporary directory — no Paseo agent, no tab, no archive, no saved session — so your conversation never receives a rewrite turn.
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
@@ -19,6 +19,9 @@ No path sends the message on its own. You review the result and send it yourself
 ## The General action
 
 `General` is the one action that ships. It turns the draft into a clear instruction the agent can act on: the concrete action, each constraint made checkable, the working steps for that kind of task (find the cause first, follow the codebase's existing way, keep the change scoped), and how the agent knows it is done. A question stays a question: it is made clear, never turned into an instruction. It never invents files, numbers, requirements or decisions the draft does not contain, and it never writes about you as "the user". Add your own actions under Settings → **Custom actions**.
+
+> [!NOTE]
+> To keep a passage exactly as written, wrap it in backticks — `` `inline text` `` — or in a fenced block (```` ``` ````). PromptKit treats quoted code, paths and blocks as protected literals and refuses a rewrite that drops or changes them, so the rest of the prompt is rewritten around them. For long material (a log, a spec, a large snippet), attach it as a file and refer to it in the prompt instead: the agent reads the file, and only your instructions around it are rewritten.
 
 ## Requirements
 
@@ -35,7 +38,7 @@ paseo plugin add npm:paseo-prompt-kit
 paseo plugin ls
 ```
 
-Pin a release by adding its version, for example `npm:paseo-prompt-kit@0.5.7`. The plugin id stays `prompt-kit`, so reload and logs use that id:
+Pin a release by adding its version, for example `npm:paseo-prompt-kit@0.5.8`. The plugin id stays `prompt-kit`, so reload and logs use that id:
 
 ```bash
 paseo plugin reload prompt-kit
@@ -71,7 +74,7 @@ paseo plugin ls
 `--ref` chooses the initial branch, tag, or commit once; later `paseo plugin update prompt-kit` follows the remote's default HEAD. Pin a release instead of tracking `main` by giving `--ref` a tag:
 
 ```bash
-paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.5.7
+paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.5.8
 ```
 
 `paseo plugin ls` reports the installed commit.
@@ -88,12 +91,23 @@ The screen reads top to bottom in setup order:
 2. **Custom actions** — your own actions, written as action-pack JSON in a text box on the same screen. **Add** opens a sample (Blank template, Copy of General, Execution brief, Plan first, Review request, Make concise, or a copy of one of yours); change the id, title and instructions, press **Apply** to check the JSON, then **Save**. They run through the same rewrite as `General`.
 3. **Rewrite engine** — Transport, Model source (Provider CLI only) and Output language. Every other section appears only when these need it.
 4. **Dedicated model** (Provider CLI with Dedicated model) or **API endpoint** (Direct API).
-5. **Advanced** (collapsed) — timeout and the two per-provider overrides.
+5. **Advanced** (collapsed) — timeout, debug log and the two per-provider overrides.
 
 ### Transport
 
 - `Provider CLI` (default) — the provider's own CLI runs the rewrite headlessly. The model comes from **Model source**.
 - `Direct API` — PromptKit posts to an endpoint you configure. No CLI is started, and there is no Model source: the model is chosen in the **API endpoint** section.
+
+How each CLI runs a rewrite:
+
+| CLI | How it runs | How the rewrite rules reach it |
+|---|---|---|
+| `claude` | One `claude -p` process per rewrite: no tools, none of your MCP servers, hooks or skills, no saved session | `--system-prompt` |
+| `pi` | One `pi -p` process per rewrite: no tools, context files, skills, extensions or session | `--system-prompt` |
+| `opencode` | One `opencode run` process per rewrite | An inline agent with every tool off, passed in `OPENCODE_CONFIG_CONTENT` |
+| `codex` | One warm `codex app-server` kept by the plugin; each rewrite is a turn on an in-memory (`ephemeral`) thread | Thread developer instructions |
+
+**codex keeps a warm server.** codex keys the model provider's prompt cache by thread, so a thread that already carries the rewrite rules answers much faster: measured on `gpt-6-luna` with low effort, about 7 s for the first rewrite on a new thread and 2.4–3 s for the next ones, against about 7 s for every one-shot `codex exec`. A thread serves one model and one set of rules, runs at most 8 rewrites and is then dropped, so earlier drafts never pile up in its context. Two rewrites at once each get their own thread. A timed-out rewrite is interrupted and its thread dropped. The server starts on the first codex rewrite, stops after 10 minutes without one, and stops with the plugin; nothing is written to disk.
 
 ### Model source (Provider CLI only)
 
@@ -206,7 +220,7 @@ Each endpoint is one of four protocols. Adding a vendor that speaks one of them 
 | `gemini` | `POST <baseUrl>/v1beta/models/<model>:generateContent`, `x-goog-api-key` | Google AI Studio, Vertex |
 | `cloudflare` | `POST <baseUrl>/accounts/<account id>/ai/run/<model>`, `Authorization: Bearer` | Cloudflare Workers AI (`@cf/...` models) |
 
-The `openai` protocol sends `max_completion_tokens` and the `anthropic` protocol `max_tokens`, both sized from the draft (512 plus about twice the draft's tokens, at most 8192). Groq and Anthropic reserve per-minute output quota from that number, so a small one keeps a short rewrite inside a low tier's limit. An answer that stops at the limit is refused, never pasted.
+The `openai` protocol sends `max_completion_tokens` and the `anthropic` protocol `max_tokens`, both sized from the draft (256 plus about 1.5 times the draft's tokens, at most 8192). Groq and Anthropic reserve per-minute output quota from that number, so a small one fits more rewrites into a low tier's minute: with Groq's 1000-token free-tier limit, about two short rewrites a minute pass and the next answers HTTP 429 until the minute rolls over. An answer that stops at the limit is refused, never pasted.
 
 **Cloudflare Workers AI.** Base URL `https://api.cloudflare.com/client/v4`. The endpoint has an extra **Account ID** row, above Key variable, holding the **name** of the variable with your account id — prefilled `CLAUDFLARE_ACCOUNT_ID`, change it if yours differs. The account id is read from the same **Key source** as the token, so with `secrets.json` both live in the file and work however Paseo was started. The key variable defaults to `CLOUDFLARE_AUTH_TOKEN`, an API token with Workers AI permission. Models are the full `@cf/...` ids, for example `@cf/meta/llama-3.1-8b-instruct-fp8`; **Test** lists the account's text-generation models. PromptKit sends `max_tokens: 2048` because the service default of 256 tokens would cut a rewrite short.
 
@@ -286,7 +300,7 @@ Every one of these leaves the Composer text untouched.
 - Requires Paseo `>=0.9.0`. Because text access depends on the Composer DOM (or, on mobile, the React tree), a Paseo UI change can break it even when the public plugin SDK is compatible.
 - PromptKit refuses to replace text you edited while a rewrite was running, and refuses when more than one Composer (or none) is visible.
 - Only `General` ships. Any other action is a custom action you write in Settings, or a pack you bundle as a JSON file — see `docs/EXTENDING.md`.
-- A rewrite has at most 27 seconds, because the daemon drops a plugin call at 30 s. The API transport does not stream, and a cold CLI start (notably `codex` and `opencode`) can take longer; PromptKit then reports its own timeout. Use a faster model or the Direct API transport.
+- A rewrite has at most 27 seconds, because the daemon drops a plugin call at 30 s. The API transport does not stream, and a slow CLI model can take longer (`opencode` with `zcode/glm-5.3-flash` took about 33 s); PromptKit then reports its own timeout. Use a faster model or the Direct API transport.
 - No OAuth or token refresh: an endpoint uses a static key. A provider that needs an interactive login is better served by the CLI transport.
 
 ## Reporting a bug

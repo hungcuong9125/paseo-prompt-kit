@@ -4,6 +4,7 @@ import { noTrace, type Trace } from "../log.js";
 import { resolveTarget } from "../model-resolver/resolver.js";
 import type { PaseoApi } from "../paseo-types.js";
 import { runApiRewrite } from "../transports/api/runner.js";
+import type { CodexSessions } from "../transports/cli/codex-sessions.js";
 import type { CliSpawner } from "../transports/cli/process.js";
 import { runCliRewrite } from "../transports/cli/runner.js";
 import { validateRewriteOutput } from "./output-validator.js";
@@ -24,6 +25,8 @@ export interface RewriteDependencies {
   timeoutMs?: number;
   /** Test seam: replaces the process spawner under the CLI runner. */
   spawn?: CliSpawner;
+  /** The warm codex server; the composition root owns one for the plugin's lifetime. */
+  codex?: CodexSessions;
   /** Test seam: replaces the HTTP call under the API runner. */
   fetch?: typeof globalThis.fetch;
   /** Test seam: replaces the environment an API key is read from. */
@@ -83,7 +86,11 @@ export async function runRewrite(
             taskPrompt: request.taskPrompt,
             timeoutMs,
           },
-          { ...(dependencies.spawn === undefined ? {} : { spawn: dependencies.spawn }), trace },
+          {
+            ...(dependencies.spawn === undefined ? {} : { spawn: dependencies.spawn }),
+            ...(dependencies.codex === undefined ? {} : { codex: dependencies.codex }),
+            trace,
+          },
         );
   if (!generated.ok) {
     return { status: "error", error: { code: generated.code, message: generated.message } };

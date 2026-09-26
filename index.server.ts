@@ -16,6 +16,7 @@ import { testApiEndpoint } from "./server/transports/api/runner.js";
 import { hasApiKey, writeApiKey } from "./server/transports/api/secrets-store.js";
 import { readProviderCatalog } from "./server/model-resolver/provider-catalog.js";
 import { createRewriteHandler, type RewriteHandlerDependencies } from "./server/rewrite-engine/handler.js";
+import { createCodexSessions } from "./server/transports/cli/codex-sessions.js";
 import { pluginLog } from "./server/log.js";
 
 /**
@@ -44,7 +45,9 @@ export default function contribute(
     );
   }
 
-  server.handle(rewriteRpc, createRewriteHandler(dependencies));
+  // One warm codex server for the plugin's lifetime, started on the first codex rewrite.
+  const codex = dependencies.codex ?? createCodexSessions();
+  server.handle(rewriteRpc, createRewriteHandler({ ...dependencies, codex }));
 
   server.handle(actionsListRpc, (input) => summarizeActions(input.customActions));
 
@@ -94,5 +97,5 @@ export default function contribute(
     return result.ok ? { status: "ok" as const, stored: result.stored } : { status: "error" as const, message: result.message };
   });
 
-  return () => {};
+  return () => codex.close();
 }

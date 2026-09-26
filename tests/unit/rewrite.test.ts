@@ -13,6 +13,7 @@ async function rewrite(harness: ReturnType<typeof createRewriteHarness>, overrid
   return runRewrite(harness.paseo, REWRITE_REQUEST, {
     settings: await settings(overrides),
     spawn: harness.spawn,
+    codex: harness.codex,
   });
 }
 
@@ -70,8 +71,8 @@ describe("runRewrite: current model", () => {
     });
     const output = await rewrite(harness);
     expect(output.status).toBe("ok");
-    expect(harness.spawned[0]?.command).toBe("codex");
-    expect(harness.spawned[0]?.args).toContain("gpt-5.6-luna");
+    expect(harness.spawned).toEqual([]);
+    expect(harness.codexRuns[0]?.model).toBe("gpt-5.6-luna");
   });
 
   it("uses an explicit provider mapping when the id names no CLI", async () => {
@@ -433,7 +434,9 @@ describe("runRewrite: dedicated model", () => {
       dedicatedModel: "gpt-5.6-luna",
     });
     expect(output.status).toBe("ok");
-    expect(harness.spawned[0]?.command).toBe("codex");
+    expect(harness.codexRuns[0]?.model).toBe("gpt-5.6-luna");
+    expect(harness.codexRuns[0]?.systemPrompt).toBe(REWRITE_REQUEST.systemPrompt);
+    expect(harness.codexRuns[0]?.taskPrompt).toBe(REWRITE_REQUEST.taskPrompt);
   });
 
   it("fails closed when the dedicated provider is unavailable", async () => {

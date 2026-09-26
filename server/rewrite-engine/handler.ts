@@ -5,6 +5,7 @@ import { resolveAction } from "../../shared/action-registry/registry.js";
 import { buildSystemPrompt } from "../../shared/action-registry/rewrite-contract.js";
 import { resolveLanguage } from "../../shared/language-registry/registry.js";
 import type { RewriteInput, RewriteOutput } from "../../shared/rpc.js";
+import type { CodexSessions } from "../transports/cli/codex-sessions.js";
 import type { CliSpawner } from "../transports/cli/process.js";
 import { createTrace, pluginLog } from "../log.js";
 import { runRewrite } from "./engine.js";
@@ -12,6 +13,8 @@ import { runRewrite } from "./engine.js";
 export interface RewriteHandlerDependencies {
   /** Test seam: replaces the CLI spawner underneath the rewrite engine. */
   spawn?: CliSpawner;
+  /** The warm codex server; the composition root creates one when a test does not. */
+  codex?: CodexSessions;
   /** Test seam: replaces the HTTP call underneath the API runner. */
   fetch?: typeof globalThis.fetch;
   /** Test seam: replaces the environment an API key is read from. */
@@ -80,6 +83,7 @@ export function createRewriteHandler(dependencies: RewriteHandlerDependencies = 
       {
         settings: input.settings,
         ...(dependencies.spawn === undefined ? {} : { spawn: dependencies.spawn }),
+        ...(dependencies.codex === undefined ? {} : { codex: dependencies.codex }),
         ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
         ...(dependencies.env === undefined ? {} : { env: dependencies.env }),
         trace,

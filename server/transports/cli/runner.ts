@@ -2,7 +2,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { excerpt, noTrace, type Trace } from "../../log.js";
-import type { CliFamily } from "./family.js";
+import type { CodexSessions } from "./codex-sessions.js";
+import type { CliFamily, ProcessCliFamily } from "./family.js";
 import { spawnCli, type CliRunResult, type CliSpawner } from "./process.js";
 
 export interface CliRewriteInput {
@@ -21,6 +22,8 @@ export interface CliRewriteDependencies {
   onCwd?: (cwd: string) => void;
   /** Debug detail lines; a no-op unless `debugLog` is on. */
   trace?: Trace;
+  /** The warm codex server a `session` family runs on; required when one is resolved. */
+  codex?: CodexSessions;
 }
 
 export type CliRewriteResult =
@@ -37,21 +40,44 @@ function firstLine(text: string, max = 200): string {
   return line.length <= max ? line : `${line.slice(0, max - 1)}…`;
 }
 
-/** The argv for a trace: the system prompt is replaced by its length. */
+/** The argv for a trace: any argument carrying the system prompt is reduced to its length. */
 function describeArgs(args: readonly string[], systemPrompt: string): string {
-  return JSON.stringify(args.map((arg) => (arg === systemPrompt ? `<system prompt, ${arg.length} chars>` : arg)));
+  const hidden = `<system prompt, ${systemPrompt.length} chars>`;
+  return JSON.stringify(args.map((arg) => (systemPrompt !== "" && arg.includes(systemPrompt) ? hidden : arg)));
+}
+
+/** Runs one rewrite through the family's CLI: a one-shot process, or a warm session. */
+export async function runCliRewrite(
+  input: CliRewriteInput,
+  dependencies: CliRewriteDependencies = {},
+): Promise<CliRewriteResult> {
+  const family = input.family;
+  if (family.kind === "session") {
+    if (dependencies.codex === undefined) throw new Error(`No session server is wired for "${family.id}".`);
+    return dependencies.codex.run(
+      {
+        model: input.model,
+        effort: input.thinkingOptionId,
+        systemPrompt: input.systemPrompt,
+        taskPrompt: input.taskPrompt,
+        timeoutMs: input.timeoutMs,
+      },
+      dependencies.trace,
+    );
+  }
+  return runProcess({ ...input, family }, dependencies);
 }
 
 /**
- * Runs one rewrite through a CLI in a scratch directory.
+ * Runs one rewrite through a one-shot CLI process in a scratch directory.
  *
  * The working directory is empty and temporary, so a CLI that discovers project
  * files discovers nothing: the answer depends on the prompt and the model only.
  * It is removed in `finally`, including on timeout.
  */
-export async function runCliRewrite(
-  input: CliRewriteInput,
-  dependencies: CliRewriteDependencies = {},
+async function runProcess(
+  input: CliRewriteInput & { readonly family: ProcessCliFamily },
+  dependencies: CliRewriteDependencies,
 ): Promise<CliRewriteResult> {
   const spawn = dependencies.spawn ?? spawnCli;
   const trace = dependencies.trace ?? noTrace;
@@ -76,6 +102,8 @@ export async function runCliRewrite(
       family: input.family.id,
       command: invocation.command,
       args: describeArgs(invocation.args, input.systemPrompt),
+      // Names only: a value can carry the system prompt.
+      env: Object.keys(invocation.env).join(","),
       delivery: input.family.promptDelivery,
       taskChars: input.taskPrompt.length,
       timeoutMs: input.timeoutMs,
@@ -86,6 +114,7 @@ export async function runCliRewrite(
       result = await spawn({
         command: invocation.command,
         args: invocation.args,
+        env: invocation.env,
         stdin: input.family.promptDelivery === "stdin" ? input.taskPrompt : null,
         cwd: scratch,
         timeoutMs: input.timeoutMs,
