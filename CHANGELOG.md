@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 - 2026-09-29
 
 ### Added
 
@@ -14,13 +14,13 @@
   voice, questions, literals, injection text, constraint strength, approval gates). The unit suite
   proves every check can pass and fail; `tests/integration/rewrite-eval.test.ts` runs them against
   a real endpoint when `PASEO_LIVE=1` and `PASEO_EVAL_*` name a cheap model.
-
 - Output languages 日本語, 中文, 한국어, Español, Français and Deutsch ship alongside English and
   Tiếng Việt; each is one JSON file under `shared/languages/`.
 - Eval cases for a Japanese draft, a Chinese draft, mixed Vietnamese-English and
-  Japanese-English drafts, and both
-  directions of the Output language setting; the runner passes a case's output language into the
-  task the model sees.
+  Japanese-English drafts, and both directions of the Output language setting; the runner passes
+  a case's output language into the task the model sees.
+- The `rewrite success` log line carries `modelMs` next to `durationMs`: the time of the model
+  call alone, so a slow rewrite is blamed on the endpoint or on the plugin without the debug log.
 
 ### Changed
 

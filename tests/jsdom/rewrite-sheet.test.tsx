@@ -122,7 +122,7 @@ describe("rewrite sheet with the Composer reachable", () => {
     holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
     holder.listActions.mockResolvedValue(actions);
     holder.rewrite.mockResolvedValue({
-      status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1,
+      status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1,
     });
     holder.send.mockResolvedValue(undefined);
     const composer = fakeComposer("fix the login bug");
@@ -177,7 +177,7 @@ describe("rewrite sheet with several enabled actions", () => {
       rejected: [],
     });
     holder.rewrite.mockResolvedValue({
-      status: "ok", rewrittenPrompt: "planned", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1,
+      status: "ok", rewrittenPrompt: "planned", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1,
     });
     const composer = fakeComposer("fix the login bug");
     const view = await render(() => ({ ok: true, handle: composer.handle }));
@@ -218,7 +218,7 @@ describe("rewrite sheet", () => {
     holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
     holder.listActions.mockResolvedValue(actions);
     holder.rewrite.mockResolvedValue({
-      status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1,
+      status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1,
     });
     holder.send.mockResolvedValue(undefined);
     const view = await render();

@@ -98,6 +98,7 @@ export function createRewriteHandler(dependencies: RewriteHandlerDependencies = 
           provider: output.model.provider,
           model: output.model.model,
           durationMs: output.durationMs,
+          modelMs: output.modelMs,
         },
         "rewrite success",
       );

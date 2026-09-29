@@ -79,7 +79,7 @@ afterEach(() => {
 describe("rewrite flow", () => {
   it("replaces the composer text, restores focus, and never sends", async () => {
     const fake = await mountWithRewrite(
-      async () => ({ status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 5 }),
+      async () => ({ status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 5, modelMs: 5 }),
       "  write tests  ",
     );
     const field = document.querySelector("textarea")!;
@@ -136,7 +136,7 @@ describe("rewrite flow", () => {
     const pending = itemPress(fake.fake.live()[0]!)();
     await flush();
     field.value = "user typed this";
-    pendingRewrite.resolve({ status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1 });
+    pendingRewrite.resolve({ status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1 });
 
     await expect(pending).rejects.toThrow("The prompt changed while PromptKit was rewriting");
     expect(field.value).toBe("user typed this");
@@ -153,7 +153,7 @@ describe("rewrite flow", () => {
     await flush();
     expect(pill().label).toBe("Rewriting...");
 
-    pendingRewrite.resolve({ status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1 });
+    pendingRewrite.resolve({ status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1 });
     await pending;
     expect(pill().label).toBe("Rewritten");
     expect(pill().icon).toBe("Sparkles");
@@ -179,7 +179,7 @@ describe("rewrite flow", () => {
     await expect(press()).rejects.toThrow("already rewriting");
     expect(rewriteCalls(fake.fake)).toHaveLength(1);
 
-    pendingRewrite.resolve({ status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1 });
+    pendingRewrite.resolve({ status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1 });
     await first;
     expect(document.querySelector("textarea")!.value).toBe("improved");
     fake.cleanup();
@@ -280,7 +280,7 @@ describe("rewrite flow", () => {
 
   it("refuses to replace when the visible composer is gone", async () => {
     const fake = await mountWithRewrite(
-      async () => ({ status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1 }),
+      async () => ({ status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1 }),
       "original",
     );
     const press = itemPress(fake.fake.live()[0]!);
@@ -297,7 +297,7 @@ describe("rewrite flow", () => {
     await flush();
 
     fake.fake.removeAgent("agent-a");
-    pendingRewrite.resolve({ status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1 });
+    pendingRewrite.resolve({ status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1 });
 
     await expect(press).rejects.toThrow("no longer available");
     expect(field.value).toBe("original");

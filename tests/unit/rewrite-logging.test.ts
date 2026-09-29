@@ -124,6 +124,7 @@ describe("the registered rewrite handler", () => {
     const text = loggedText(captured.logs);
     expect(text).not.toContain(MARKER);
     expect(text).toContain("rewrite success");
+    expect(text).toMatch(/durationMs=\d+ modelMs=\d+/);
   });
 });
 

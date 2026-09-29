@@ -44,7 +44,7 @@ describe("/rewrite slash command", () => {
           status: "ok",
           rewrittenPrompt: "improved",
           model: { provider: "x", model: null, thinkingOptionId: null },
-          durationMs: 1,
+          durationMs: 1, modelMs: 1,
         };
       }
       throw new Error(`unexpected rpc ${method}`);
@@ -96,7 +96,7 @@ describe("/rewrite slash command", () => {
           status: "ok",
           rewrittenPrompt: "improved",
           model: { provider: "x", model: null, thinkingOptionId: null },
-          durationMs: 1,
+          durationMs: 1, modelMs: 1,
         };
       }
       throw new Error(`unexpected rpc ${method}`);
@@ -141,7 +141,7 @@ describe("/rewrite slash command", () => {
           status: "ok",
           rewrittenPrompt: "improved",
           model: { provider: "x", model: null, thinkingOptionId: null },
-          durationMs: 1,
+          durationMs: 1, modelMs: 1,
         };
       }
       throw new Error(`unexpected rpc ${method}`);

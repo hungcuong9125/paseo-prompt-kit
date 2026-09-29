@@ -26,7 +26,7 @@ function runner(input: {
 }) {
   return createRewriteRunner({
     adapter: input.adapter ?? adapter(),
-    rpc: (input.rpc ?? (async () => ({ status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1 }))) as never,
+    rpc: (input.rpc ?? (async () => ({ status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1 }))) as never,
     readSettings: async () => ({ status: "ready", values: settings }),
     agentId: "agent-a",
     workspaceId: "ws-1",
@@ -56,7 +56,7 @@ describe("rewrite runner", () => {
           status: "ok",
           rewrittenPrompt: "improved",
           model: { provider: "x", model: null, thinkingOptionId: null },
-          durationMs: 1,
+          durationMs: 1, modelMs: 1,
         };
       },
     });
@@ -74,7 +74,7 @@ describe("rewrite runner", () => {
           status: "ok",
           rewrittenPrompt: "improved",
           model: { provider: "x", model: null, thinkingOptionId: null },
-          durationMs: 1,
+          durationMs: 1, modelMs: 1,
         };
       },
     });
@@ -109,7 +109,7 @@ describe("rewrite runner", () => {
       adapter: adapter({ readText: () => "/rewrite   fix the bug", replaceText: (next) => ((written = next), true) }),
       rpc: (async (contract: { name: string }, value: { originalPrompt?: string }) => {
         if (contract.name === "prompt-kit.rewrite") sent = value.originalPrompt ?? "";
-        return { status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1 };
+        return { status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1 };
       }) as never,
     });
     await current.run("general");

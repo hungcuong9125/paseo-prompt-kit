@@ -38,7 +38,7 @@ paseo plugin add npm:paseo-prompt-kit
 paseo plugin ls
 ```
 
-Pin a release by adding its version, for example `npm:paseo-prompt-kit@0.5.8`. The plugin id stays `prompt-kit`, so reload and logs use that id:
+Pin a release by adding its version, for example `npm:paseo-prompt-kit@0.6.0`. The plugin id stays `prompt-kit`, so reload and logs use that id:
 
 ```bash
 paseo plugin reload prompt-kit
@@ -74,7 +74,7 @@ paseo plugin ls
 `--ref` chooses the initial branch, tag, or commit once; later `paseo plugin update prompt-kit` follows the remote's default HEAD. Pin a release instead of tracking `main` by giving `--ref` a tag:
 
 ```bash
-paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.5.8
+paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.6.0
 ```
 
 `paseo plugin ls` reports the installed commit.
@@ -137,7 +137,7 @@ Choose an endpoint — presets and your saved custom endpoints are listed A–Z 
 ### Advanced
 
 - `Timeout (ms)`: how long a rewrite may run, default `25000`, allowed range `1000`–`600000`. The daemon drops a plugin call at 30 s, so a rewrite stops at 27 s whatever the setting says and reports its own timeout; the screen notes when a budget above that cannot be reached.
-- `Debug log`: off by default. Off, the plugin log gets one line per rewrite, `rewrite success` or `rewrite failed` with the error code. On, it also gets `debug` lines tagged with one `request=` id: the resolved target, the CLI command line (system prompt reduced to its length) with exit code, timing and stdout/stderr excerpts, or the HTTP URL, status, rate-limit headers and a body excerpt. Keys and Cloudflare account ids are never written; the excerpts can contain the model's answer, so read them before sharing. See [Reporting a bug](#reporting-a-bug).
+- `Debug log`: off by default. Off, the plugin log gets one line per rewrite, `rewrite success` with `durationMs` (the whole call) and `modelMs` (the model call alone, so a slow rewrite is blamed on the endpoint or on the plugin), or `rewrite failed` with the error code. On, it also gets `debug` lines tagged with one `request=` id: the resolved target, the CLI command line (system prompt reduced to its length) with exit code, timing and stdout/stderr excerpts, or the HTTP URL, status, rate-limit headers and a body excerpt. Keys and Cloudflare account ids are never written; the excerpts can contain the model's answer, so read them before sharing. See [Reporting a bug](#reporting-a-bug).
 - `CLI per provider` (Provider CLI): lists only the providers you have overridden, plus an Add row. A provider named after its CLI (for example `pi` or `codex`) resolves on its own and needs no entry; an unresolved provider is refused, never guessed.
 - `Endpoint per provider` (Direct API): lists only mapped providers, plus an Add row. Pressing the pill in an agent of a mapped provider sends that agent's own model to the endpoint over HTTP. A mapped provider ignores the Model chosen under API endpoint.
 

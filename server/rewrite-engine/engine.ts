@@ -59,6 +59,7 @@ export async function runRewrite(
     timeoutMs,
   });
 
+  const modelStartedAt = Date.now();
   const generated =
     target.via === "api"
       ? await runApiRewrite(
@@ -92,6 +93,7 @@ export async function runRewrite(
             trace,
           },
         );
+  const modelMs = Date.now() - modelStartedAt;
   if (!generated.ok) {
     return { status: "error", error: { code: generated.code, message: generated.message } };
   }
@@ -110,5 +112,6 @@ export async function runRewrite(
     rewrittenPrompt: validated.text,
     model: target.via === "api" ? target.reported : target.model,
     durationMs: Date.now() - startedAt,
+    modelMs,
   };
 }

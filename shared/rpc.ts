@@ -52,6 +52,8 @@ export const rewriteRpc = defineRpc({
       rewrittenPrompt: z.string().min(1),
       model: rewriteModelSchema,
       durationMs: z.number().nonnegative(),
+      /** Time spent in the model call alone, so a slow rewrite can be blamed on the right side. */
+      modelMs: z.number().nonnegative(),
     }),
     z.object({
       status: z.literal("error"),
