@@ -4,17 +4,19 @@ Settings → **Rewrite engine → Output language** decides the language of the 
 rewritten:
 
 - **Same as the prompt** (default): keeps the language you wrote in. Nothing extra is inserted.
-- **English**, **Tiếng Việt**, …: the prose is translated into that language; paths, commands,
-  code, and model/tool names stay exactly as written (the validator still checks).
+- **English**, **Tiếng Việt**, **日本語**, **中文**, **한국어**, **Español**, **Français**,
+  **Deutsch**: the prose is translated into that language; paths, commands, code, and model/tool
+  names stay exactly as written (the validator still checks).
 
 Each language is **one JSON file** under `shared/languages/`. Core loads it, validates it, and
 when you select it, inserts its `instruction` sentence into the `<task>` block sent to the
-model. Adding a language **needs no TypeScript changes**.
+model. Adding a language is one JSON file plus one import line in the barrel; no other code
+changes.
 
 ## Step 1 — Create the file from the template
 
 ```bash
-cp docs/templates/output-language.template.json shared/languages/ja.json
+cp docs/templates/output-language.template.json shared/languages/pt.json
 ```
 
 ## Step 2 — Fill in the fields
@@ -26,14 +28,14 @@ cp docs/templates/output-language.template.json shared/languages/ja.json
 | `label` | display name in the select | ≤ 80 characters; writing it in that language itself reads clearest |
 | `instruction` | the sentence Core sends to the model, **written in English** | ≤ 2,000 characters |
 
-Example `shared/languages/ja.json`:
+Example `shared/languages/pt.json`:
 
 ```json
 {
   "schemaVersion": 1,
-  "id": "ja",
-  "label": "日本語",
-  "instruction": "Write the rewritten prompt in Japanese. Translate the user's prose; keep every technical literal (paths, URLs, commands, code, identifiers, model and tool names) exactly as written."
+  "id": "pt",
+  "label": "Português",
+  "instruction": "Write the message in Portuguese: translate every sentence, including verbs and connecting words from another language, in the author's own voice. Established technical terms (UI, session, API, ...) may stay as they are; keep every technical literal (paths, URLs, commands, code, identifiers, model and tool names) exactly as written."
 }
 ```
 
@@ -48,8 +50,10 @@ file name or a command too, the validator rejects the rewrite for a lost protect
 import en from "../languages/en.json";
 import vi from "../languages/vi.json";
 import ja from "../languages/ja.json";
+// ... the other bundled languages ...
+import pt from "../languages/pt.json";
 
-export const bundledLanguages: readonly unknown[] = [en, vi, ja];
+export const bundledLanguages: readonly unknown[] = [en, vi, ja, /* ... */, pt];
 ```
 
 The array's order is the select's order (after "Same as the prompt").

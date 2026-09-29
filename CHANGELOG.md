@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Custom-action samples rebuilt from the PromptKit library's protocols: **Find the cause** (root
+  cause with evidence, hypotheses kept apart from confirmed causes), **Plan first** (plan, open
+  questions, then wait for approval), **Review** (each finding disproved before it is reported),
+  **Testable requirements** (the author's must / should / may kept as written) and **Session
+  handoff**. They replace Execution brief, Review request and Make concise, which duplicated
+  General or added nothing a model does not already do.
+- A behavioural eval: `tests/eval` holds drafts with checks on what a model returns (roles and
+  voice, questions, literals, injection text, constraint strength, approval gates). The unit suite
+  proves every check can pass and fail; `tests/integration/rewrite-eval.test.ts` runs them against
+  a real endpoint when `PASEO_LIVE=1` and `PASEO_EVAL_*` name a cheap model.
+
+- Output languages 日本語, 中文, 한국어, Español, Français and Deutsch ship alongside English and
+  Tiếng Việt; each is one JSON file under `shared/languages/`.
+- Eval cases for a Japanese draft, a Chinese draft, mixed Vietnamese-English and
+  Japanese-English drafts, and both
+  directions of the Output language setting; the runner passes a case's output language into the
+  task the model sees.
+
+### Changed
+
+- `General` and every custom-action sample are written in English, examples included. The
+  Vietnamese verbs and examples that every user paid for on each rewrite are gone; the rewrite
+  follows the draft's language through Core's contract, and the examples say so. One last
+  example mixes Vietnamese and English on purpose, because a rule alone did not keep a small model
+  in the draft's language for a mixed draft; measured with the new eval cases.
+- Core's language rule names how to pick a mixed draft's language: the one its verbs and
+  connecting words use, not its technical terms.
+- Core's rewrite contract now carries the rules every action shares: keep each participant's
+  identity and role, and never invent facts. `General` and the samples no longer repeat them.
+- Every rewrite now avoids machine-written tells: no em dash the draft does not use, no
+  "Certainly!" or "I'd be happy to", no closing offer of help.
+- `General` keeps the order of the author's steps and every stop, wait or ask-first gate, puts the
+  done check after the last step, and tells the agent to report unrelated problems it notices
+  instead of fixing them. Its closing self-check is shorter.
+
 ## 0.5.8 - 2026-09-27
 
 ### Added

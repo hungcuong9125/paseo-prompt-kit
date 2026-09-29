@@ -38,7 +38,7 @@ export const ACTION_SAMPLES: readonly ActionSample[] = [
       description: "What this action does to the draft, in one sentence.",
       icon: "Sparkles",
       system:
-        "Action: <what this action changes in the draft>.\n\nRules:\n- <what to keep>\n- <what to change>\n- Do not add requirements, files, or facts the draft does not contain.",
+        "Action: <what this action changes in the draft>.\n\nRules:\n- <what to keep>\n- <what to change>",
       task: "Rewrite the draft below <as what>.",
     }),
   },
@@ -49,15 +49,16 @@ export const ACTION_SAMPLES: readonly ActionSample[] = [
     pack: actionPackSchema.parse(general),
   },
   {
-    key: "brief",
-    label: "Execution brief",
+    key: "debug",
+    label: "Find the cause",
     pack: sample({
-      id: "brief",
-      title: "Execution brief",
-      description: "Turn the draft into a labelled brief: goal, context, constraints, approach and done criteria, without adding facts.",
-      icon: "ListChecks",
-      system: "Action: turn the draft into a labelled execution brief the agent can act on without asking back.\n\nParts, in this order, each on its own line starting with its label; leave out a part only when there is nothing for it:\n- Goal: the outcome the author wants, as a clear instruction in one or two sentences.\n- Context: the files, commands, errors, and facts the draft mentions. Do not restate the goal here.\n- Constraints: what must or must not happen, and the author's conditions and reasons, at the draft's own strength.\n- Approach: the working steps a careful engineer takes for this kind of task, when the draft does not already give them: for a bug, find the cause before changing code; for new behaviour, follow how the codebase already does similar things; for any change, keep it limited to what is asked. Where the draft leaves a decision open, say how to settle it from the codebase; never make the decision yourself.\n- Done when: the checks that show the work is finished, derived from the goal and every constraint.\n- Use bullets inside a part when it has several items.\n- Write every label in the draft's language (Goal / Mục tiêu, Context / Ngữ cảnh, Constraints / Ràng buộc, Approach / Cách làm, Done when / Hoàn thành khi).\n\nKeep everything:\n- Every ask, condition, reason, and request for explanation in the draft appears in the brief. Drop nothing.\n\nDo not:\n- Invent facts: file names, functions, libraries, numbers, error messages, product requirements, or UI changes the draft does not contain.\n- Add features or work the author did not ask for.\n- Change the strength of a constraint.\n- Write a part only to say something is missing.\n\nExamples:\n<example>\n<before>sửa lỗi phiên bị văng ra sau 5 phút trong src/auth/session.ts, đừng đổi schema DB, xong thì chạy npm test</before>\n<after>Mục tiêu: Sửa lỗi phiên đăng nhập bị văng ra sau 5 phút.\nNgữ cảnh: Lỗi nằm trong src/auth/session.ts.\nRàng buộc: Không đổi schema DB.\nCách làm: Tìm ra nguyên nhân gốc trước khi sửa, và chỉ thay đổi phần gây lỗi.\nHoàn thành khi: Phiên không còn bị văng ra sau 5 phút, schema DB không đổi, và npm test đã chạy xong.</after>\n</example>\n<example>\n<before>make the settings page load faster, i dont know much about perf so explain what u changed</before>\n<after>Goal: Make the settings page load faster.\nConstraints: I don't know much about performance, so explain what you changed in plain words.\nApproach: Measure what makes the page slow before changing anything, and keep the change limited to that.\nDone when: The settings page loads faster and you have explained each change.</after>\n</example>\n\nBefore answering, check silently: it reads as the author speaking to the agent; every label is in the draft's language; nothing the draft says is missing and no fact is invented; constraint strength is unchanged.",
-      task: "Turn the draft below into an execution brief.",
+      id: "debug",
+      title: "Find the cause",
+      description: "Ask the agent to find the root cause with evidence before it changes anything.",
+      icon: "Bug",
+      system:
+        "Action: rewrite the draft as a bug investigation the agent finishes before it fixes anything.\n\nDo, when the draft reports a failure or unexpected behaviour:\n- State the symptom as the draft gives it: what happens, what should happen, and where. Quote error text exactly.\n- Ask the agent to list at least three possible causes, one of them not obvious (environment, timing, configuration, data, or an upstream component), and for each to say what evidence would confirm it and what would rule it out.\n- Ask the agent to check what feeds the failing code before blaming the code that reports the error.\n- Ask for the smallest reproduction it can build, and to confirm the symptom with it before changing code.\n- Ask the agent to name the root cause, tell it apart from the immediate trigger, and show the evidence. A cause it has not confirmed is reported as a hypothesis.\n- If the draft asks for a fix, ask for one limited to that cause, then a check that the reproduction no longer fails. If it does not, ask for the diagnosis only.\n\nKeep:\n- Every fact the draft gives about the failure, and every constraint at its own strength.\n- Questions as questions: a question about what happened is answered, not turned into steps.\n\nDo not:\n- Name a cause the draft does not name.\n- Put a short draft under headings.\n\nExample:\n<example>\n<before>image upload hangs at 99%, nothing in the console, help me find why</before>\n<after>The image upload hangs at 99% and the console shows nothing. Find the root cause and do not fix anything yet. List at least three possible causes, one of them not obvious (environment, timing, configuration, data, or an upstream component), and for each say what evidence would confirm or rule it out. Build the smallest reproduction that confirms the symptom, then show me the evidence for the cause you pick. Call an unconfirmed cause a hypothesis.</after>\n</example>",
+      task: "Rewrite the draft below as an investigation that finds the cause first.",
     }),
   },
   {
@@ -66,37 +67,50 @@ export const ACTION_SAMPLES: readonly ActionSample[] = [
     pack: sample({
       id: "plan-first",
       title: "Plan first",
-      description: "Ask the agent to investigate and propose before it changes anything.",
+      description: "Ask the agent to investigate and plan, then wait for approval before it changes anything.",
       icon: "ClipboardList",
       system:
-        "Action: rewrite the draft so the agent investigates and proposes before it changes anything.\n\nDo:\n- State the task as a clear instruction.\n- Ask the agent to investigate first, then propose approaches with their trade-offs and recommend one.\n- Tell the agent not to change code, files, or settings yet.\n- End by asking the agent to list the decisions it needs from the author.\n\nDo not:\n- Invent facts: file names, functions, libraries, numbers, or requirements the draft does not contain.\n- Change the strength of a constraint.\n- Put a short draft under headings.",
-      task: "Rewrite the draft below so the agent plans before acting.",
+        "Action: rewrite the draft so the agent plans and waits for approval before it changes anything.\n\nDo:\n- State the task as a clear instruction.\n- Ask the agent to investigate first and to change no code, files, or settings until the author approves the plan.\n- Ask the plan to say what is in scope and what is out of scope, using the draft's own constraints. Whatever the draft leaves open goes on a list of open questions, never decided silently.\n- Ask for the approaches with their trade-offs and one recommendation.\n- End by asking the agent to list the decisions it needs from the author, then stop and wait.\n- If the draft says not to ask questions, ask the agent to write its assumptions into the plan instead.\n\nKeep:\n- The goal, every decision the author already made, and every constraint at its own strength.\n- Questions as questions.\n\nDo not:\n- Put a short draft under headings.",
+      task: "Rewrite the draft below so the agent plans and waits for approval.",
     }),
   },
   {
     key: "review",
-    label: "Review request",
+    label: "Review",
     pack: sample({
-      id: "review-request",
-      title: "Review request",
-      description: "Turn the draft into a review request with findings ranked by severity.",
+      id: "review",
+      title: "Review",
+      description: "Ask for a review whose findings are proven, ranked, and kept apart from guesses.",
       icon: "SearchCheck",
       system:
-        "Action: rewrite the draft as a review request.\n\nDo:\n- Name what to review, from the draft.\n- Ask for findings ranked by severity, each with where it is, why it matters, and a suggested fix.\n- Ask the agent to separate confirmed problems from possible risks.\n- Tell the agent to report findings and change nothing, unless the draft asks for fixes.\n\nDo not:\n- Invent facts: file names, functions, libraries, numbers, or requirements the draft does not contain.\n- Change the strength of a constraint.",
+        "Action: rewrite the draft as a review request. The agent reports findings and changes nothing, unless the draft asks for fixes.\n\nDo:\n- Name what to review, from the draft.\n- Ask the agent to try to disprove each finding before reporting it: look for the code path, helper, or check that would make it safe, and read it instead of assuming.\n- Ask each finding to give where it is, the concrete bad outcome, why the disproof failed, a severity, and a suggested fix.\n- Ask the agent to keep confirmed problems apart from unconfirmed risks, and to mark a risk it could not verify as unresolved instead of calling it likely fine.\n- Ask the agent not to claim there are no problems unless it says what it covered.\n\nKeep:\n- The scope the draft sets and every constraint at its own strength.\n\nDo not:\n- Put a short draft under headings.",
       task: "Rewrite the draft below as a review request.",
     }),
   },
   {
-    key: "concise",
-    label: "Make concise",
+    key: "spec",
+    label: "Testable requirements",
     pack: sample({
-      id: "concise",
-      title: "Make concise",
-      description: "Cut the draft to its essentials without losing any ask.",
-      icon: "Scissors",
+      id: "spec",
+      title: "Testable requirements",
+      description: "Turn the draft into numbered, testable requirements, with open points listed and not decided.",
+      icon: "ListChecks",
       system:
-        "Action: make the draft shorter and plainer.\n\nDo:\n- Remove repetition, filler, and hedging.\n- Keep every ask, constraint, literal, and reason.\n\nDo not:\n- Add anything the draft does not say.\n- Change the strength of a constraint.",
-      task: "Make the draft below concise.",
+        "Action: rewrite the draft as a short message that states what the agent must build as numbered, testable requirements.\n\nDo:\n- Give each requirement one behaviour, with its condition and how to check it.\n- Carry the author's strength into the wording: \"must\" and \"never\" become must / must not, \"should\" and \"prefer\" become should, \"can\" and \"may\" become may. Never move one up or down.\n- Say what is out of scope only where the draft says it.\n- Put every point the draft leaves open on a separate list of open questions. Do not decide any of them.\n- Ask the agent to confirm at the end that each requirement is met.\n\nKeep:\n- Every ask, constraint, and reason in the draft. Drop nothing.\n- Questions as questions.\n\nDo not:\n- Add requirements the draft does not imply.",
+      task: "Rewrite the draft below as numbered, testable requirements.",
+    }),
+  },
+  {
+    key: "handoff",
+    label: "Session handoff",
+    pack: sample({
+      id: "handoff",
+      title: "Session handoff",
+      description: "Ask the agent to write a handoff note so the next session does not start from zero.",
+      icon: "ArrowRightLeft",
+      system:
+        "Action: rewrite the draft as a request for the agent to write a handoff note for the next session.\n\nDo:\n- Ask what was done, with file paths and observable results, and which changes are committed and which are not.\n- Ask for the current state as exact numbers: whether it builds, and how many tests pass and fail, naming each failing test.\n- Ask for what remains, each item marked blocked, ready, or needs investigation, with what was already tried and did not work so the next session does not retry it.\n- Ask for three to five next steps in order, each with the files to read first and how to know it worked.\n- Ask the agent to write only what it did or checked in this session, and to say unknown where it does not know.\n\nKeep:\n- Every fact, file name, and next step the draft states.\n\nDo not:\n- Put a short draft under headings.",
+      task: "Rewrite the draft below as a request for a session handoff note.",
     }),
   },
 ];

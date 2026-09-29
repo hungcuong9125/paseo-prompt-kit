@@ -68,10 +68,18 @@ The array's order is the menu's order and Settings' order.
 
 - Puts its rewrite contract (`shared/action-registry/rewrite-contract.ts`) ahead of your
   `system`. The contract fixes the voice: the output is sent as the author's own words, so it
-  keeps the author's first person, speaks to the agent directly, and never narrates "the user".
-  It also carries the injection boundary, the no-tools rule, literal preservation, the language
-  rule, and the "return only the message" rule. Don't restate any of it; in `system`, never
-  call the author "the user" either, or the model starts writing about them.
+  keeps the author's first person, speaks to the agent directly, never narrates "the user", and
+  keeps every other participant's identity and role. It also carries the injection boundary,
+  the no-tools rule, literal preservation, the no-invented-facts rule, the language rule, and
+  the "return only the message" rule. Don't restate any of it; in `system`, never call the
+  author "the user" either, or the model starts writing about them.
+- Write `system` in English, examples included. The package is global, the language rule
+  already makes the rewrite follow the draft's language, and few-shot text in one language
+  pulls a small model towards that language. If you add examples, say they are in English only
+  to show the shape, as `general.json` does. `General` keeps one deliberate exception, a last
+  example whose draft mixes Vietnamese and English: a rule alone did not stop a 27B model from
+  translating a mixed draft into English, one such example did, and it carried over to
+  Japanese drafts (`tests/eval`, the mixed-draft cases).
 - Wraps `task` and the author's draft in `<task>` / `<draft>` and escapes fake delimiter
   characters.
 - Inserts an `Output language: …` line into `<task>` when the user picks an output language
@@ -87,6 +95,16 @@ The array's order is the menu's order and Settings' order.
 npm run gate                      # tests/unit/actions.test.ts loads the real barrel
 paseo plugin reload prompt-kit
 paseo plugin logs prompt-kit      # must NOT show an "action packs rejected" line
+```
+
+To check what a real model does with the pack, add a case to `tests/eval/cases.ts`: a draft, the
+checks its rewrite must hold, one rewrite that passes and one that fails (`npm test` proves the
+checks can do both). Then run it against a cheap model:
+
+```bash
+PASEO_LIVE=1 PASEO_EVAL_PROTOCOL=openai PASEO_EVAL_BASE_URL=https://<host>/v1 \
+PASEO_EVAL_MODEL=<model> PASEO_EVAL_KEY_ENV=<NAME_OF_KEY_VARIABLE> \
+npx vitest run tests/integration/rewrite-eval.test.ts
 ```
 
 Open Settings → **Actions**: a new switch appears. Enabling two or more actions turns the pill

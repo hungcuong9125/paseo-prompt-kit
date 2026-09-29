@@ -88,7 +88,7 @@ Open PromptKit's settings from Paseo Settings → Plugins → the `…` menu on 
 The screen reads top to bottom in setup order:
 
 1. **Actions** — one switch per action, bundled or custom; up to 6 can be on. One enabled action makes the pill rewrite at once; two or more make it a menu (on mobile, one button per action in the sheet); none hides the pill. A lone action shows as **Always on**, with no switch. Saving updates every pill at once.
-2. **Custom actions** — your own actions, written as action-pack JSON in a text box on the same screen. **Add** opens a sample (Blank template, Copy of General, Execution brief, Plan first, Review request, Make concise, or a copy of one of yours); change the id, title and instructions, press **Apply** to check the JSON, then **Save**. They run through the same rewrite as `General`.
+2. **Custom actions** — your own actions, written as action-pack JSON in a text box on the same screen. **Add** opens a sample (Blank template, Copy of General, Find the cause, Plan first, Review, Testable requirements, Session handoff, or a copy of one of yours); change the id, title and instructions, press **Apply** to check the JSON, then **Save**. They run through the same rewrite as `General`.
 3. **Rewrite engine** — Transport, Model source (Provider CLI only) and Output language. Every other section appears only when these need it.
 4. **Dedicated model** (Provider CLI with Dedicated model) or **API endpoint** (Direct API).
 5. **Advanced** (collapsed) — timeout, debug log and the two per-provider overrides.
@@ -116,7 +116,7 @@ How each CLI runs a rewrite:
 
 ### Output language
 
-`Same as the prompt` (default) keeps the language you wrote in. `English`, `Tiếng Việt`, or any language you add translates the prose while paths, commands, code and names stay exactly as written. A language is one JSON file under `shared/languages/`; see `docs/guides/output-languages.md`.
+`Same as the prompt` (default) keeps the language you wrote in. `English`, `Tiếng Việt`, `日本語`, `中文`, `한국어`, `Español`, `Français`, `Deutsch`, or any language you add translates the prose while paths, commands, code and names stay exactly as written. A language is one JSON file under `shared/languages/`; see `docs/guides/output-languages.md`.
 
 ### The three paths
 

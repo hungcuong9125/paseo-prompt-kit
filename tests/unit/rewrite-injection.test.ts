@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { listActions } from "../../shared/action-registry/registry.js";
 import { buildSystemPrompt, REWRITE_CONTRACT } from "../../shared/action-registry/rewrite-contract.js";
 import { buildTaskPrompt } from "../../shared/action-registry/wrapper.js";
+import { ACTION_SAMPLES } from "../../client/settings/action-samples.js";
 
 /**
  * The injection boundary and the author's voice belong to the Core-owned contract
@@ -65,8 +66,22 @@ describe("core-owned rewrite contract", () => {
     expect(REWRITE_CONTRACT).toMatch(/do not put quotation marks around words the draft did not quote/i);
   });
 
+  // Fails if the rewrite may sound machine-written when it is sent as the author's own words.
+  it("bans assistant filler and an em dash the draft does not use", () => {
+    expect(REWRITE_CONTRACT).toMatch(/no em dash/i);
+    expect(REWRITE_CONTRACT).toMatch(/assistant filler/i);
+  });
+
   it("keeps the draft's language unless the task names an output language", () => {
     expect(REWRITE_CONTRACT).toMatch(/write in the draft's language unless the task names an output language/i);
+  });
+
+  // Fails if a rewrite may merge participants or add facts, whichever action runs.
+  it("keeps participant roles and invents no facts, for every action", () => {
+    expect(REWRITE_CONTRACT).toMatch(/keep each participant's identity and role/i);
+    expect(REWRITE_CONTRACT).toMatch(/never turn another participant into "I" or the addressee into "you"/i);
+    expect(REWRITE_CONTRACT).toMatch(/if a reference is ambiguous, keep the draft's wording/i);
+    expect(REWRITE_CONTRACT).toMatch(/never invent facts/i);
   });
 });
 
@@ -78,7 +93,37 @@ describe("bundled packs", () => {
     expect(general.systemPrompt).toMatch(/end with how the agent knows it is done/i);
     expect(general.systemPrompt).toMatch(/never make the decision yourself/i);
     expect(general.systemPrompt).toMatch(/never move a constraint up or down/i);
-    expect(general.systemPrompt).toMatch(/invent facts/i);
+    expect(general.systemPrompt).toMatch(/no fact is invented/i);
+  });
+
+  it("normalizes the author's voice without changing who speaks", () => {
+    expect(general.systemPrompt).toMatch(/draft's speaker and point of view/i);
+    expect(general.systemPrompt).toMatch(/without changing who is speaking/i);
+  });
+
+  // Fails if instruction text ships in one user's language: the package is global, and
+  // few-shot text pulls the model towards its own language. The one exception is the last
+  // example of General, which mixes languages on purpose: without it a small model
+  // translated a mixed draft into English (tests/eval, mixed-draft cases).
+  it("ships English instruction text, plus one mixed-language example at the end of General", () => {
+    const [rules, ...examples] = general.systemPrompt.split("<example>");
+    expect(rules).toMatch(/^[\x00-\x7F]*$/);
+    expect(rules).toMatch(/or their equivalents in the draft's language/i);
+    expect(rules).toMatch(/the rewrite itself follows the draft's language, as the last example shows/i);
+    for (const example of examples.slice(0, -1)) expect(example).toMatch(/^[\x00-\x7F]*$/);
+    expect(examples.at(-1)).toMatch(/<before>[^<]*[^\x00-\x7F][^<]*keep the current session API<\/before>/);
+    for (const entry of ACTION_SAMPLES) {
+      if (entry.key === "general") continue;
+      expect(entry.pack.system, entry.key).toMatch(/^[\x00-\x7F]*$/);
+      expect(entry.pack.task, entry.key).toMatch(/^[\x00-\x7F]*$/);
+    }
+  });
+
+  // Fails if a rewrite may reorder steps or move the done check past an approval gate.
+  it("keeps step order and stop gates, and reports unrelated problems instead of fixing them", () => {
+    expect(general.systemPrompt).toMatch(/every stop, wait, or ask-first gate/i);
+    expect(general.systemPrompt).toMatch(/never before a gate/i);
+    expect(general.systemPrompt).toMatch(/reports it and does not fix it/i);
   });
 });
 
