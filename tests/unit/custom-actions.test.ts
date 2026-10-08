@@ -87,6 +87,22 @@ describe("storing custom actions", () => {
     expect(describeEnabledLimit(summaries(next.customActions), next)).toBeNull();
   });
 
+  it("does not copy an inherited switch when renaming an action", () => {
+    const current = { ...defaults, customActions: [pack("constructor")] };
+    const renamed = storeCustomAction(current, summaries(current.customActions), pack("ours"), "constructor");
+    expect(renamed.actionEnabled).toEqual({});
+    expect(promptKitSettingsSchema.safeParse({ ...current, ...renamed }).success).toBe(true);
+  });
+
+  it("keeps a newly added action off at capacity despite a saved switch for its id", () => {
+    const customs = Array.from({ length: MAX_ENABLED_ACTIONS - 1 }, (_, index) => pack(`c-${index}`));
+    const current = { ...defaults, customActions: customs, actionEnabled: { extra: true } };
+    const added = storeCustomAction(current, summaries(customs), pack("extra", false), null);
+    const next = { ...current, ...added };
+    expect(added.actionEnabled?.extra).toBe(false);
+    expect(describeEnabledLimit(summaries(next.customActions), next)).toBeNull();
+  });
+
   it("removes a pack together with its switch", () => {
     const current = { ...defaults, customActions: [pack("mine")], actionEnabled: { mine: true, general: false } };
     expect(removeCustomAction(current, "mine")).toEqual({ customActions: [], actionEnabled: { general: false } });

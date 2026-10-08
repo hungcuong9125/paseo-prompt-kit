@@ -48,7 +48,10 @@ export function createRewriteHandler(dependencies: RewriteHandlerDependencies = 
       };
     }
 
-    if (!(input.settings.actionEnabled[action.id] ?? action.enabledByDefault)) {
+    const enabled = Object.hasOwn(input.settings.actionEnabled, action.id)
+      ? input.settings.actionEnabled[action.id] === true
+      : action.enabledByDefault;
+    if (!enabled) {
       return { status: "error", error: { code: "unknown_action", message: "This action is disabled in PromptKit settings." } };
     }
     const language = resolveLanguage(input.settings.outputLanguage);

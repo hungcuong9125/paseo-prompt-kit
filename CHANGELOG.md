@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 - 2026-10-09
 
 ### Added
 
@@ -38,6 +38,16 @@
 
 ### Fixed
 
+- Action enablement ignores inherited JavaScript object properties on both the client and
+  daemon, so an action named `constructor` no longer bypasses its disabled default. Renaming
+  such an action no longer copies an inherited function into the saved switch map.
+- A newly added custom action stays off when the enabled-action limit is reached, even if the
+  settings already contain an enabled switch for that ID and the new pack defaults to off.
+- The CLI budget regression test uses a fixed clock instead of assuming asynchronous setup
+  consumes zero milliseconds. Runtime deadline handling is unchanged.
+- The settings pre-save check rejects duplicate API endpoint IDs. Previously, the per-endpoint
+  edit check excluded every entry sharing the edited ID, allowing duplicates through. Regression
+  coverage reproduces the failure and verifies that distinct endpoint IDs remain accepted.
 - Web rewrites stay bound to their starting Composer and require matching identity evidence
   before applying output; entry points share a busy lock for the same field. A delayed settings
   read no longer recreates a pill for an agent that was removed.

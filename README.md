@@ -6,7 +6,7 @@ PromptKit is a Paseo plugin that rewrites the prompt in your Composer before you
 
 The rewrite runs one of three ways, chosen in Settings: the agent's own provider CLI with the model the Composer shows (the default), a provider CLI with a model you pick, or a direct request to an API you configure (OpenAI, Anthropic, Google Gemini, Cloudflare Workers AI, or anything speaking one of those protocols). A CLI runs headlessly in a temporary directory — no Paseo agent, no tab, no archive, no saved session — so your conversation never receives a rewrite turn.
 
-See [CHANGELOG.md](CHANGELOG.md) for release notes. The editable General, unified Prompts section and revised samples described below are currently **Unreleased**; installing a published release does not include unshipped changes.
+See [CHANGELOG.md](CHANGELOG.md) for release notes. Version **0.7.0** includes editable General instructions, the unified Prompts section, revised samples and stricter action and endpoint settings validation.
 
 ## Three ways to run it
 
@@ -38,7 +38,7 @@ paseo plugin add npm:paseo-prompt-kit
 paseo plugin ls
 ```
 
-Pin a release by adding its version, for example `npm:paseo-prompt-kit@0.6.0`. The plugin id stays `prompt-kit`, so reload and logs use that id:
+Pin a release by adding its version, for example `npm:paseo-prompt-kit@0.7.0`. The plugin id stays `prompt-kit`, so reload and logs use that id:
 
 ```bash
 paseo plugin reload prompt-kit
@@ -74,7 +74,7 @@ paseo plugin ls
 `--ref` chooses the initial branch, tag, or commit once; later `paseo plugin update prompt-kit` follows the remote's default HEAD. Pin a release instead of tracking `main` by giving `--ref` a tag:
 
 ```bash
-paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.6.0
+paseo plugin install hungcuong9125/paseo-prompt-kit --ref v0.7.0
 ```
 
 `paseo plugin ls` reports the installed commit.
@@ -148,7 +148,7 @@ On `Direct API`, an agent whose provider is mapped under **Advanced → Endpoint
 
 ### API endpoint
 
-Choose an endpoint — presets and your saved custom endpoints are listed A–Z (Anthropic, Cloudflare Workers AI, Google Gemini, Groq, Local server, OpenAI, OpenRouter), with **Custom endpoint…** last — fill in the base URL, pick a **Key source** (see [API keys](#api-keys)), and press **Test**. A successful test fills the **Model** list from the endpoint; the rewrite refuses a model outside that list. When a list has more than 8 models, a **Filter models** row above Model narrows the dropdown by name or id; the saved model always stays in it. Save is blocked while the endpoint cannot work (for example an empty base URL), with the reason in the status bar.
+Choose an endpoint — presets and your saved custom endpoints are listed A–Z (Anthropic, Cloudflare Workers AI, Google Gemini, Groq, Local server, OpenAI, OpenRouter), with **Custom endpoint…** last — fill in the base URL, pick a **Key source** (see [API keys](#api-keys)), and press **Test**. A successful test fills the **Model** list from the endpoint; the rewrite refuses a model outside that list. When a list has more than 8 models, a **Filter models** row above Model narrows the dropdown by name or id; the saved model always stays in it. Save is blocked while the endpoint cannot work (for example an empty base URL), with the reason in the status bar. Endpoint IDs must be unique across the settings draft: the pre-save check rejects duplicates so endpoint selections and provider mappings cannot become ambiguous.
 
 ![PromptKit settings on Direct API with the Google Gemini endpoint: key source, connection test, model filter and model](docs/images/settings-direct-api.png)
 
@@ -159,7 +159,7 @@ Choose an endpoint — presets and your saved custom endpoints are listed A–Z 
 - `CLI per provider` (Provider CLI): lists only the providers you have overridden, plus an Add row. A provider named after its CLI (for example `pi` or `codex`) resolves on its own and needs no entry; an unresolved provider is refused, never guessed.
 - `Endpoint per provider` (Direct API): lists only mapped providers, plus an Add row. Pressing the pill in an agent of a mapped provider sends that agent's own model to the endpoint over HTTP. A mapped provider ignores the Model chosen under API endpoint.
 
-Settings are host-scoped and persist across plugin reload.
+Settings are host-scoped and persist across plugin reload. Action enablement uses only explicitly saved switches; without one, the action's declared default applies on both the client and daemon.
 
 ## API keys
 

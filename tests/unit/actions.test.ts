@@ -4,6 +4,8 @@ import { actionPackSchema, ACTION_ID_PATTERN, MAX_INSTRUCTION_CHARS } from "../.
 import { buildTaskPrompt, escapeWrapperDelimiters } from "../../shared/action-registry/wrapper.js";
 import { listActions, listRejectedPacks, resolveAction } from "../../shared/action-registry/registry.js";
 import { enabledActions } from "../../client/actions/enabled.js";
+import { createRewriteHandler } from "../../server/rewrite-engine/handler.js";
+import { settings } from "../server/harness.js";
 
 const validPack = {
   schemaVersion: 1,
@@ -151,6 +153,21 @@ describe("core-owned wrapper", () => {
 });
 
 describe("enabled set E drives the pill shape", () => {
+  it("refuses a disabled action whose id names an inherited object property", async () => {
+    const output = await createRewriteHandler()({
+      actionId: "constructor",
+      agentId: null,
+      workspaceId: "workspace",
+      originalPrompt: "Improve this draft",
+      settings: await settings({
+        customActions: [{ ...validPack, id: "constructor", enabledByDefault: false }],
+      }),
+    }, {} as never);
+    expect(output).toEqual({
+      status: "error",
+      error: { code: "unknown_action", message: "This action is disabled in PromptKit settings." },
+    });
+  });
   it("keeps registry order and never reorders on the settings document", () => {
     const actions = listActions().map((action) => ({
       id: action.id,
@@ -177,5 +194,9 @@ describe("enabled set E drives the pill shape", () => {
       "b",
     ]);
     expect(enabledActions(pair, { actionEnabled: { a: false, b: false } } as never)).toEqual([]);
+    const inheritedId = [{ ...pair[0]!, id: "constructor", enabledByDefault: false }];
+    expect(enabledActions(inheritedId, { actionEnabled: {} } as never)).toEqual([]);
+    expect(enabledActions(inheritedId, { actionEnabled: { constructor: true } } as never)).toEqual(inheritedId);
+    expect(enabledActions(inheritedId, { actionEnabled: { constructor: false } } as never)).toEqual([]);
   });
 });

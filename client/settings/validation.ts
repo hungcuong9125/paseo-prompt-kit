@@ -18,7 +18,12 @@ export function findSaveProblem(values: PromptKitSettings): string | null {
     return `Timeout must be a whole number between ${TIMEOUT_MS.min.toLocaleString()} and ${TIMEOUT_MS.max.toLocaleString()} ms.`;
   }
 
+  const seenEndpointIds = new Set<string>();
   for (const endpoint of values.apiEndpoints) {
+    if (seenEndpointIds.has(endpoint.id)) {
+      return `Another endpoint already uses the id "${endpoint.id}".`;
+    }
+    seenEndpointIds.add(endpoint.id);
     const problem = validateEndpoint(endpoint, values.apiEndpoints, endpoint.id);
     if (problem !== null) return `Endpoint "${endpoint.label || endpoint.id}": ${problem}`;
   }

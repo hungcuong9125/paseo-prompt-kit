@@ -47,6 +47,18 @@ describe("findSaveProblem", () => {
     expect(problem).toContain("base URL");
   });
 
+  it("refuses duplicate endpoint ids while accepting distinct endpoints", async () => {
+    const base = await values();
+    expect(findSaveProblem({
+      ...base,
+      apiEndpoints: [ENDPOINT, { ...ENDPOINT, label: "Second endpoint" }],
+    })).toContain("already uses the id");
+    expect(findSaveProblem({
+      ...base,
+      apiEndpoints: [ENDPOINT, { ...ENDPOINT, id: `${ENDPOINT.id}-second` }],
+    })).toBeNull();
+  });
+
   it("refuses a selection or mapping that names an endpoint the document lacks", async () => {
     const base = await values({ apiEndpoints: [ENDPOINT] });
     expect(findSaveProblem({ ...base, apiEndpointId: "absent" })).toContain('"absent"');

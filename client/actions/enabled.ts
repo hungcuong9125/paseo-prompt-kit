@@ -15,7 +15,9 @@ export function enabledActions(
   actions: readonly ActionSummary[],
   settings: PromptKitSettings,
 ): readonly ActionSummary[] {
-  return actions.filter((action) => settings.actionEnabled[action.id] ?? action.enabledByDefault);
+  return actions.filter((action) => Object.hasOwn(settings.actionEnabled, action.id)
+    ? settings.actionEnabled[action.id] === true
+    : action.enabledByDefault);
 }
 
 /** Why the enabled set cannot be saved, or null. */

@@ -58,13 +58,13 @@ export function storeCustomAction(
       : current.customActions.map((existing) => (existing.id === replacingId ? pack : existing));
 
   const actionEnabled = { ...current.actionEnabled };
-  if (replacingId !== null && replacingId !== pack.id && replacingId in actionEnabled) {
+  if (replacingId !== null && replacingId !== pack.id && Object.hasOwn(actionEnabled, replacingId)) {
     actionEnabled[pack.id] = actionEnabled[replacingId]!;
     delete actionEnabled[replacingId];
   }
   if (replacingId === null) {
     const full = enabledActions(actions, current).length >= MAX_ENABLED_ACTIONS;
-    if (full && pack.enabledByDefault) actionEnabled[pack.id] = false;
+    if (full) actionEnabled[pack.id] = false;
   }
   return { customActions, actionEnabled };
 }
