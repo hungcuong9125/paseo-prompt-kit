@@ -1,32 +1,54 @@
 import type { ComposerAdapter } from "./adapter.js";
-import { describeComposerTopology, inspectComposers, locateComposerField, setNativeValue } from "./dom.js";
+import { COMPOSER_INPUT_SELECTOR, describeComposerTopology, inspectComposers, isElementVisible, locateComposerField, setNativeValue } from "./dom.js";
 import { startRewriteEffect } from "./effect.js";
 
 export { COMPOSER_INPUT_SELECTOR, COMPOSER_ROOT_SELECTOR, isElementVisible } from "./dom.js";
 
-/**
- * The rewrite path needs a stable identity for "the Composer the user pressed the
- * pill in", not merely "some Composer that is currently visible". When more than
- * one Composer is genuinely visible (a split pane), the adapter must refuse: the
- * plugin has no relation from a pill to its own agent's pane. Binding the pill to
- * its pane is the `composer-resolver` work unit of CORE v0.2.0.
- */
-function locateField(): HTMLTextAreaElement | null {
-  return locateComposerField();
+export interface ComposerIdentity { agentId: string | null; workspaceId: string }
+interface Fiber { return: Fiber | null; memoizedProps: Record<string, unknown> | null; alternate?: Fiber | null }
+const busyFields = new WeakSet<HTMLTextAreaElement>();
+
+/** The host carries both ids on the Composer owner. Missing or conflicting evidence refuses a write. */
+function identityOf(field: HTMLTextAreaElement): ComposerIdentity | null {
+  const key = Object.keys(field).find((name) => name.startsWith("__reactFiber$"));
+  if (!key) return null;
+  const fiber = (field as unknown as Record<string, Fiber>)[key];
+  for (let node = fiber; node; node = node.return ?? undefined) {
+    const props = node.memoizedProps;
+    if (props && Object.hasOwn(props, "agentId") && typeof props.workspaceId === "string") {
+      const agentId = props.agentId;
+      if (agentId !== null && typeof agentId !== "string") return null;
+      const alternate = node.alternate?.memoizedProps;
+      if (alternate && (alternate.agentId !== agentId || alternate.workspaceId !== props.workspaceId)) return null;
+      return { agentId, workspaceId: props.workspaceId };
+    }
+  }
+  return null;
 }
 
-export function createWebComposerAdapter(): ComposerAdapter {
+export function createWebComposerAdapter(target?: ComposerIdentity): ComposerAdapter {
+  let bound: HTMLTextAreaElement | null = null;
+  let identity: ComposerIdentity | null = null;
+  const matches = (field: HTMLTextAreaElement, expected: ComposerIdentity) => {
+    const actual = identityOf(field);
+    return actual !== null && actual.agentId === expected.agentId && actual.workspaceId === expected.workspaceId;
+  };
+  const locate = (): HTMLTextAreaElement | null => {
+    if (typeof document === "undefined") return null;
+    if (bound) return isElementVisible(bound) && (!identity || matches(bound, identity)) ? bound : null;
+    if (!target) return locateComposerField();
+    const fields = Array.from(document.querySelectorAll<HTMLTextAreaElement>(COMPOSER_INPUT_SELECTOR))
+      .filter((field) => {
+        const actual = identityOf(field);
+        return isElementVisible(field) && actual !== null && actual.workspaceId === target.workspaceId && (target.agentId === null || actual.agentId === target.agentId);
+      });
+    return fields.length === 1 ? fields[0]! : null;
+  };
   return {
-    isSupported(): boolean {
-      return typeof document !== "undefined";
-    },
-    readText(): string | null {
-      if (typeof document === "undefined") return null;
-      return locateField()?.value ?? null;
-    },
-    replaceText(next: string): boolean {
-      if (typeof document === "undefined") return false;
-      const field = locateField();
+    isSupported: () => typeof document !== "undefined",
+    readText: () => locate()?.value ?? null,
+    replaceText(next) {
+      const field = locate();
       if (!field) return false;
       const original = field.value;
       setNativeValue(field, next);
@@ -39,20 +61,22 @@ export function createWebComposerAdapter(): ComposerAdapter {
       }
       return true;
     },
-    focus(): void {
-      if (typeof document === "undefined") return;
-      locateField()?.focus();
+    focus: () => locate()?.focus(),
+    beginRewriteEffect() {
+      const field = locate();
+      if (!field) throw new Error("PromptKit could not bind this Composer to its workspace and agent.");
+      if (busyFields.has(field)) throw new Error("PromptKit is already rewriting this prompt.");
+      busyFields.add(field);
+      bound = field;
+      identity = identityOf(field);
+      const stop = startRewriteEffect(field);
+      return () => { stop(); busyFields.delete(field); bound = null; identity = null; };
     },
-    beginRewriteEffect(): () => void {
-      if (typeof document === "undefined") return () => {};
-      const field = locateField();
-      return field ? startRewriteEffect(field) : () => {};
-    },
-    describeFailure(): string {
-      if (typeof document === "undefined") {
-        return "PromptKit can rewrite only on Desktop and Web: the mobile app gives plugins no access to the Composer text.";
-      }
-      return describeComposerTopology(inspectComposers());
+    describeFailure() {
+      if (typeof document === "undefined") return "Use the PromptKit sheet on mobile.";
+      const topology = inspectComposers();
+      if (topology.visibleFields > 0 && target) return "PromptKit could not identify this agent's Composer. No text was changed.";
+      return describeComposerTopology(topology);
     },
   };
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { SettingsAction, SettingsCard, SettingsSection, SettingsSelect } from "@getpaseo/plugin/client/ui";
@@ -13,10 +13,12 @@ import { RADIUS, SPACE, textStyles } from "../ui/tokens.js";
 
 export interface CustomActionsSectionProps {
   theme: PluginTheme;
+  children?: ReactNode;
   /** Null while the registry has not answered yet. */
   actions: readonly ActionSummary[] | null;
   values: PromptKitSettings;
   disabled: boolean;
+  onEditingChange?(editing: boolean): void;
   patch(update: SettingsPatch): void;
 }
 
@@ -25,8 +27,15 @@ type Editing = { id: string | null; text: string; error: string | null };
 const COPY_PREFIX = "copy:";
 
 /** Custom actions as JSON: pick a sample or an existing action, edit, Apply. Save stores them. */
-export function CustomActionsSection({ theme, actions, values, disabled, patch }: CustomActionsSectionProps) {
+export function CustomActionsSection({ theme, actions, values, disabled, patch, onEditingChange, children }: CustomActionsSectionProps) {
   const [editing, setEditing] = useState<Editing | null>(null);
+  useEffect(() => {
+    onEditingChange?.(editing !== null);
+    return () => onEditingChange?.(false);
+  }, [editing !== null, onEditingChange]);
+  useEffect(() => {
+    if (editing?.id && !values.customActions.some((pack) => pack.id === editing.id)) setEditing(null);
+  }, [values.customActions, editing?.id]);
   const text = useMemo(() => textStyles(theme), [theme]);
   const busy = disabled || actions === null;
 
@@ -82,15 +91,16 @@ export function CustomActionsSection({ theme, actions, values, disabled, patch }
 
   return (
     <SettingsSection
-      title="Custom actions"
-      info="Your own actions, written as action-pack JSON. Start from a sample, change the id, title and instructions, then Apply and Save. They run through the same rewrite as the bundled actions."
+      title="Prompts"
+      info="Edit General directly without adding another prompt. Add a prompt for a separate action: edit its JSON, then Apply and Save. Core rules apply to every prompt."
     >
       <SettingsCard>
+        {children}
         {values.customActions.map((pack) => (
           <SettingsAction
             key={pack.id}
             label={pack.title}
-            hint={`${pack.id} · ${pack.description}`}
+            hint={`Custom · ${pack.description}`}
             actionLabel="Edit"
             disabled={busy || editing !== null}
             onPress={() => setEditing({ id: pack.id, text: formatPack(pack), error: null })}
@@ -98,7 +108,7 @@ export function CustomActionsSection({ theme, actions, values, disabled, patch }
         ))}
         {editing === null ? (
           <SettingsAction
-            label="Add action"
+            label="Add prompt"
             hint="Opens a sample to edit."
             actionLabel="Add"
             disabled={busy}

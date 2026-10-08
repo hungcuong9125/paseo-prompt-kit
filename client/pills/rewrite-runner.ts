@@ -50,10 +50,8 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
       const catalog = await input.rpc(providerCatalogRpc, {});
       const selectionError = validateDedicatedSelection(settings.values, catalog.providers);
       if (selectionError !== null) throw new Error(selectionError);
-    } else if (settings.values.transport === "api") {
-      const selectionError = validateDedicatedSelection(settings.values, []);
-      if (selectionError !== null) throw new Error(selectionError);
     }
+    // API routing requires the agent's provider snapshot, which the server resolves.
     if (!input.isActive()) throw new Error("This agent is no longer available.");
     const request: RewriteInput = {
       actionId,
@@ -118,6 +116,7 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
         if (current === null) throw new Error(input.adapter.describeFailure());
         // Host emptied the Composer: restore the full line so nothing jumps, dim it, then replace.
         const restored = slashLine(text);
+        if (current !== "" && current !== restored) throw new Error("The prompt changed; your text was kept.");
         if (current === "" && !input.adapter.replaceText(restored)) {
           throw new Error("PromptKit could not find the Composer to update.");
         }

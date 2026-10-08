@@ -1,6 +1,6 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
-import { ACTION_ID_PATTERN, actionPackSchema } from "./action-registry/schema.js";
+import { ACTION_ID_PATTERN, actionPackSchema, actionOverridesSchema } from "./action-registry/schema.js";
 import { apiEndpointSchema } from "./api-protocol.js";
 import { promptKitSettingsSchema } from "./settings.js";
 
@@ -71,6 +71,9 @@ export const actionSummarySchema = z.object({
   icon: z.string().min(1),
   /** True for an action the user wrote in Settings, false for a bundled pack. */
   custom: z.boolean(),
+  system: z.string(),
+  task: z.string(),
+  modified: z.boolean(),
 });
 
 export const rejectedPackSchema = z.object({
@@ -87,6 +90,7 @@ export const actionsListRpc = defineRpc({
   name: "prompt-kit.actions.list",
   input: z.object({
     customActions: z.array(actionPackSchema),
+    actionOverrides: actionOverridesSchema.default({}),
   }),
   output: z.object({
     actions: z.array(actionSummarySchema),

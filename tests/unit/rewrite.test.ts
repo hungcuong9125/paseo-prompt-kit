@@ -315,7 +315,7 @@ describe("runRewrite: output language", () => {
 
 describe("runRewrite: CLI failure paths", () => {
   // Fails if the CLI's own error text can reach the Composer as a rewrite.
-  it("refuses a Claude result flagged is_error, with the CLI's reason", async () => {
+  it("refuses a Claude result flagged is_error without forwarding provider text", async () => {
     const harness = createRewriteHarness({
       agent: { provider: "claude", runtimeInfo: { provider: "claude" } },
       cliResult: {
@@ -327,11 +327,11 @@ describe("runRewrite: CLI failure paths", () => {
     expect(output.status).toBe("error");
     if (output.status !== "error") throw new Error("expected error");
     expect(output.error.code).toBe("generation_failed");
-    expect(output.error.message).toContain("Failed to authenticate: OAuth session expired");
+    expect(output.error.message).toBe('The rewrite CLI "claude" reported an error. Check CLI authentication and configuration.');
   });
 
   // Fails if a CLI that exits non-zero has its stdout treated as an answer.
-  it("refuses any run that exits non-zero, naming stderr's first line", async () => {
+  it("refuses any run that exits non-zero, naming only its exit code", async () => {
     const harness = createRewriteHarness({
       cliResult: { exitCode: 2, stderr: "\nmodel not found: x\nstack…" },
     });
@@ -339,7 +339,7 @@ describe("runRewrite: CLI failure paths", () => {
     expect(output.status).toBe("error");
     if (output.status !== "error") throw new Error("expected error");
     expect(output.error.code).toBe("generation_failed");
-    expect(output.error.message).toBe('The rewrite CLI "pi" exited with code 2: model not found: x');
+    expect(output.error.message).toBe('The rewrite CLI "pi" exited with code 2.');
   });
 
   it("maps a CLI timeout to a timeout error and never replaces the composer", async () => {
@@ -548,11 +548,7 @@ async function rewriteApi(
     if (http.reject) throw http.reject;
     const status = http.status ?? 200;
     const body = http.body === undefined ? {} : http.body;
-    return {
-      ok: status >= 200 && status < 300,
-      status,
-      text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
-    };
+    return new Response(typeof body === "string" ? body : JSON.stringify(body), { status });
   }) as unknown as typeof globalThis.fetch;
 
   const output = await runRewrite(

@@ -26,7 +26,7 @@ function title(readiness: Readiness, draft: SettingsDraft): string {
   if (draft.saveError !== null) return "Save failed";
   switch (readiness.kind) {
     case "ready":
-      return `Ready · ${readiness.path}`;
+      return `Configured · ${readiness.path}`;
     case "blocked":
       return `Not ready · ${readiness.path}`;
     case "checking":
@@ -39,12 +39,12 @@ function lines(readiness: Readiness, draft: SettingsDraft, actionsChanged: boole
   if (draft.problem !== null) out.push(draft.problem);
   else if (draft.saveError !== null) out.push(draft.saveError);
   else if (readiness.kind === "blocked") out.push(readiness.reason);
-  else out.push(readiness.detail);
+  else out.push(`${readiness.detail} Configuration only; provider availability and generation are checked when you run.`);
 
   if (draft.dirty) {
     out.push(
       actionsChanged
-        ? "Unsaved changes. Action changes reach the Composer pill when the agent re-opens or the plugin reloads."
+        ? "Unsaved changes. Save updates this client's button immediately; other clients refresh within 15 seconds."
         : "Unsaved changes.",
     );
   } else if (draft.justSaved) {

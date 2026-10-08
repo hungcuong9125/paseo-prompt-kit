@@ -6,7 +6,7 @@ import type {
   PluginButtonRegistration,
   PluginClientContext,
 } from "@getpaseo/plugin/client";
-import type { ActionPack } from "../../shared/action-registry/schema.js";
+import type { ActionPack, ActionOverrides } from "../../shared/action-registry/schema.js";
 import type { ActionSummary } from "../../shared/rpc.js";
 import { enabledActions } from "../actions/enabled.js";
 import { PLUGIN_ICON } from "../icon.js";
@@ -22,7 +22,7 @@ export type AgentPillRunner = (actionId: string) => Promise<void>;
 
 export interface AgentPillDependencies {
   /** Loaded actions for these custom packs, from `prompt-kit.actions.list`. */
-  listActions: (customActions: readonly ActionPack[]) => Promise<readonly ActionSummary[]>;
+  listActions: (customActions: readonly ActionPack[], actionOverrides?: ActionOverrides) => Promise<readonly ActionSummary[]>;
   readSettings: () => Promise<SettingsRead>;
   /** When set, the pill opens this popover (host renders it as a bottom sheet on mobile). */
   popover?: ComponentType<PluginButtonContentProps>;
@@ -98,14 +98,16 @@ export function registerAgentPills(
   /** Every live agent, with or without a pill, so a save can add a pill that was missing. */
   const live = new Map<string, AgentPillAgent>();
   let cancelled = false;
+  let refreshGeneration = 0;
+  const updated = new Set<string>();
 
   // The registry depends only on the custom packs, so it is read once per set of
   // them: an agent directory of N agents must not issue N identical RPCs.
   let cached: { key: string; promise: Promise<readonly ActionSummary[]> } | null = null;
-  function loadActions(customActions: readonly ActionPack[]): Promise<readonly ActionSummary[]> {
-    const key = JSON.stringify(customActions);
+  function loadActions(customActions: readonly ActionPack[], overrides: ActionOverrides): Promise<readonly ActionSummary[]> {
+    const key = JSON.stringify([customActions, overrides]);
     if (cached?.key !== key) {
-      const promise = dependencies.listActions(customActions).catch((error: unknown) => {
+      const promise = dependencies.listActions(customActions, overrides).catch((error: unknown) => {
         // Do not cache a failure: the next agent may still register.
         if (cached?.promise === promise) cached = null;
         throw error;
@@ -135,7 +137,7 @@ export function registerAgentPills(
       return null;
     }
     try {
-      const actions = await loadActions(settings.values.customActions);
+      const actions = await loadActions(settings.values.customActions, settings.values.actionOverrides);
       return enabledActions(actions, settings.values);
     } catch (error) {
       console.error("[prompt-kit] failed to list actions", error);
@@ -151,11 +153,13 @@ export function registerAgentPills(
       remove(agent.agentId);
     }
 
+    const generation = refreshGeneration;
     const enabled = await readEnabled();
-    if (cancelled || entries.has(agent.agentId) || enabled === null || enabled.length === 0) return;
+    if (generation !== refreshGeneration) { if (!cancelled && live.get(agent.agentId) === agent) void upsert(agent); return; }
+    if (cancelled || live.get(agent.agentId) !== agent || entries.has(agent.agentId) || enabled === null || enabled.length === 0) return;
 
     const isActive = () =>
-      entries.get(agent.agentId)?.workspaceId === agent.workspaceId;
+      live.get(agent.agentId) === agent && entries.get(agent.agentId)?.workspaceId === agent.workspaceId;
     const run = createRunner(agent, isActive);
     const registration = client.addComposerPill({
       id: PILL_ID,
@@ -168,8 +172,13 @@ export function registerAgentPills(
 
   /** After a save: each live agent's pill follows the new `E` — updated, added, or dropped. */
   async function refresh(): Promise<void> {
+    const generation = ++refreshGeneration;
     const enabled = await readEnabled();
-    if (cancelled || enabled === null) return;
+    if (cancelled || generation !== refreshGeneration) return;
+    if (enabled === null) {
+      for (const id of entries.keys()) remove(id);
+      return;
+    }
     for (const agent of live.values()) {
       const entry = entries.get(agent.agentId);
       if (enabled.length === 0) remove(agent.agentId);
@@ -198,12 +207,14 @@ export function registerAgentPills(
       remove(agent.id);
       return;
     }
-    const entry = { workspaceId: agent.workspaceId, agentId: agent.id };
+    const current = live.get(agent.id);
+    const entry = current?.workspaceId === agent.workspaceId ? current : { workspaceId: agent.workspaceId, agentId: agent.id };
     live.set(agent.id, entry);
     void upsert(entry);
   }
 
   const unsubscribe = client.paseo.agents.subscribe((update) => {
+    updated.add(update.kind === "upsert" ? update.agent.id : update.agentId);
     if (update.kind === "upsert") {
       accept(update.agent);
     } else {
@@ -221,13 +232,15 @@ export function registerAgentPills(
   void client.paseo.agents
     .list({ subscribe: {}, page: { limit: 200 } })
     .then((result) => {
-      for (const entry of result.entries) accept(entry.agent);
+      for (const entry of result.entries) if (!updated.has(entry.agent.id)) accept(entry.agent);
     })
     .catch((error: unknown) => {
       console.error("[prompt-kit] failed to list agents", error);
     });
 
+  const poll = setInterval(() => void refresh(), 15_000);
   return () => {
+    clearInterval(poll);
     cancelled = true;
     unsubscribe();
     stopFollowingSaves();

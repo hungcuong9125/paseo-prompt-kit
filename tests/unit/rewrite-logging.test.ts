@@ -203,13 +203,13 @@ describe("debug log", () => {
   it("traces the target, request and response under one request id, never the key", async () => {
     await run429(true);
     const text = loggedText(captured.logs);
-    for (const step of ["rewrite start", "target", "api request", "api response", "api body", "rewrite failed"]) {
+    for (const step of ["rewrite start", "target", "api request", "api response", "rewrite failed"]) {
       expect(text).toContain(`debug ${step} `);
     }
     expect(text).toContain("status=429");
     expect(text).toContain("x-ratelimit-limit-tokens: 8000");
     expect(text).toContain("retry-after: 7");
-    expect(text).toContain("Request too large");
+    expect(text).not.toContain("Request too large");
     expect(text).not.toContain(KEY);
     expect(text).not.toContain(MARKER);
     const ids = new Set([...text.matchAll(/ request=(\S+)/g)].map((match) => match[1]));

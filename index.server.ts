@@ -49,7 +49,7 @@ export default function contribute(
   const codex = dependencies.codex ?? createCodexSessions();
   server.handle(rewriteRpc, createRewriteHandler({ ...dependencies, codex }));
 
-  server.handle(actionsListRpc, (input) => summarizeActions(input.customActions));
+  server.handle(actionsListRpc, (input) => summarizeActions(input.customActions, input.actionOverrides));
 
   server.handle(providerCatalogRpc, async (input, { paseo }) => {
     const providers = await readProviderCatalog(paseo, input.cwd);

@@ -7,6 +7,7 @@ import { runApiRewrite } from "../transports/api/runner.js";
 import type { CodexSessions } from "../transports/cli/codex-sessions.js";
 import type { CliSpawner } from "../transports/cli/process.js";
 import { runCliRewrite } from "../transports/cli/runner.js";
+import { RewriteDeadline, rewriteTimeout } from "./deadline.js";
 import { validateRewriteOutput } from "./output-validator.js";
 
 export interface RewriteRequest {
@@ -46,7 +47,9 @@ export async function runRewrite(
   const timeoutMs = dependencies.timeoutMs ?? effectiveTimeoutMs(settings.timeoutMs);
   const trace = dependencies.trace ?? noTrace;
 
-  const target = await resolveTarget(paseo, request.agentId, settings);
+  const deadline = new RewriteDeadline(timeoutMs);
+  try {
+  const target = await deadline.wait(resolveTarget(paseo, request.agentId, settings));
   if (!target.ok) {
     trace("target refused", { code: target.error.code, message: target.error.message });
     return { status: "error", error: target.error };
@@ -60,7 +63,7 @@ export async function runRewrite(
   });
 
   const modelStartedAt = Date.now();
-  const generated =
+  const generated = await deadline.wait((async () =>
     target.via === "api"
       ? await runApiRewrite(
           {
@@ -69,7 +72,8 @@ export async function runRewrite(
             systemPrompt: request.systemPrompt,
             taskPrompt: request.taskPrompt,
             draft: request.originalPrompt,
-            timeoutMs,
+            timeoutMs: deadline.remaining(),
+            signal: deadline.signal,
             secretsDir: settings.secretsDir,
           },
           {
@@ -85,14 +89,15 @@ export async function runRewrite(
             thinkingOptionId: target.model.thinkingOptionId,
             systemPrompt: request.systemPrompt,
             taskPrompt: request.taskPrompt,
-            timeoutMs,
+            timeoutMs: deadline.remaining(),
+            signal: deadline.signal,
           },
           {
             ...(dependencies.spawn === undefined ? {} : { spawn: dependencies.spawn }),
             ...(dependencies.codex === undefined ? {} : { codex: dependencies.codex }),
             trace,
           },
-        );
+        ))());
   const modelMs = Date.now() - modelStartedAt;
   if (!generated.ok) {
     return { status: "error", error: { code: generated.code, message: generated.message } };
@@ -114,4 +119,8 @@ export async function runRewrite(
     durationMs: Date.now() - startedAt,
     modelMs,
   };
+  } catch {
+    if (deadline.signal.aborted) return rewriteTimeout();
+    return { status: "error", error: { code: "generation_failed", message: "The rewrite could not complete. Check the provider configuration." } };
+  } finally { deadline.dispose(); }
 }

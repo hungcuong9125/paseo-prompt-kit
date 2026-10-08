@@ -1,5 +1,56 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Edit bundled **General** instructions directly in Settings, with a **Modified** marker,
+  Save/Discard and a confirmed reset of only that prompt. Core rules stay visible and read-only.
+  Instruction overrides keep the existing action identity and schema version `1`.
+- Regression coverage for editable prompts, Composer identity changes, async lifecycle races,
+  HTTP body deadlines, Codex startup deadlines, credential echoes and concurrent secret writes.
+- Behavioural eval cases for every demo sample, including delegated planning, diagnosis-only
+  requests, review without fixes, requirement strength and handoff unknowns. Model calls remain
+  opt-in; fixture checks alone do not establish live model quality.
+
+### Changed
+
+- **Default prompts** and **Custom actions** now share one **Prompts** card: General first,
+  saved custom prompts next, and **Add prompt** last. Editing General no longer requires a copy
+  or adds a second menu choice. Existing custom prompts are not deleted or merged automatically.
+- All six demo samples revised: Blank template runs safely without placeholders; Find the cause
+  asks for plausible, evidence-backed hypotheses without a quota; Plan first preserves delegated
+  choices while retaining its approval gate; Review asks for evidence rather than invented
+  findings; Testable requirements preserves obligation strength without inventing criteria;
+  Session handoff requests observed results and unknowns without a fixed number of steps.
+  Saved custom prompts are independent copies and are not overwritten by a sample update.
+- Shared injection and output instructions remain owned by Core instead of repeated in each
+  sample. All samples still use the same registry, wrapper and rewrite engine.
+- Codex keeps a warm process but uses a fresh ephemeral thread for every rewrite, rather than
+  carrying drafts across turns. Startup is deadline-bound. A timeout closes the shared process
+  and may fail other concurrent Codex rewrites; complete tool isolation still needs live verification.
+- Debug traces record response/output sizes instead of HTTP bodies or CLI output excerpts;
+  HTTP diagnostics redact known request credentials and account identifiers before truncation.
+  CLI failures use fixed messages instead of forwarding raw provider errors, stderr or spawn
+  exceptions to the UI or trace; exit codes remain available.
+- README documents the unified editor, sample purposes, one-click behaviour, persistence and
+  current limitations. Configuration readiness is not a provider-generation health check.
+
+### Fixed
+
+- Web rewrites stay bound to their starting Composer and require matching identity evidence
+  before applying output; entry points share a busy lock for the same field. A delayed settings
+  read no longer recreates a pill for an agent that was removed.
+- HTTP timeout covers reading the response body, not only receiving headers; responses are
+  capture-limited. Malformed model lists fail instead of masquerading as an empty valid list.
+- Valid API provider mappings are no longer blocked by client checks of an unused default model.
+- Discard closes prompt editors; failed saves retain instruction edits. Endpoint test results
+  are ignored when their configuration changed, and other clients periodically refresh pills.
+- Mobile sheet Send does not clear a newer Composer draft.
+- Secret-file writes through the same plugin process are serialized by resolved path, preventing
+  lost updates between those requests. External writers and separate processes are not locked.
+- Output validation rejects a Vietnamese rewrite preface unless already present in the draft.
+
 ## 0.6.0 - 2026-09-29
 
 ### Added

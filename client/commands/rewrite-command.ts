@@ -1,5 +1,5 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
-import type { ActionPack } from "../../shared/action-registry/schema.js";
+import type { ActionPack, ActionOverrides } from "../../shared/action-registry/schema.js";
 import type { ActionSummary } from "../../shared/rpc.js";
 import { enabledActions } from "../actions/enabled.js";
 import { createWebComposerAdapter } from "../composer-bridge/web.js";
@@ -10,7 +10,7 @@ import { createSettingsReader, type SettingsRead } from "../settings/read-settin
 export const REWRITE_COMMAND = "rewrite";
 
 export interface RewriteCommandDependencies {
-  listActions: (customActions: readonly ActionPack[]) => Promise<readonly ActionSummary[]>;
+  listActions: (customActions: readonly ActionPack[], actionOverrides?: ActionOverrides) => Promise<readonly ActionSummary[]>;
   readSettings: () => Promise<SettingsRead>;
   statuses: RewriteStatusBus;
 }
@@ -30,13 +30,13 @@ export function registerRewriteCommand(
     argumentHint: "<prompt>",
     context: "workspace",
     async onSubmit(context) {
-      const adapter = createWebComposerAdapter();
+      const adapter = createWebComposerAdapter({ agentId: null, workspaceId: context.workspace.id });
       if (!adapter.isSupported()) {
         throw new Error("On mobile, press the PromptKit pill instead.");
       }
       const settings = await dependencies.readSettings();
       if (settings.status !== "ready") throw new Error(settings.error);
-      const actions = await dependencies.listActions(settings.values.customActions);
+      const actions = await dependencies.listActions(settings.values.customActions, settings.values.actionOverrides);
       // Default flow = first enabled action.
       const action = enabledActions(actions, settings.values)[0];
       if (action === undefined) {

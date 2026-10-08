@@ -17,6 +17,8 @@ const FENCE = /```/g;
 const META_PREFACE =
   /^(?:sure[,!.:]|certainly[,!.:]|of course[,!.:]|here(?:'s| is) (?:the |your )?(?:rewritten|improved|enhanced|optimized|revised) (?:prompt|version)|below is (?:the |your )?(?:rewritten|improved|enhanced|optimized|revised) (?:prompt|version)|the (?:rewritten|improved|enhanced|optimized|revised) (?:prompt|version) is[:.]?$|rewritten prompt:|improved prompt:)/i;
 
+const LOCALIZED_PREFACE = /^(?:dưới đây là (?:prompt|lời nhắc|phiên bản|nội dung).*(?:cải thiện|viết lại|chỉnh sửa)|đây là (?:prompt|lời nhắc).*(?:cải thiện|viết lại)|(?:以下是|这是).*(?:改写|优化|重写).*(?:提示|版本)|(?:以下|こちら).*(?:書き直|改善|修正).*(?:プロンプト|文章)|(?:다음은|아래는).*(?:개선|수정).*(?:프롬프트|문장)|(?:aquí tienes|a continuación).*(?:prompt|versión).*(?:mejorad|reescrit)|voici (?:le|la|une).*(?:prompt|version).*(?:amélior|réécrit)|hier ist (?:der|die|das).*(?:überarbeitete|verbesserte).*(?:prompt|version))/i;
+
 const REFUSAL =
   /^(?:i (?:cannot|can't|won't|will not|am unable|am not able)|i'm sorry|sorry[,.]|as an ai|unfortunately)/i;
 
@@ -89,7 +91,7 @@ export function validateRewriteOutput(input: {
   const first = lines[0];
   if (
     first !== undefined &&
-    META_PREFACE.test(first) &&
+    (META_PREFACE.test(first) || LOCALIZED_PREFACE.test(first)) &&
     !input.originalPrompt.includes(first)
   ) {
     return fail("generation_failed", "The rewrite output starts with a preface, not the prompt.");

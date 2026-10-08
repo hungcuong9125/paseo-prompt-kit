@@ -1,4 +1,4 @@
-import { at, authHeaders, joinUrl, stringFieldAt, type ApiCall, type ApiHttpRequest, type ApiModelsCall, type ApiProtocol } from "./protocol.js";
+import { at, authHeaders, joinUrl, outputTokenCap, stringFieldAt, type ApiCall, type ApiHttpRequest, type ApiModelsCall, type ApiProtocol } from "./protocol.js";
 
 /**
  * The Google Gemini `generateContent` protocol.
@@ -26,7 +26,7 @@ export const geminiProtocol: ApiProtocol = {
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: call.systemPrompt }] },
         contents: [{ role: "user", parts: [{ text: call.taskPrompt }] }],
-        generationConfig: { temperature: 0 },
+        generationConfig: { temperature: 0, maxOutputTokens: outputTokenCap(call.draft) },
       }),
     };
   },
@@ -36,6 +36,7 @@ export const geminiProtocol: ApiProtocol = {
     const text: string[] = [];
     for (const part of parts) {
       if (part === null || typeof part !== "object") continue;
+      if ((part as { thought?: unknown }).thought === true) continue;
       const value = (part as { text?: unknown }).text;
       if (typeof value === "string") text.push(value);
     }
@@ -55,11 +56,11 @@ export const geminiProtocol: ApiProtocol = {
       body: "",
     };
   },
-  parseModelsResponse(payload: unknown): string[] {
+  parseModelsResponse(payload: unknown): string[] | null {
     // `models/gemini-2.5-flash` is the wire name; the path segment is the id a
     // request takes, so the prefix is stripped here rather than by every caller.
-    return stringFieldAt(payload, ["models"], "name").map((name) =>
+    return stringFieldAt(payload, ["models"], "name")?.map((name) =>
       name.startsWith("models/") ? name.slice("models/".length) : name,
-    );
+    ) ?? null;
   },
 };

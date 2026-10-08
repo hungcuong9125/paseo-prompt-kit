@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CodexConnection, CodexNotification } from "../../server/transports/cli/codex-app-server.js";
-import { createCodexSessions, TURNS_PER_THREAD, type CodexRewriteInput } from "../../server/transports/cli/codex-sessions.js";
+import { createCodexSessions, type CodexRewriteInput } from "../../server/transports/cli/codex-sessions.js";
 
 interface Call {
   readonly method: string;
@@ -68,7 +68,7 @@ function methods(calls: Call[], method: string): Call[] {
 }
 
 describe("codex sessions", () => {
-  it("starts one server and reuses one thread for rewrites under the same rules", async () => {
+  it("reuses the server but isolates successive drafts in distinct threads", async () => {
     const server = fakeServer();
     const sessions = createCodexSessions(server.connect);
     expect(await sessions.run(INPUT)).toEqual({ ok: true, text: "answer u1" });
@@ -77,15 +77,13 @@ describe("codex sessions", () => {
     expect(server.connections).toHaveLength(1);
     const calls = server.connections[0]!.calls;
     expect(methods(calls, "initialize")).toHaveLength(1);
-    expect(methods(calls, "thread/start")).toEqual([
-      {
-        method: "thread/start",
-        params: { model: "gpt-x", cwd: expect.any(String), sandbox: "read-only", approvalPolicy: "never", developerInstructions: "RULES", ephemeral: true },
-      },
-    ]);
+    expect(methods(calls, "thread/start")).toHaveLength(2);
+    for (const call of methods(calls, "thread/start")) {
+      expect(call.params).toMatchObject({ model: "gpt-x", sandbox: "read-only", approvalPolicy: "never", developerInstructions: "RULES", ephemeral: true });
+    }
     expect(methods(calls, "turn/start").map((call) => call.params)).toEqual([
       { threadId: "t1", input: [{ type: "text", text: "<draft>a</draft>", text_elements: [] }], effort: "low" },
-      { threadId: "t1", input: [{ type: "text", text: "<draft>b</draft>", text_elements: [] }], effort: "low" },
+      { threadId: "t2", input: [{ type: "text", text: "<draft>b</draft>", text_elements: [] }], effort: "low" },
     ]);
     sessions.close();
   });
@@ -102,14 +100,14 @@ describe("codex sessions", () => {
     sessions.close();
   });
 
-  // Earlier drafts must not pile up in a thread's context.
-  it("drops a thread after its last allowed rewrite", async () => {
+  it("unsubscribes every disposable thread after its rewrite", async () => {
     const server = fakeServer();
     const sessions = createCodexSessions(server.connect);
-    for (let turn = 0; turn <= TURNS_PER_THREAD; turn += 1) await sessions.run(INPUT);
+    await sessions.run(INPUT);
+    await sessions.run(INPUT);
     const calls = server.connections[0]!.calls;
     expect(methods(calls, "thread/start")).toHaveLength(2);
-    expect(methods(calls, "thread/unsubscribe").map((call) => call.params)).toEqual([{ threadId: "t1" }]);
+    expect(methods(calls, "thread/unsubscribe").map((call) => call.params)).toEqual([{ threadId: "t1" }, { threadId: "t2" }]);
     sessions.close();
   });
 
@@ -123,20 +121,18 @@ describe("codex sessions", () => {
     sessions.close();
   });
 
-  it("interrupts and drops a thread whose turn timed out", async () => {
+  it("closes the server so a timed-out turn cannot continue", async () => {
     const server = fakeServer({ script: () => undefined });
     const sessions = createCodexSessions(server.connect);
     const result = await sessions.run({ ...INPUT, timeoutMs: 20 });
     expect(result).toMatchObject({ ok: false, code: "timeout" });
     if (result.ok) throw new Error("expected failure");
     expect(result.message).toContain('"codex" did not answer within');
-    const calls = server.connections[0]!.calls;
-    expect(methods(calls, "turn/interrupt").map((call) => call.params)).toEqual([{ threadId: "t1", turnId: "u1" }]);
-    expect(methods(calls, "thread/unsubscribe").map((call) => call.params)).toEqual([{ threadId: "t1" }]);
+    expect(server.connections[0]!.closed).toBe(true);
     sessions.close();
   });
 
-  it("reports codex's own message for a failed turn and drops the thread", async () => {
+  it("refuses a failed turn without exposing provider content", async () => {
     const provider = JSON.stringify({ error: { message: "You've hit your usage limit." } });
     const server = fakeServer({
       script: (threadId, turnId, emit) => {
@@ -148,7 +144,7 @@ describe("codex sessions", () => {
     expect(await sessions.run(INPUT)).toEqual({
       ok: false,
       code: "generation_failed",
-      message: `The rewrite CLI "codex" reported an error: You've hit your usage limit.`,
+      message: 'The rewrite CLI "codex" did not complete the rewrite.',
     });
     await sessions.run(INPUT);
     expect(methods(server.connections[0]!.calls, "thread/start")).toHaveLength(2);
@@ -170,7 +166,7 @@ describe("codex sessions", () => {
     expect(await sessions.run(INPUT)).toEqual({
       ok: false,
       code: "generation_failed",
-      message: "codex app-server exited with code 1: auth expired",
+      message: 'The rewrite CLI "codex" did not complete the rewrite.',
     });
     await new Promise((resolve) => setTimeout(resolve, 5));
     await sessions.run({ ...INPUT, timeoutMs: 20 });
@@ -182,7 +178,7 @@ describe("codex sessions", () => {
   it("reports a server that could not initialize and tries again on the next rewrite", async () => {
     const server = fakeServer({ failInitialize: true });
     const sessions = createCodexSessions(server.connect);
-    expect(await sessions.run(INPUT)).toEqual({ ok: false, code: "spawn_failed", message: "codex: not logged in" });
+    expect(await sessions.run(INPUT)).toEqual({ ok: false, code: "spawn_failed", message: "The codex server could not initialize." });
     await sessions.run(INPUT);
     expect(server.connections).toHaveLength(2);
     expect(server.connections.every((connection) => connection.closed)).toBe(true);

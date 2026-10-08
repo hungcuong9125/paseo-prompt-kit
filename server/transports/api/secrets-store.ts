@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { resolveSecretsDir } from "./key.js";
 
@@ -29,7 +29,7 @@ async function readDocument(filePath: string): Promise<Document> {
     return { ok: false, message: "secrets.json is not valid JSON; fix or remove it before saving a key here." };
   }
   const apiKeys = (parsed as { apiKeys?: unknown } | null)?.apiKeys;
-  if (parsed === null || typeof parsed !== "object" || apiKeys === null || typeof apiKeys !== "object") {
+  if (parsed === null || typeof parsed !== "object" || apiKeys === null || typeof apiKeys !== "object" || Array.isArray(apiKeys) || Array.isArray(parsed)) {
     return { ok: false, message: 'secrets.json has no { "apiKeys": { ... } } object; fix it before saving a key here.' };
   }
   return { ok: true, data: parsed as Record<string, unknown> & { apiKeys: Record<string, unknown> } };
@@ -48,7 +48,9 @@ async function writeDocument(dir: string, filePath: string, data: unknown): Prom
   }
 }
 
-/** Sets `name` to `value`, or removes it when `value` is null; every other entry is kept. */
+const writes = new Map<string, Promise<unknown>>();
+
+/** Serializes read-modify-write per canonical directory within this plugin process. */
 export async function writeApiKey(input: {
   readonly secretsDir: string | null;
   readonly name: string;
@@ -59,13 +61,23 @@ export async function writeApiKey(input: {
   if (name === "") return { ok: false, message: "Enter the key variable first." };
   const dir = resolveSecretsDir(input.secretsDir, input.env ?? process.env);
   if (dir === null) return { ok: false, message: INVALID_DIR };
-  const filePath = path.join(dir, "secrets.json");
+  let canonical: string;
+  try { await mkdir(dir, { recursive: true, mode: 0o700 }); canonical = await realpath(dir); }
+  catch { return { ok: false, message: "Could not open the secrets directory." }; }
+  const previous = writes.get(canonical) ?? Promise.resolve();
+  const operation = previous.catch(() => {}).then(() => updateKey(canonical, name, input.value));
+  writes.set(canonical, operation);
+  try { return await operation; }
+  finally { if (writes.get(canonical) === operation) writes.delete(canonical); }
+}
 
+async function updateKey(dir: string, name: string, value: string | null): Promise<SecretsStoreResult> {
+  const filePath = path.join(dir, "secrets.json");
   const document = await readDocument(filePath);
   if (!document.ok) return document;
   const apiKeys = { ...document.data.apiKeys };
-  if (input.value === null) delete apiKeys[name];
-  else apiKeys[name] = input.value.trim();
+  if (value === null) delete apiKeys[name];
+  else apiKeys[name] = value.trim();
   try {
     await writeDocument(dir, filePath, { ...document.data, apiKeys });
   } catch (error) {

@@ -21,14 +21,18 @@ function pack(id: string, enabledByDefault = true): ActionPack {
 
 describe("action samples", () => {
   // Fails if a sample the editor offers could not be applied as it stands.
-  it("are valid packs with distinct ids, only the bundled copy reusing a bundled id", () => {
+  it("are valid packs with distinct ids outside the bundled namespace", () => {
     const bundled = new Set(listActions().map((action) => action.id));
     const ids = ACTION_SAMPLES.map((entry) => entry.pack.id);
     expect(new Set(ids).size).toBe(ids.length);
     for (const entry of ACTION_SAMPLES) {
       expect(actionPackSchema.safeParse(entry.pack).success).toBe(true);
-      // Only the copy of a bundled action starts on its id; the editor renames it on open.
-      expect(bundled.has(entry.pack.id)).toBe(entry.key === "general");
+      expect(bundled.has(entry.pack.id)).toBe(false);
+      expect(parseCustomAction(formatPack(entry.pack), bundled)).toEqual({ ok: true, pack: entry.pack });
+      expect(resolveAction(entry.pack.id, [entry.pack])).toMatchObject({
+        systemPrompt: entry.pack.system,
+        taskInstruction: entry.pack.task,
+      });
     }
   });
 

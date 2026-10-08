@@ -1,19 +1,26 @@
 import { loadActionRegistry, type ActionRegistry } from "./loader.js";
 import { bundledPacks } from "../packs/index.js";
 import type { ActionsListOutput } from "../rpc.js";
-import type { ActionPack } from "./schema.js";
+import { actionPackSchema, actionOverridesSchema, type ActionOverrides, type ActionPack } from "./schema.js";
 
 /**
- * The one registry: bundled packs, then the user's custom packs from settings,
- * through the same loader. A custom pack that reuses a bundled id rejects both,
- * so which action runs never depends on order.
+ * Overrides configure a bundled identity; they never introduce another pack.
+ * Custom id collisions still reject both owners. Invalid overrides cannot run defaults.
  */
-export function actionRegistry(customPacks: readonly unknown[] = []): ActionRegistry {
-  return loadActionRegistry([...bundledPacks, ...customPacks]);
+export function actionRegistry(customPacks: readonly unknown[] = [], overrides: ActionOverrides = {}): ActionRegistry {
+  const checked = actionOverridesSchema.parse(overrides);
+  const known = new Set(loadActionRegistry(bundledPacks).actions.map((pack) => pack.id));
+  for (const id of Object.keys(checked)) {
+    if (!known.has(id)) throw new Error(`No bundled action owns override "${id}".`);
+  }
+  return loadActionRegistry([...bundledPacks.map((entry) => {
+    const pack = actionPackSchema.safeParse(entry);
+    return pack.success ? { ...pack.data, ...checked[pack.data.id] } : entry;
+  }), ...customPacks]);
 }
 
-export function listActions(customPacks: readonly unknown[] = []): ActionRegistry["actions"] {
-  return actionRegistry(customPacks).actions;
+export function listActions(customPacks: readonly unknown[] = [], overrides: ActionOverrides = {}): ActionRegistry["actions"] {
+  return actionRegistry(customPacks, overrides).actions;
 }
 
 export function listRejectedPacks(customPacks: readonly unknown[] = []): ActionRegistry["rejected"] {
@@ -21,8 +28,8 @@ export function listRejectedPacks(customPacks: readonly unknown[] = []): ActionR
 }
 
 /** The `prompt-kit.actions.list` answer: summaries marked bundled or custom, plus refusals. */
-export function summarizeActions(customPacks: readonly ActionPack[]): ActionsListOutput {
-  const registry = actionRegistry(customPacks);
+export function summarizeActions(customPacks: readonly ActionPack[], overrides: ActionOverrides = {}): ActionsListOutput {
+  const registry = actionRegistry(customPacks, overrides);
   const customIds = new Set(customPacks.map((pack) => pack.id));
   return {
     actions: registry.actions.map((action) => ({
@@ -33,6 +40,9 @@ export function summarizeActions(customPacks: readonly ActionPack[]): ActionsLis
       description: action.description,
       icon: action.icon,
       custom: customIds.has(action.id),
+      system: action.systemPrompt,
+      task: action.taskInstruction,
+      modified: Object.hasOwn(overrides, action.id),
     })),
     rejected: registry.rejected.map((entry) => ({ source: entry.source, reason: entry.reason })),
   };
@@ -42,6 +52,7 @@ export function summarizeActions(customPacks: readonly ActionPack[]): ActionsLis
 export function resolveAction(
   actionId: string,
   customPacks: readonly unknown[] = [],
+  overrides: ActionOverrides = {},
 ): ActionRegistry["actions"][number] | null {
-  return listActions(customPacks).find((action) => action.id === actionId) ?? null;
+  return listActions(customPacks, overrides).find((action) => action.id === actionId) ?? null;
 }

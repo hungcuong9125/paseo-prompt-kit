@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { useRpc, useSettings, type PluginSurfaceProps, type SettingsState } from "@getpaseo/plugin/client";
 import { SettingsAction, SettingsCard, SettingsSection } from "@getpaseo/plugin/client/ui";
@@ -11,11 +11,12 @@ import {
   type ActionsListOutput,
   type ProviderCatalogOutput,
 } from "../../shared/rpc.js";
-import type { ActionPack } from "../../shared/action-registry/schema.js";
+import type { ActionPack, ActionOverrides } from "../../shared/action-registry/schema.js";
 import { promptKitSettings } from "../../shared/settings.js";
 import { describeEnabledLimit, enabledActions } from "../actions/enabled.js";
 import { useSettingsDraft } from "./draft.js";
 import { describeReadiness } from "./readiness.js";
+import { BundledPromptsSection } from "./sections/bundled-prompts-section.js";
 import { ActionsSection } from "./sections/actions-section.js";
 import { AdvancedSection } from "./sections/advanced-section.js";
 import { CustomActionsSection } from "./sections/custom-actions-section.js";
@@ -33,7 +34,7 @@ function message(error: unknown): string {
 }
 
 /** Provider catalog read once, action list re-read when the custom actions change; both retry. */
-function useCatalogs(customActions: readonly ActionPack[]) {
+function useCatalogs(customActions: readonly ActionPack[], actionOverrides: ActionOverrides) {
   const listProviders = useRpc(providerCatalogRpc);
   const listActions = useRpc(actionsListRpc);
   const [providers, setProviders] = useState<Providers | null>(null);
@@ -48,12 +49,14 @@ function useCatalogs(customActions: readonly ActionPack[]) {
       .catch((error: unknown) => setProvidersError(message(error)));
   }, [listProviders]);
 
-  const customKey = JSON.stringify(customActions);
+  const customKey = JSON.stringify({ customActions, actionOverrides });
+  const generation = useRef(0);
   const reloadActions = useCallback(() => {
+    const request = ++generation.current;
     setActionsError(null);
-    void listActions({ customActions: JSON.parse(customKey) as ActionPack[] })
-      .then((output) => setRegistry(output))
-      .catch((error: unknown) => setActionsError(message(error)));
+    void listActions(JSON.parse(customKey))
+      .then((output) => { if (generation.current === request) setRegistry(output); })
+      .catch((error: unknown) => { if (generation.current === request) setActionsError(message(error)); });
   }, [listActions, customKey]);
 
   useEffect(() => {
@@ -62,6 +65,7 @@ function useCatalogs(customActions: readonly ActionPack[]) {
 
   useEffect(() => {
     reloadActions();
+    return () => { generation.current += 1; };
   }, [reloadActions]);
 
   return {
@@ -78,7 +82,7 @@ function useCatalogs(customActions: readonly ActionPack[]) {
 /** Status bar, then sections in setup order; irrelevant sections are not rendered. */
 function ReadyScreen({ settings, theme, layout }: { settings: ReadySettings } & PluginSurfaceProps) {
   const settingsDraft = useSettingsDraft(settings);
-  const catalogs = useCatalogs(settingsDraft.values.customActions);
+  const catalogs = useCatalogs(settingsDraft.values.customActions, settingsDraft.values.actionOverrides);
   // The enabled limit needs the registry, which the draft itself cannot read.
   const limitProblem =
     catalogs.actions === null ? null : describeEnabledLimit(catalogs.actions, settingsDraft.values);
@@ -88,15 +92,17 @@ function ReadyScreen({ settings, theme, layout }: { settings: ReadySettings } & 
   const writeKey = useRpc(secretsWriteRpc);
   const { values } = draft;
   const disabled = draft.saving;
+  const [pendingEditor, setPendingEditor] = useState(false);
+  const saveDraft = { ...draft, problem: draft.problem ?? (pendingEditor ? "Apply or cancel the custom action editor before saving." : null) };
 
   const enabledCount =
     catalogs.actions === null ? null : enabledActions(catalogs.actions, values).length;
   const readiness = describeReadiness({ values, providers: catalogs.providers, enabledActionCount: enabledCount });
   const actionsChanged = useMemo(
     () =>
-      JSON.stringify([values.actionEnabled, values.customActions]) !==
-      JSON.stringify([settings.values.actionEnabled, settings.values.customActions]),
-    [values.actionEnabled, values.customActions, settings.values.actionEnabled, settings.values.customActions],
+      JSON.stringify([values.actionEnabled, values.customActions, values.actionOverrides]) !==
+      JSON.stringify([settings.values.actionEnabled, settings.values.customActions, settings.values.actionOverrides]),
+    [values.actionEnabled, values.customActions, values.actionOverrides, settings.values.actionEnabled, settings.values.customActions, settings.values.actionOverrides],
   );
 
   return (
@@ -104,7 +110,7 @@ function ReadyScreen({ settings, theme, layout }: { settings: ReadySettings } & 
       <StatusBar
         theme={theme}
         readiness={readiness}
-        draft={draft}
+        draft={saveDraft}
         actionsChanged={actionsChanged}
         compact={layout.compact}
       />
@@ -120,12 +126,16 @@ function ReadyScreen({ settings, theme, layout }: { settings: ReadySettings } & 
       />
 
       <CustomActionsSection
+        key={`custom-${draft.epoch}`}
+        onEditingChange={setPendingEditor}
         theme={theme}
         actions={catalogs.actions}
         values={values}
         disabled={disabled}
         patch={draft.patch}
-      />
+      >
+        <BundledPromptsSection actions={catalogs.actions} values={values} theme={theme} disabled={disabled} patch={draft.patch} />
+      </CustomActionsSection>
 
       <EngineSection theme={theme} compact={layout.compact} values={values} disabled={disabled} patch={draft.patch} />
 
@@ -142,6 +152,7 @@ function ReadyScreen({ settings, theme, layout }: { settings: ReadySettings } & 
 
       {values.transport === "api" ? (
         <ApiEndpointSection
+          key={`api-${draft.epoch}`}
           values={values}
           disabled={disabled}
           epoch={draft.epoch}

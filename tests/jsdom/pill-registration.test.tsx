@@ -241,7 +241,7 @@ describe("registry read economy", () => {
       workspaceId: `ws-${index}`,
     }));
     const listActions = vi.fn(async () => [
-      { id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I", custom: false },
+      { id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I", custom: false, system: "Rules", task: "Rewrite", modified: false },
     ]);
     const fake = createFakeClient({
       agents,
@@ -285,7 +285,7 @@ describe("pill follows rewrite status", () => {
     const { registerAgentPills } = await import("../../client/pills/agent-pills.js");
     const cleanup = registerAgentPills(fake.client, () => async () => {}, {
       listActions: async () => [
-        { id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I", custom: false },
+        { id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I", custom: false, system: "Rules", task: "Rewrite", modified: false },
       ],
       onSettingsSaved: () => () => {},
       readSettings: async () => ({ status: "ready", values: promptKitSettingsSchema.parse({}) }),

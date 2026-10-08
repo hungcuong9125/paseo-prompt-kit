@@ -148,6 +148,79 @@ export const EVAL_CASES: readonly EvalCase[] = [
     fail: "Fix the export job that hangs at 99%.",
   },
   {
+    id: "blank-preserves-question",
+    actionId: "my-action",
+    draft: "did you check the retry logic?",
+    checks: [matches("keeps the question", /\?/), avoids("does not add a workflow", /\b(?:implement|approval|checklist)\b/i)],
+    pass: "Did you check the retry logic?",
+    fail: "Implement retry logic and wait for approval.",
+  },
+  {
+    id: "debug-diagnosis-only",
+    actionId: "debug",
+    draft: "find out why export hangs; diagnosis only, do not modify anything",
+    checks: [
+      matches("keeps diagnosis only", /diagnos/i),
+      matches("keeps the no-change boundary", /\b(?:do not|don't|without|no)\b.*\b(?:modify|change|edit)/i),
+      avoids("does not assert an invented cause", /\b(?:the cause is|caused by|I (?:found|fixed))\b/i),
+    ],
+    pass: "Find out why export hangs. Diagnose only; do not modify anything. Check plausible hypotheses against the evidence and report what remains unconfirmed.",
+    fail: "The cause is a deadlock. I fixed it.",
+  },
+  {
+    id: "plan-preserves-delegation",
+    actionId: "plan-first",
+    draft: "plan a cache for the dashboard; pick the design yourself, do not ask questions",
+    checks: [
+      matches("keeps design delegated", /\b(?:pick|choose|recommend)\b.*\bdesign\b/i),
+      matches("keeps no questions", /\b(?:do not|don't|without)\b.*\bquestions\b/i),
+      matches("still waits for approval", /\bapprov/i),
+      avoids("does not reopen delegated choice", /which (?:design|approach).*(?:want|prefer)/i),
+    ],
+    pass: "Plan a cache for the dashboard. Pick the design yourself and explain your assumptions; do not ask questions. Wait for my approval of the plan before making changes.",
+    fail: "Which design do you prefer? I will implement it now.",
+  },
+  {
+    id: "review-request-not-findings",
+    actionId: "review",
+    draft: "review the checkout flow for bugs, report only; don't fix anything",
+    checks: [
+      matches("requests review", /\breview\b/i),
+      matches("keeps report-only boundary", /\b(?:don't|do not|no|without)\b.*\b(?:fix|edit|change)/i),
+      matches("requests evidence", /\b(?:evidence|support|verify)\b/i),
+      avoids("does not fabricate findings", /\b(?:I found|I fixed|the bug is)\b/i),
+    ],
+    pass: "Review the checkout flow for bugs. Report only; don't fix anything. Support findings with evidence and state what you could not verify.",
+    fail: "I found and fixed a bug in the checkout flow.",
+  },
+  {
+    id: "spec-preserves-strength-and-gate",
+    actionId: "spec",
+    draft: "write requirements only for CSV export. it must keep column order, may include headers, and should show progress. don't implement yet",
+    checks: [
+      matches("keeps mandatory order", /\bmust\b.*column order/i),
+      matches("keeps headers optional", /\bmay\b.*headers/i),
+      matches("keeps progress a preference", /\bshould\b.*progress/i),
+      matches("keeps no implementation gate", /\b(?:do not|don't) implement/i),
+      avoids("does not invent an acceptance threshold", /\b\d+\s*(?:ms|seconds|rows)\b/i),
+    ],
+    pass: "Write requirements only for CSV export; don't implement yet.\n1. The export must keep column order.\n2. It may include headers.\n3. It should show progress.",
+    fail: "Implement CSV export. It must include headers and finish within 500 ms.",
+  },
+  {
+    id: "handoff-preserves-unknowns",
+    actionId: "handoff",
+    draft: "ask for a handoff for the next session. tests were not run; no new commands",
+    checks: [
+      matches("requests a handoff", /\b(?:write|prepare|provide)\b.*handoff/i),
+      matches("keeps tests not run", /tests (?:were |have )?not (?:been )?run/i),
+      matches("keeps no new commands", /\b(?:no new commands|do not run|don't run)\b/i),
+      avoids("does not fabricate a green result", /\b(?:all tests pass|tests passed|build succeeded)\b/i),
+    ],
+    pass: "Prepare a handoff for the next session. State that tests were not run and mark other unchecked results unknown. No new commands. Include the remaining work and the next useful steps.",
+    fail: "Handoff: all tests pass and the build succeeded.",
+  },
+  {
     id: "japanese-stays-japanese",
     actionId: "general",
     draft: "ログインページがまた壊れてる。src/auth/session.ts を見てほしい、トークンの有効期限が間違ってると思う",
@@ -200,7 +273,5 @@ export const EVAL_CASES: readonly EvalCase[] = [
   },
 ];
 
-/** Editor samples a case may name, as a settings snapshot carries them; the copy of General is already bundled. */
-export const SAMPLE_PACKS = ACTION_SAMPLES.filter((entry) => entry.key !== "general" && entry.key !== "blank").map(
-  (entry) => entry.pack,
-);
+/** Editor samples reach the registry exactly as saved custom packs do. */
+export const SAMPLE_PACKS = ACTION_SAMPLES.map((entry) => entry.pack);

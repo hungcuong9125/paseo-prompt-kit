@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { excerpt, noTrace, type Trace } from "../../log.js";
+import { noTrace, type Trace } from "../../log.js";
 import type { CodexSessions } from "./codex-sessions.js";
 import type { CliFamily, ProcessCliFamily } from "./family.js";
 import { spawnCli, type CliRunResult, type CliSpawner } from "./process.js";
@@ -13,6 +13,7 @@ export interface CliRewriteInput {
   readonly systemPrompt: string;
   readonly taskPrompt: string;
   readonly timeoutMs: number;
+  readonly signal?: AbortSignal;
 }
 
 export interface CliRewriteDependencies {
@@ -33,12 +34,6 @@ export type CliRewriteResult =
       readonly code: "timeout" | "spawn_failed" | "empty_output" | "generation_failed";
       readonly message: string;
     };
-
-/** Enough of a CLI's own error text to recognise it, on one line. */
-function firstLine(text: string, max = 200): string {
-  const line = text.split("\n").map((part) => part.trim()).find((part) => part !== "") ?? "";
-  return line.length <= max ? line : `${line.slice(0, max - 1)}…`;
-}
 
 /** The argv for a trace: any argument carrying the system prompt is reduced to its length. */
 function describeArgs(args: readonly string[], systemPrompt: string): string {
@@ -61,6 +56,7 @@ export async function runCliRewrite(
         systemPrompt: input.systemPrompt,
         taskPrompt: input.taskPrompt,
         timeoutMs: input.timeoutMs,
+        ...(input.signal ? { signal: input.signal } : {}),
       },
       dependencies.trace,
     );
@@ -88,9 +84,10 @@ async function runProcess(
     let promptFilePath: string | null = null;
     if (input.family.promptDelivery === "file") {
       promptFilePath = path.join(scratch, "prompt.txt");
-      await writeFile(promptFilePath, input.taskPrompt, "utf8");
+      await writeFile(promptFilePath, input.taskPrompt, { encoding: "utf8", mode: 0o600 });
     }
 
+    if (input.signal?.aborted) return { ok: false, code: "timeout", message: "The rewrite budget expired before the CLI could start." };
     const invocation = input.family.buildInvocation({
       model: input.model,
       thinkingOptionId: input.thinkingOptionId,
@@ -118,11 +115,15 @@ async function runProcess(
         stdin: input.family.promptDelivery === "stdin" ? input.taskPrompt : null,
         cwd: scratch,
         timeoutMs: input.timeoutMs,
+        ...(input.signal ? { signal: input.signal } : {}),
       });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      trace("cli spawn failed", { family: input.family.id, error: message });
-      return { ok: false, code: "spawn_failed", message };
+    } catch {
+      trace("cli spawn failed", { family: input.family.id });
+      return {
+        ok: false,
+        code: "spawn_failed",
+        message: `The rewrite CLI "${input.family.id}" could not start. Check that it is installed and available to the host.`,
+      };
     }
 
     trace("cli exit", {
@@ -134,8 +135,7 @@ async function runProcess(
       stderrChars: result.stderr.length,
       captureTruncated: result.truncated,
     });
-    trace("cli stdout", () => ({ family: input.family.id, text: excerpt(result.stdout) }));
-    trace("cli stderr", () => ({ family: input.family.id, text: excerpt(result.stderr) }));
+
 
     if (result.timedOut) {
       return {
@@ -152,29 +152,28 @@ async function runProcess(
       return {
         ok: false,
         code: "generation_failed",
-        message: `The rewrite CLI "${input.family.id}" reported an error: ${firstLine(reported)}`,
+        message: `The rewrite CLI "${input.family.id}" reported an error. Check CLI authentication and configuration.`,
       };
     }
     if (result.exitCode !== 0) {
-      const detail = firstLine(result.stderr);
       return {
         ok: false,
         code: "generation_failed",
         message: `The rewrite CLI "${input.family.id}" exited with ${
           result.exitCode === null ? "a signal" : `code ${result.exitCode}`
-        }${detail === "" ? "." : `: ${detail}`}`,
+        }.`,
       };
     }
 
+    if (result.truncated) return { ok: false, code: "generation_failed", message: "The CLI exceeded the output capture limit." };
     const text = input.family.parseOutput(result.stdout);
     if (text === null || text.trim() === "") {
-      const detail = firstLine(result.stderr);
       return {
         ok: false,
         code: "empty_output",
         message: `The rewrite CLI "${input.family.id}" finished without an answer${
           result.stdout.trim() === "" ? " and printed nothing" : ""
-        }${detail === "" ? "." : `: ${detail}`}`,
+        }.`,
       };
     }
     return { ok: true, text };

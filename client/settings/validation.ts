@@ -1,8 +1,15 @@
+import { actionOverridesSchema } from "../../shared/action-registry/schema.js";
+import { listActions } from "../../shared/action-registry/registry.js";
 import { TIMEOUT_MS, type PromptKitSettings } from "../../shared/settings.js";
 import { isUsableSecretsDir, validateEndpoint } from "./api-endpoints.js";
 
 /** Why the draft cannot be saved, or null. Bounds come from the schema constants. */
 export function findSaveProblem(values: PromptKitSettings): string | null {
+  const overrides = actionOverridesSchema.safeParse(values.actionOverrides);
+  if (!overrides.success) return `Prompt instructions: ${overrides.error.issues[0]?.message ?? "invalid"}`;
+  for (const id of Object.keys(overrides.data)) {
+    if (!listActions().some((pack) => pack.id === id)) return `No bundled action owns override "${id}".`;
+  }
   if (
     !Number.isInteger(values.timeoutMs) ||
     values.timeoutMs < TIMEOUT_MS.min ||

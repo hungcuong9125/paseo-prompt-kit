@@ -34,7 +34,9 @@ export function createRewriteHandler(dependencies: RewriteHandlerDependencies = 
     input: RewriteInput,
     { paseo }: PluginHandlerContext,
   ): Promise<RewriteOutput> {
-    const action = resolveAction(input.actionId, input.settings.customActions);
+    let action: ReturnType<typeof resolveAction>;
+    try { action = resolveAction(input.actionId, input.settings.customActions, input.settings.actionOverrides); }
+    catch { return { status: "error", error: { code: "unknown_action", message: "The action instructions are invalid. Fix them in PromptKit settings." } }; }
     if (action === null) {
       pluginLog.error({ action: input.actionId }, "rewrite refused: unknown action");
       return {
@@ -46,6 +48,9 @@ export function createRewriteHandler(dependencies: RewriteHandlerDependencies = 
       };
     }
 
+    if (!(input.settings.actionEnabled[action.id] ?? action.enabledByDefault)) {
+      return { status: "error", error: { code: "unknown_action", message: "This action is disabled in PromptKit settings." } };
+    }
     const language = resolveLanguage(input.settings.outputLanguage);
     if (language === undefined) {
       pluginLog.error({ language: input.settings.outputLanguage }, "rewrite refused: unknown language");
@@ -112,7 +117,7 @@ export function createRewriteHandler(dependencies: RewriteHandlerDependencies = 
         },
         "rewrite failed",
       );
-      trace("rewrite failed", { code: output.error.code, message: output.error.message });
+      trace("rewrite failed", { code: output.error.code });
     }
     return output;
   };

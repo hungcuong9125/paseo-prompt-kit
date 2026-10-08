@@ -1,4 +1,6 @@
-import { excerpt, noTrace, type Trace } from "../../log.js";
+import { RewriteDeadline } from "../../rewrite-engine/deadline.js";
+import { readHttpResponse, redact, diagnosticUrl } from "./http.js";
+import { noTrace, type Trace } from "../../log.js";
 import { protocolNeedsAccountId, type ApiEndpoint, type ApiProtocolId } from "../../../shared/api-protocol.js";
 import { anthropicProtocol } from "./anthropic.js";
 import { cloudflareProtocol } from "./cloudflare.js";
@@ -93,6 +95,7 @@ export interface ApiRewriteInput {
   /** The author's draft alone; a protocol sizes its output cap from it. */
   readonly draft: string;
   readonly timeoutMs: number;
+  readonly signal?: AbortSignal;
   /** Directory holding `secrets.json`; null means the default under `PASEO_HOME`. */
   readonly secretsDir: string | null;
 }
@@ -168,7 +171,9 @@ export async function testApiEndpoint(
     };
   }
 
-  const credentials = await resolveCredentials(input.endpoint, input.secretsDir, dependencies.env);
+  const deadline = new RewriteDeadline(input.timeoutMs);
+  try {
+  const credentials = await deadline.wait(resolveCredentials(input.endpoint, input.secretsDir, dependencies.env));
   if (!credentials.ok) return credentials;
 
   const request = protocol.buildModelsRequest({
@@ -177,32 +182,9 @@ export async function testApiEndpoint(
     accountId: credentials.accountId,
   });
   const doFetch = dependencies.fetch ?? globalThis.fetch;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), input.timeoutMs);
-
-  let response: Response;
-  try {
-    response = await doFetch(request.url, {
-      method: "GET",
-      headers: request.headers,
-      signal: controller.signal,
-    });
-  } catch (error) {
-    const aborted = controller.signal.aborted;
-    return {
-      ok: false,
-      code: aborted ? "timeout" : "api_http_error",
-      message: aborted
-        ? "The endpoint did not answer in time."
-        : `Could not reach the endpoint: ${error instanceof Error ? error.message : String(error)}`,
-    };
-  } finally {
-    clearTimeout(timer);
-  }
-
-  const body = await response.text().catch(() => "");
+  const { response, body } = await readHttpResponse(request.url, { method: "GET", headers: request.headers }, deadline, doFetch);
   if (!response.ok) {
-    return { ok: false, code: "api_http_error", message: describeHttpError(response.status, body) };
+    return { ok: false, code: "api_http_error", message: describeHttpError(response.status, redact(body, [credentials.apiKey, credentials.accountId])) };
   }
   let payload: unknown;
   try {
@@ -216,7 +198,12 @@ export async function testApiEndpoint(
   }
   // An empty list is not a failure: a local server may expose none, and the key
   // and URL still proved correct, which is the whole point of the test.
-  return { ok: true, models: protocol.parseModelsResponse(payload) };
+  const models = protocol.parseModelsResponse(payload);
+  if (models === null) return { ok: false, code: "api_bad_response", message: "The endpoint returned an invalid model-list response." };
+  return { ok: true, models };
+  } catch {
+    return { ok: false, code: deadline.signal.aborted ? "timeout" : "api_http_error", message: deadline.signal.aborted ? "The endpoint did not answer in time." : "Could not read the endpoint response safely." };
+  } finally { deadline.dispose(); }
 }
 
 export async function runApiRewrite(
@@ -232,8 +219,9 @@ export async function runApiRewrite(
     };
   }
 
-  // Messages name the variable, never a value.
-  const credentials = await resolveCredentials(input.endpoint, input.secretsDir, dependencies.env);
+  const deadline = new RewriteDeadline(input.timeoutMs, input.signal);
+  try {
+  const credentials = await deadline.wait(resolveCredentials(input.endpoint, input.secretsDir, dependencies.env));
   if (!credentials.ok) return credentials;
 
   const request = protocol.buildRequest({
@@ -251,51 +239,24 @@ export async function runApiRewrite(
   trace("api request", {
     endpoint: input.endpoint.id,
     protocol: protocol.id,
-    url: credentials.accountId === "" ? request.url : request.url.split(credentials.accountId).join("<account>"),
+    url: diagnosticUrl(request.url),
     model: input.model,
     bodyChars: request.body.length,
     timeoutMs: input.timeoutMs,
   });
   const startedAt = Date.now();
   const doFetch = dependencies.fetch ?? globalThis.fetch;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), input.timeoutMs);
-
-  let response: Response;
-  try {
-    response = await doFetch(request.url, {
-      method: "POST",
-      headers: request.headers,
-      body: request.body,
-      signal: controller.signal,
-    });
-  } catch (error) {
-    const aborted = controller.signal.aborted;
-    const reason = error instanceof Error ? error.message : String(error);
-    trace("api no response", { endpoint: input.endpoint.id, aborted, durationMs: Date.now() - startedAt, error: reason });
-    return {
-      ok: false,
-      code: aborted ? "timeout" : "api_http_error",
-      message: aborted
-        ? `The endpoint "${input.endpoint.id}" did not answer within ${Math.round(input.timeoutMs / 1000)} s.`
-        : `Could not reach the endpoint: ${reason}`,
-    };
-  } finally {
-    clearTimeout(timer);
-  }
-
-  const body = await response.text().catch(() => "");
+  const { response, body } = await readHttpResponse(request.url, { method: "POST", headers: request.headers, body: request.body }, deadline, doFetch);
   const durationMs = Date.now() - startedAt;
   trace("api response", () => ({
     endpoint: input.endpoint.id,
     status: response.status,
     durationMs,
     bodyChars: body.length,
-    limits: limitHeaders(response.headers),
+    limits: redact(limitHeaders(response.headers), [credentials.apiKey, credentials.accountId]),
   }));
-  trace("api body", () => ({ endpoint: input.endpoint.id, text: excerpt(body) }));
   if (!response.ok) {
-    return { ok: false, code: "api_http_error", message: describeHttpError(response.status, body) };
+    return { ok: false, code: "api_http_error", message: describeHttpError(response.status, redact(body, [credentials.apiKey, credentials.accountId])) };
   }
 
   let payload: unknown;
@@ -327,4 +288,7 @@ export async function runApiRewrite(
     };
   }
   return { ok: true, text };
+  } catch {
+    return { ok: false, code: deadline.signal.aborted ? "timeout" : "api_http_error", message: deadline.signal.aborted ? "The endpoint did not answer within the rewrite budget." : "Could not read the endpoint response safely." };
+  } finally { deadline.dispose(); }
 }

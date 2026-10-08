@@ -160,6 +160,9 @@ describe("enabled set E drives the pill shape", () => {
       description: action.description,
       icon: action.icon,
       custom: false,
+      system: action.systemPrompt,
+      task: action.taskInstruction,
+      modified: false,
     }));
     // Two synthetic actions stand in for a future pack: the shape rule is a
     // property of E, not of how many packs ship today.

@@ -106,7 +106,7 @@ describe("runCliRewrite", () => {
     expect(result.message).toBe('The rewrite CLI "pi" finished without an answer.');
   });
 
-  it("names a silent CLI and carries its stderr when it printed no answer", async () => {
+  it("names a silent CLI without exposing its stderr", async () => {
     const result = await runCliRewrite(
       { ...BASE, family: claudeFamily },
       {
@@ -116,7 +116,7 @@ describe("runCliRewrite", () => {
     expect(result).toEqual({
       ok: false,
       code: "empty_output",
-      message: 'The rewrite CLI "claude" finished without an answer and printed nothing: No credentials found',
+      message: 'The rewrite CLI "claude" finished without an answer and printed nothing.',
     });
   });
 
@@ -137,7 +137,7 @@ describe("runCliRewrite", () => {
     expect(result).toEqual({
       ok: false,
       code: "generation_failed",
-      message: 'The rewrite CLI "opencode" reported an error: usage limit reached',
+      message: 'The rewrite CLI "opencode" reported an error. Check CLI authentication and configuration.',
     });
   });
 
@@ -173,7 +173,29 @@ describe("runCliRewrite", () => {
         },
       },
     );
-    expect(result).toEqual({ ok: false, code: "spawn_failed", message: "ENOENT" });
+    expect(result).toEqual({ ok: false, code: "spawn_failed", message: 'The rewrite CLI "pi" could not start. Check that it is installed and available to the host.' });
+  });
+
+  it.each(["spawn", "reported", "exit", "empty"] as const)("does not expose raw %s failure data in the result or trace", async (kind) => {
+    const sensitive = "private-draft-7e31 credential-synthetic-72ac";
+    const lines: string[] = [];
+    const result = await runCliRewrite({ ...BASE, family: claudeFamily }, {
+      spawn: async () => {
+        if (kind === "spawn") throw new Error(sensitive);
+        return {
+          stdout: kind === "reported" ? JSON.stringify({ is_error: true, result: sensitive }) : "",
+          stderr: sensitive,
+          exitCode: kind === "exit" ? 7 : 0,
+          timedOut: false,
+          truncated: false,
+        };
+      },
+      trace: (message, fields) => lines.push(`${message} ${JSON.stringify(typeof fields === "function" ? fields() : fields)}`),
+    });
+    expect(result).toMatchObject({ ok: false, code: kind === "spawn" ? "spawn_failed" : kind === "empty" ? "empty_output" : "generation_failed" });
+    expect(JSON.stringify(result)).not.toContain(sensitive);
+    expect(lines.join("\n")).not.toContain(sensitive);
+    if (kind === "exit") expect(result).toMatchObject({ message: 'The rewrite CLI "claude" exited with code 7.' });
   });
 
   // The scratch dir must not leak when the process could not even start.

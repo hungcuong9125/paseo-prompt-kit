@@ -12,6 +12,7 @@ export interface CliRunInput {
   readonly stdin: string | null;
   readonly cwd: string;
   readonly timeoutMs: number;
+  readonly signal?: AbortSignal;
 }
 
 export interface CliRunResult {
@@ -25,10 +26,10 @@ export interface CliRunResult {
 export type CliSpawner = (input: CliRunInput) => Promise<CliRunResult>;
 
 function append(captured: string[], chunk: string): boolean {
-  captured.push(chunk);
-  let total = 0;
-  for (const part of captured) total += part.length;
-  return total > MAX_CAPTURE_CHARS;
+  const total = captured.reduce((sum, part) => sum + part.length, 0);
+  const remaining = Math.max(0, MAX_CAPTURE_CHARS - total);
+  if (remaining > 0) captured.push(chunk.slice(0, remaining));
+  return chunk.length > remaining;
 }
 
 /**
@@ -73,15 +74,16 @@ export const spawnCli: CliSpawner = (input) =>
     let timedOut = false;
     let settled = false;
 
-    const timer = setTimeout(() => {
-      timedOut = true;
-      killTree(child);
-    }, input.timeoutMs);
+    const abort = () => { timedOut = true; killTree(child); };
+    const timer = setTimeout(abort, input.timeoutMs);
+    input.signal?.addEventListener("abort", abort, { once: true });
+    if (input.signal?.aborted) abort();
 
     function settle(result: Omit<CliRunResult, "stdout" | "stderr" | "truncated" | "timedOut">): void {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      input.signal?.removeEventListener("abort", abort);
       resolve({
         stdout: out.join(""),
         stderr: err.join(""),
@@ -98,11 +100,11 @@ export const spawnCli: CliSpawner = (input) =>
 
     child.stdout?.setEncoding("utf8");
     child.stdout?.on("data", (chunk: string) => {
-      if (append(out, chunk)) truncated = true;
+      if (append(out, chunk)) { truncated = true; killTree(child); }
     });
     child.stderr?.setEncoding("utf8");
     child.stderr?.on("data", (chunk: string) => {
-      if (append(err, chunk)) truncated = true;
+      if (append(err, chunk)) { truncated = true; killTree(child); }
     });
 
     if (child.stdin) {

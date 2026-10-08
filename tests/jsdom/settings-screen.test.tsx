@@ -34,7 +34,7 @@ import { PromptKitSettingsScreen } from "../../client/settings/settings-screen.j
 import { ACTION_SAMPLES } from "../../client/settings/action-samples.js";
 import { MAX_ENABLED_ACTIONS } from "../../client/actions/enabled.js";
 import { summarizeActions } from "../../shared/action-registry/registry.js";
-import type { ActionPack } from "../../shared/action-registry/schema.js";
+import type { ActionPack, ActionOverrides } from "../../shared/action-registry/schema.js";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 
 const theme = {
@@ -90,6 +90,9 @@ const actionCatalog = {
       description: "Make the draft clear and ready to act on, in your own voice, without adding facts.",
       icon: "Code2",
       custom: false,
+      system: "Bundled rules",
+      task: "Rewrite the draft",
+      modified: false,
     },
   ],
   rejected: [],
@@ -125,8 +128,8 @@ let container: HTMLDivElement | null = null;
 /** `live` answers the action list from the real registry, so custom actions show up. */
 async function render(live = false): Promise<HTMLDivElement> {
   if (live) {
-    holder.listActions.mockImplementation(async (input: { customActions: ActionPack[] }) =>
-      summarizeActions(input.customActions),
+    holder.listActions.mockImplementation(async (input: { customActions: ActionPack[]; actionOverrides: ActionOverrides }) =>
+      summarizeActions(input.customActions, input.actionOverrides),
     );
   } else {
     holder.listActions.mockResolvedValue(actionCatalog);
@@ -218,7 +221,7 @@ describe("status bar", () => {
   it("reports the default path as ready with no controls until something changes", async () => {
     holder.state = readyState({});
     const view = await render();
-    expect(statusTitle(view)).toBe("Ready · Provider CLI · current agent model");
+    expect(statusTitle(view)).toBe("Configured · Provider CLI · current agent model");
     expect(view.querySelector('[data-testid="prompt-kit-save"]')).toBeNull();
   });
 
@@ -303,7 +306,7 @@ describe("draft, save and discard", () => {
     expect(statusText(view)).toContain("Unsaved changes");
     await choose(view, "Provider", "openai");
     await choose(view, "Model", "gpt-5");
-    expect(statusTitle(view)).toBe("Ready · Provider CLI · openai · gpt-5");
+    expect(statusTitle(view)).toBe("Configured · Provider CLI · openai · gpt-5");
 
     await press(view, "prompt-kit-save");
     expect(holder.save).toHaveBeenCalledTimes(1);
@@ -364,7 +367,7 @@ describe("API endpoint section", () => {
     expect(statusText(view)).toContain("Select an API model.");
 
     await type(view, "Model", "gemini-2.5-flash-lite");
-    expect(statusTitle(view)).toBe("Ready · Direct API · gemini · gemini-2.5-flash-lite");
+    expect(statusTitle(view)).toBe("Configured · Direct API · gemini · gemini-2.5-flash-lite");
 
     await press(view, "prompt-kit-save");
     expect(holder.save.mock.calls[0]?.[0]).toMatchObject({
@@ -390,7 +393,7 @@ describe("API endpoint section", () => {
     });
     const model = select(view, "Model");
     expect(Array.from(model.options, (option) => option.value)).toEqual(["", "a-model", "b-model"]);
-    expect(view.querySelector('[data-row="Connection"]')?.textContent).toContain("2 models");
+    expect(view.querySelector('[data-row="Connection"]')?.textContent).toContain("Model list received: 2");
   });
 
   it("keeps a field typed during a test instead of overwriting it with the test result", async () => {
@@ -411,10 +414,11 @@ describe("API endpoint section", () => {
     });
     await flush();
 
-    await choose(view, "Model", "a-model");
+    expect(view.querySelector('select[data-label="Model"]')).toBeNull();
+    await type(view, "Model", "manual-model");
     await press(view, "prompt-kit-save");
     expect(holder.save.mock.calls[0]?.[0]).toMatchObject({
-      apiEndpoints: [expect.objectContaining({ apiKeyEnv: "MY_GEMINI_KEY", models: ["a-model"] })],
+      apiEndpoints: [expect.objectContaining({ apiKeyEnv: "MY_GEMINI_KEY", models: [] })],
     });
   });
 
@@ -540,7 +544,7 @@ describe("API endpoint section", () => {
     });
     holder.save.mockResolvedValue(true);
     const view = await render();
-    expect(statusTitle(view)).toContain("Ready");
+    expect(statusTitle(view)).toContain("Configured");
     await pressAction(view, "Remove endpoint");
     expect(statusTitle(view)).not.toBe("Cannot save yet");
     // Nothing is left to send an API rewrite through, and the bar says so.
@@ -611,6 +615,54 @@ describe("advanced overrides", () => {
   });
 });
 
+describe("editable default prompts", () => {
+  async function editRules(view: HTMLDivElement, text: string) {
+    const field = view.querySelector<HTMLTextAreaElement>('[data-testid="prompt-kit-default-system"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, text);
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
+  it("saves General instructions directly without adding a custom action", async () => {
+    holder.state = readyState({}); holder.save.mockResolvedValue(true);
+    const view = await render(true);
+    await pressAction(view, "General");
+    await editRules(view, "Use concise, precise instructions.");
+    await press(view, "prompt-kit-save");
+    expect(holder.save.mock.calls[0]?.[0]).toMatchObject({ customActions: [], actionOverrides: { general: { system: "Use concise, precise instructions." } } });
+    expect(holder.save.mock.calls[0]?.[1]).toBe("r1");
+  });
+
+  it("discards default edits and closes both editors", async () => {
+    holder.state = readyState({}); const view = await render(true);
+    await pressAction(view, "General"); await editRules(view, "Unsaved rules");
+    await pressAction(view, "Add prompt");
+    expect(view.querySelector<HTMLButtonElement>('[data-testid="prompt-kit-save"]')?.disabled).toBe(true);
+    await press(view, "prompt-kit-discard");
+    expect(view.querySelector('[data-testid="prompt-kit-default-system"]')).toBeNull();
+    expect(view.querySelector('[data-testid="prompt-kit-custom-json"]')).toBeNull();
+    await pressAction(view, "General");
+    expect(view.querySelector<HTMLTextAreaElement>('[data-testid="prompt-kit-default-system"]')?.value).not.toBe("Unsaved rules");
+  });
+
+  it("confirms reset of only the instructions and retains endpoints", async () => {
+    holder.state = readyState({ actionOverrides: { general: { system: "Custom", task: "Rewrite" } }, apiEndpoints: [GEMINI], outputLanguage: "vi" });
+    holder.save.mockResolvedValue(true); const view = await render(true);
+    await pressAction(view, "General"); await press(view, "prompt-kit-default-reset");
+    expect(view.querySelector('[data-testid="prompt-kit-default-system"]')).not.toBeNull();
+    await press(view, "prompt-kit-default-reset"); await press(view, "prompt-kit-save");
+    expect(holder.save.mock.calls[0]?.[0]).toMatchObject({ actionOverrides: {}, apiEndpoints: [GEMINI], outputLanguage: "vi" });
+  });
+
+  it("retains instructions after a failed revision save", async () => {
+    holder.state = readyState({}); holder.save.mockResolvedValue(false);
+    const view = await render(true); await pressAction(view, "General"); await editRules(view, "Keep my changes");
+    await press(view, "prompt-kit-save");
+    expect(view.querySelector<HTMLTextAreaElement>('[data-testid="prompt-kit-default-system"]')?.value).toBe("Keep my changes");
+  });
+});
+
 describe("custom actions", () => {
   // Fails if the lone bundled action shows a switch that could hide the pill by accident.
   it("shows the only action as always on", async () => {
@@ -638,13 +690,38 @@ describe("custom actions", () => {
     return { ...ACTION_SAMPLES[0]!.pack, id: `custom-${n}`, title: `Custom ${n}` };
   }
 
+  it.each([false, true])("groups General, custom prompts and Add in one card (custom=%s)", async (hasCustom) => {
+    holder.state = readyState({ customActions: hasCustom ? [customPack(1)] : [] });
+    const view = await render(true);
+    const section = view.querySelector('section[data-title="Prompts"]')!;
+    expect(section).not.toBeNull();
+    expect(section.querySelectorAll('[data-card]')).toHaveLength(1);
+    const card = section.querySelector('[data-card]')!;
+    expect(Array.from(card.querySelectorAll('[data-row]')).map((row) => row.getAttribute('data-row')))
+      .toEqual(hasCustom ? ["General", "Custom 1", "Add prompt"] : ["General", "Add prompt"]);
+    await pressAction(view, "Add prompt");
+    expect(section.querySelector('[data-testid="prompt-kit-custom-json"]')).not.toBeNull();
+  });
+
+  it.each(ACTION_SAMPLES)("applies and saves the $label sample from the picker", async (sample) => {
+    holder.state = readyState({});
+    holder.save.mockResolvedValue(true);
+    const view = await render(true);
+    await pressAction(view, "Add prompt");
+    await choose(view, "Start from", sample.key);
+    expect(JSON.parse(editor(view).value)).toEqual(sample.pack);
+    await press(view, "prompt-kit-custom-apply");
+    await press(view, "prompt-kit-save");
+    expect(holder.save.mock.calls[0]?.[0]).toMatchObject({ customActions: [sample.pack] });
+  });
+
   // Fails if Add stops offering a sample, or Apply/Save stop storing the edited JSON.
   it("adds an action from a sample, lists it with a switch, and saves it", async () => {
     holder.state = readyState({});
     holder.save.mockResolvedValue(true);
     const view = await render(true);
 
-    await pressAction(view, "Add action");
+    await pressAction(view, "Add prompt");
     expect(JSON.parse(editor(view).value)).toMatchObject({ id: "my-action", schemaVersion: 1 });
     await choose(view, "Start from", "plan-first");
     const pack = JSON.parse(editor(view).value) as ActionPack;
@@ -665,7 +742,7 @@ describe("custom actions", () => {
   it("refuses invalid JSON and an id another action uses", async () => {
     holder.state = readyState({});
     const view = await render(true);
-    await pressAction(view, "Add action");
+    await pressAction(view, "Add prompt");
     const pack = JSON.parse(editor(view).value) as ActionPack;
 
     await edit(view, "{");

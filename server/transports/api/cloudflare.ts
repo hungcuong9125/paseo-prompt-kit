@@ -50,7 +50,7 @@ export const cloudflareProtocol: ApiProtocol = {
       body: "",
     };
   },
-  parseModelsResponse(payload: unknown): string[] {
+  parseModelsResponse(payload: unknown): string[] | null {
     return stringFieldAt(payload, ["result"], "name");
   },
 };

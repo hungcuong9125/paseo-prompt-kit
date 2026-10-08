@@ -66,6 +66,10 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
     /** Enabled actions, null until read. */
     const [choices, setChoices] = useState<readonly ActionSummary[] | null>(null);
     const started = useRef(false);
+    const originalComposer = useRef("");
+    const mounted = useRef(true);
+    const inFlight = useRef(false);
+    useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
     const remember = useCallback(
       (next: string) => {
@@ -85,6 +89,8 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
           toast.error("Write a prompt first.");
           return;
         }
+        if (inFlight.current) return;
+        inFlight.current = true;
         setBusy("rewriting");
         try {
           const output = await rewrite({
@@ -95,11 +101,12 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
             settings: promptKitSettingsSchema.parse(settings.values),
           });
           if (output.status === "error") throw new Error(output.error.message);
-          remember(output.rewrittenPrompt);
+          if (mounted.current) remember(output.rewrittenPrompt);
         } catch (error) {
           toast.error(error instanceof Error ? error.message : String(error));
         } finally {
-          setBusy("idle");
+          inFlight.current = false;
+          if (mounted.current) setBusy("idle");
         }
       },
       [agentId, remember, rewrite, settings, toast, workspaceId],
@@ -110,7 +117,7 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
     useEffect(() => {
       if (settings.status !== "ready" || choices !== null) return;
       const values = settings.values;
-      listActions({ customActions: values.customActions })
+      listActions({ customActions: values.customActions, actionOverrides: values.actionOverrides })
         .then(({ actions }) => setChoices(enabledActions(actions, values)))
         .catch((error: unknown) => {
           setChoices([]);
@@ -125,6 +132,7 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
       const lookup = locate(probeRef.current, agentId);
       composerRef.current = lookup;
       const composerText = lookup.ok ? lookup.handle.getText() : "";
+      originalComposer.current = composerText;
       const initial = composerText.trim() !== "" ? composerText : (drafts.get(agentId) ?? "");
       remember(initial);
       if (!lookup.ok) setNote(describeLookupFailure(lookup.reason));
@@ -133,18 +141,20 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
     }, [agentId, choices, remember, runRewrite]);
 
     const send = useCallback(async () => {
-      if (busy !== "idle" || agentId === null || value.trim() === "") return;
+      if (inFlight.current || busy !== "idle" || agentId === null || value.trim() === "") return;
+      inFlight.current = true;
       setBusy("sending");
       try {
         await paseo.agents.ref(agentId).send(value);
         const lookup = composerRef.current;
-        if (lookup?.ok) lookup.handle.replaceText("");
+        if (lookup?.ok && lookup.handle.getText() === originalComposer.current) lookup.handle.replaceText("");
         remember("");
         close();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : String(error));
       } finally {
-        setBusy("idle");
+        inFlight.current = false;
+        if (mounted.current) setBusy("idle");
       }
     }, [agentId, busy, close, paseo, remember, toast, value]);
 

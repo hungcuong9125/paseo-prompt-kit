@@ -24,6 +24,7 @@ describe("prompt kit settings", () => {
       timeoutMs: 25_000,
       debugLog: false,
       actionEnabled: {},
+      actionOverrides: {},
       outputLanguage: "source",
     });
   });

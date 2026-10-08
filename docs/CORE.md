@@ -48,7 +48,7 @@ shared/                          Contract shared by both bundles
   action-registry/               Loads, validates, and looks up Action Definitions
     schema.ts                      The Action Pack v1 contract (zod strict) + ACTION_ID_PATTERN.
     loader.ts                      Turns the barrel into a registry; a broken pack is rejected on its own.
-    registry.ts                    The one live registry: bundled packs + the caller's custom packs; resolveAction / summarizeActions.
+    registry.ts                    Effective registry: bundled packs with validated instruction overrides + custom packs; resolveAction / summarizeActions.
     rewrite-contract.ts            Core's rewrite contract (author's voice, boundary, output), placed ahead of every pack's system text.
     wrapper.ts                     Core's injection boundary: <task>/<draft> + escaping;
                                    inserts "Output language: …" into <task> when an output language is set.
@@ -59,7 +59,7 @@ shared/                          Contract shared by both bundles
   protected-literals.ts          Extracts literals that must survive a rewrite unchanged.
 
 client/                          The app-side contribution
-  composer-bridge/               Finds the one visible Composer and reads/writes/focuses it
+  composer-bridge/               Binds rewrite access to the target Composer
     adapter.ts                     Platform-neutral interface.
     dom.ts                         Selector + visibility check along the ancestor chain.
     web.ts                         DOM implementation for Desktop/Web.
@@ -87,6 +87,7 @@ client/                          The app-side contribution
     settings-saved.ts              In-client signal after a Save; pills re-read their enabled set on it.
     sections/                      One file per section, shown based on Transport/Model source
       actions-section.tsx
+      bundled-prompts-section.tsx
       custom-actions-section.tsx
       engine-section.tsx
       dedicated-model-section.tsx
@@ -96,7 +97,8 @@ client/                          The app-side contribution
 
 server/                          The daemon-side contribution
   rewrite-engine/                Runs one resolved rewrite and returns a validated result
-    engine.ts                      resolveTarget → transport → validateRewriteOutput.
+    engine.ts                      resolveTarget → transport → validateRewriteOutput under one deadline.
+    deadline.ts                    Owns cancellation across asynchronous rewrite phases.
     handler.ts                     The `prompt-kit.rewrite` RPC: resolves the action, logs no content.
     output-validator.ts            Rejects preface/refusal/commentary/lost literals.
   model-resolver/                Decides the provider/model/thinking option and transport for a request
@@ -119,8 +121,8 @@ module that owns it, or to a new module named after it. No `utils/`, `common/`, 
 ```text
 pill press
   └─ rewrite-runner.run(actionId)
-       ├─ composer-bridge.readText()            ← rejects if 0 or >1 Composer is visible
-       ├─ read-settings + selection (pre-flight) ← turns config errors into a sentence, never reaches the daemon
+       ├─ composer-bridge.readText()            ← requires unambiguous workspace/agent evidence on web
+       ├─ read-settings + CLI selection checks  ← API routing remains authoritative on the server
        └─ rpc prompt-kit.rewrite ──────────────────────────────────────────────┐
                                                                                ▼
                                             handler: resolveAction(actionId) ← unknown_action
@@ -129,7 +131,7 @@ pill press
                                                      transports/cli | transports/api
                                                      output-validator (protected literals)
        ┌───────────────────────────────────────────────────────────────────────┘
-       ├─ isActive() && readText() === snapshot   ← text changed mid-flight → leave it alone
+       ├─ isActive() && readText() === snapshot   ← bound identity, visibility or text changed → leave it alone
        └─ composer-bridge.replaceText + focus     ← never auto-sends
 ```
 
@@ -158,8 +160,9 @@ The rewrite contract and the injection boundary belong to Core (`rewrite-contrac
 `wrapper.ts`); packs must not restate or wrap them. The contract fixes the voice for every
 action: the output is sent as the author's own words, so it keeps the author's first person,
 speaks to the agent directly, and never narrates "the user". A pack's `system` holds only what
-its action changes. Prompt text inside a pack is content **the plugin author** wrote, unlike
-`<draft>`, which is untrusted data.
+its action changes. Prompt instructions come from bundled packs or user-authored settings, unlike
+`<draft>`, which is untrusted data. Bundled instruction overrides preserve the pack id and
+execution modes. Listing and execution resolve through the same effective registry.
 
 ---
 
@@ -168,7 +171,7 @@ its action changes. Prompt text inside a pack is content **the plugin author** w
 | RPC | In | Out |
 |---|---|---|
 | `prompt-kit.rewrite` | `actionId` (regex), `agentId` (null on a draft), `workspaceId`, `originalPrompt` ≤ 50,000, `settings` (a snapshot; host 0.8.0 doesn't let the server read settings) | `ok{rewrittenPrompt, model, durationMs}` or `error{code, message}` |
-| `prompt-kit.actions.list` | `customActions` (from settings) | bundled + custom actions, each marked `custom`, plus `rejected`; switches are **not** applied |
+| `prompt-kit.actions.list` | `customActions`, `actionOverrides` (from settings) | effective bundled + custom actions, including editable instructions and `custom`/`modified` markers, plus `rejected`; switches are **not** applied |
 | `prompt-kit.providers` | `cwd?` | daemon catalog + `available` |
 | `prompt-kit.api.test` | one endpoint + `secretsDir` | a model list or a coded error |
 | `prompt-kit.secrets.write` | `secretsDir`, entry `name`, `value` (null removes) | `ok` or an error message; never a key |
@@ -195,28 +198,28 @@ the CLI transport only; the API transport never reads it. The remaining fields f
 - Shared: `timeoutMs` (`TIMEOUT_MS.min..max`, default 25,000; a rewrite runs at most
   `TIMEOUT_MS.runCapMs` = 27,000 because the host drops the RPC at 30s — DEF-008), `debugLog`
   (per-rewrite `debug` lines in the plugin log; off ⇒ only `rewrite success` / `rewrite failed`),
-  `actionEnabled`, `customActions` (action packs written in Settings, same
+  `actionEnabled`, `actionOverrides` (bundled id → validated `system` + `task`; invalid or unknown overrides fail closed), `customActions` (action packs written in Settings, same
   schema as `shared/packs/`; an id that collides with another loaded action rejects both),
   `outputLanguage` (`source` or a loaded id; an unknown id ⇒
   `invalid_selection`).
 
 An API key **never** lives in settings (this document reaches the browser); only the variable
-name does, its value is read on the daemon from env, then `secrets.json`.
+name does; its value is read on the daemon from the selected source only, with no fallback.
 
 ---
 
-## 7. Locked decisions (answers to OQ-1..OQ-8 from the proposal)
+## 7. Current contract (supersedes proposal-era answers to OQ-1..OQ-8)
 
 | OQ | Decision |
 |---|---|
-| OQ-1 Pack source | **Bundled-in-plugin** packs only (`shared/packs/`). Packs from a user directory or the network need an upstream FR (the daemon doesn't know the install dir). |
+| OQ-1 Pack source | Bundled packs (`shared/packs/`) plus validated custom packs in host settings. No runtime pack-directory or network discovery. |
 | OQ-2 Compatibility | A `schemaVersion` other than `1` ⇒ the pack is rejected. Changing the shape means editing schema v1 and every pack at once (hard cut). |
 | OQ-3 Identity | One flat namespace; `id` is unique within the barrel; a clash rejects both. |
-| OQ-4 Per-pack settings | None. `actionEnabled[id]` is the only level. |
+| OQ-4 Per-pack settings | `actionEnabled[id]` controls visibility. `actionOverrides[id]` edits bundled instructions without creating a new identity. Core rules remain fixed. |
 | OQ-5 Pack validity | Strict schema + a 50,000-character limit. No `{{prompt}}` placeholder: Core wraps it itself. |
 | OQ-6 Injection | `escapeWrapperDelimiters` lives in Core. |
 | OQ-7 Protected literals | The validator runs on `originalPrompt`, independent of the pack. |
-| OQ-8 Trust | Pack prompt text is content the plugin author wrote; third-party packs don't exist in this build. |
+| OQ-8 Trust | Instructions come from bundled data or user-authored settings. Draft content remains untrusted input inside Core's wrapper; editable instructions do not remove Core validation. |
 
 ---
 

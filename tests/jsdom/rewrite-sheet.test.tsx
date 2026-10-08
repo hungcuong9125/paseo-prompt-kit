@@ -118,6 +118,18 @@ afterEach(() => {
 });
 
 describe("rewrite sheet with the Composer reachable", () => {
+  it("does not clear a newer Composer draft after sending the sheet's text", async () => {
+    holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
+    holder.listActions.mockResolvedValue(actions);
+    holder.rewrite.mockResolvedValue({ status: "ok", rewrittenPrompt: "improved" });
+    const composer = fakeComposer("original");
+    const view = await render(() => ({ ok: true, handle: composer.handle }));
+    composer.state.text = "new human draft";
+    holder.send.mockResolvedValue(undefined);
+    await press(view, "prompt-kit-sheet-send");
+    expect(holder.send).toHaveBeenCalledWith("improved");
+    expect(composer.state.text).toBe("new human draft");
+  });
   it("opens with the Composer text, rewrites it at once, and clears the Composer on Send", async () => {
     holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
     holder.listActions.mockResolvedValue(actions);

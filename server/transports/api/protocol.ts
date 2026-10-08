@@ -49,7 +49,7 @@ export interface ApiProtocol {
    * base URL are right before a rewrite fails on them.
    */
   buildModelsRequest(input: ApiModelsCall): ApiHttpRequest;
-  parseModelsResponse(payload: unknown): string[];
+  parseModelsResponse(payload: unknown): string[] | null;
 }
 
 const MIN_OUTPUT_TOKENS = 256;
@@ -100,14 +100,15 @@ export function at(payload: unknown, ...path: readonly (string | number)[]): unk
  * Every protocol lists models as an array of objects with one identifying field,
  * so this is the shared half of `parseModelsResponse` for all three.
  */
-export function stringFieldAt(payload: unknown, path: readonly (string | number)[], field: string): string[] {
+export function stringFieldAt(payload: unknown, path: readonly (string | number)[], field: string): string[] | null {
   const list = at(payload, ...path);
-  if (!Array.isArray(list)) return [];
+  if (!Array.isArray(list)) return null;
   const seen = new Set<string>();
   for (const entry of list) {
-    if (entry === null || typeof entry !== "object") continue;
+    if (entry === null || typeof entry !== "object") return null;
     const value = (entry as Record<string, unknown>)[field];
-    if (typeof value === "string" && value.trim() !== "") seen.add(value.trim());
+    if (typeof value !== "string" || value.trim() === "") return null;
+    seen.add(value.trim());
   }
   return [...seen];
 }

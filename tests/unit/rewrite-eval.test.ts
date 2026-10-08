@@ -2,9 +2,15 @@ import { describe, expect, it } from "vitest";
 import { EVAL_CASES, SAMPLE_PACKS } from "../eval/cases.js";
 import { failures, rewriteLive } from "../eval/run-case.js";
 import { resolveAction } from "../../shared/action-registry/registry.js";
+import { REWRITE_CONTRACT } from "../../shared/action-registry/rewrite-contract.js";
 
 /** The eval must be able to pass and to fail before a live model is trusted to be graded by it. */
 describe("rewrite eval cases", () => {
+  it("covers every offered sample with a behavioural case", () => {
+    const covered = new Set(EVAL_CASES.map((entry) => entry.actionId));
+    for (const pack of SAMPLE_PACKS) expect(covered.has(pack.id), pack.id).toBe(true);
+  });
+
   it("have distinct ids and name an action that resolves", () => {
     expect(new Set(EVAL_CASES.map((entry) => entry.id)).size).toBe(EVAL_CASES.length);
     for (const entry of EVAL_CASES) {
@@ -27,8 +33,8 @@ describe("rewrite eval cases", () => {
 
 describe("live eval runner", () => {
   // Fails if the runner stops sending the case's action and draft through the real engine and endpoint.
-  it("posts the action's rules and the draft, then hands back the model's text", async () => {
-    const entry = EVAL_CASES.find((candidate) => candidate.actionId === "plan-first")!;
+  it.each(SAMPLE_PACKS)("posts Core and $id rules with the draft, then returns the model text", async (pack) => {
+    const entry = EVAL_CASES.find((candidate) => candidate.actionId === pack.id)!;
     let body = "";
     const fetch = (async (_url: unknown, init?: RequestInit) => {
       body = String(init?.body);
@@ -46,7 +52,12 @@ describe("live eval runner", () => {
 
     expect(result).toEqual({ ok: true, text: entry.pass });
     expect(body).toContain(entry.draft);
-    expect(body).toContain("plans and waits for approval");
+    const action = resolveAction(entry.actionId, SAMPLE_PACKS)!;
+    const payload = JSON.parse(body) as { messages: { role: string; content: string }[] };
+    expect(payload.messages.find((message) => message.role === "system")?.content).toBe(`${REWRITE_CONTRACT}\n\n${action.systemPrompt}`);
+    const task = payload.messages.find((message) => message.role === "user")?.content;
+    expect(task).toContain(action.taskInstruction);
+    expect(task).toContain(`<draft>\n${entry.draft}\n</draft>`);
   });
 
   // Fails if a case's output language stops reaching the <task> block the model sees.

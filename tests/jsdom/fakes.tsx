@@ -139,7 +139,8 @@ export function createFakeClient(
       }
       if (contract.name === "prompt-kit.actions.list") {
         if (options.actionsError) throw options.actionsError;
-        return summarizeActions((input as { customActions: ActionPack[] }).customActions);
+        const request = input as { customActions: ActionPack[]; actionOverrides: Record<string, { system: string; task: string }> };
+        return summarizeActions(request.customActions, request.actionOverrides);
       }
       if (options.settingsError) throw options.settingsError;
       return { status: "ready", revision: "r1", values: promptKitSettingsSchema.parse({}) };
@@ -183,12 +184,13 @@ export function createFakeClient(
 }
 
 /** Mounts the real Composer DOM shape the web adapter locates. */
-export function mountComposer(value = ""): HTMLTextAreaElement {
+export function mountComposer(value = "", identity = { agentId: "agent-a" as string | null, workspaceId: "ws-1" }): HTMLTextAreaElement {
   const root = document.createElement("div");
   root.setAttribute("data-testid", "message-input-root");
   const field = document.createElement("textarea");
   field.setAttribute("data-composer-input", "");
   field.value = value;
+  Object.assign(field, { __reactFiber$test: { memoizedProps: identity, return: null } });
   root.appendChild(field);
   document.body.appendChild(root);
   return field;

@@ -31,7 +31,7 @@ export type CodexConnector = (cwd: string) => CodexConnection;
 const STDERR_TAIL_CHARS = 2_000;
 
 export const connectCodexAppServer: CodexConnector = (cwd) => {
-  const child = spawn("codex", ["app-server"], {
+  const child = spawn("codex", ["app-server", "--disable", "shell_tool", "--disable", "unified_exec", "--disable", "multi_agent", "--disable", "browser_use", "--disable", "computer_use", "--disable", "apps", "--disable", "plugins", "--disable", "hooks", "--disable", "image_generation", "--disable", "view_image", "-c", 'web_search="disabled"'], {
     cwd,
     env: process.env,
     detached: process.platform !== "win32",
@@ -65,6 +65,7 @@ export const connectCodexAppServer: CodexConnector = (cwd) => {
     } catch {
       return;
     }
+    if (message === null || typeof message !== "object" || Array.isArray(message)) return;
     const id = typeof message.id === "number" ? message.id : null;
     if (typeof message.method === "string") {
       if (message.id !== undefined) {
@@ -87,6 +88,11 @@ export const connectCodexAppServer: CodexConnector = (cwd) => {
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk: string) => {
     buffered += chunk;
+    if (buffered.length > 2 * 1024 * 1024) {
+      exit("codex response exceeded the capture limit.");
+      killTree(child);
+      return;
+    }
     let newline = buffered.indexOf("\n");
     while (newline !== -1) {
       const line = buffered.slice(0, newline).trim();

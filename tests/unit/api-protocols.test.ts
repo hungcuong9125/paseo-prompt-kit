@@ -259,7 +259,7 @@ describe("cloudflare protocol", () => {
     );
     expect(result.ok).toBe(true);
     const text = lines.join("\n");
-    expect(text).toContain("/accounts/<account>/ai/run/@cf/m");
+    expect(text).toContain("https://api.cloudflare.com");
     expect(text).not.toContain("acc-secret");
     expect(text).not.toContain("tok-secret");
   });
@@ -433,11 +433,7 @@ describe("api endpoint test", () => {
       if (response.reject) throw response.reject;
       const status = response.status ?? 200;
       const body = response.body === undefined ? {} : response.body;
-      return {
-        ok: status >= 200 && status < 300,
-        status,
-        text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
-      };
+      return new Response(typeof body === "string" ? body : JSON.stringify(body), { status });
     }) as unknown as typeof globalThis.fetch;
     return { impl, calls };
   }

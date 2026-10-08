@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   SettingsAction,
   SettingsCard,
@@ -65,6 +65,9 @@ function withEndpoint(
 export function ApiEndpointSection({ values, disabled, epoch, patch, test, keyStatus, writeKey }: ApiEndpointSectionProps) {
   const [tests, setTests] = useState<Readonly<Record<string, TestState>>>({});
   const [modelQuery, setModelQuery] = useState("");
+  const live = useRef({ values, active: true });
+  live.current.values = values;
+  useEffect(() => { live.current.active = true; return () => { live.current.active = false; }; }, []);
 
   const selected = values.apiEndpoints.find((endpoint) => endpoint.id === values.apiEndpointId) ?? null;
   const selectedIsPreset = selected !== null && PRESET_IDS.has(selected.id);
@@ -137,6 +140,7 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test, keySt
   const edit = (changes: Partial<ApiEndpoint>) => {
     if (selected === null) return;
     const id = selected.id;
+    setTests((previous) => ({ ...previous, [id]: { kind: "idle" } }));
     patch((current) => ({ apiEndpoints: withEndpoint(current.apiEndpoints, id, changes) }));
   };
 
@@ -154,9 +158,12 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test, keySt
   };
 
   const runTest = async (endpoint: ApiEndpoint) => {
+    const fingerprint = JSON.stringify([endpoint, values.secretsDir]);
+    const current = () => live.current.active && JSON.stringify([live.current.values.apiEndpoints.find((entry) => entry.id === endpoint.id), live.current.values.secretsDir]) === fingerprint;
     setTests((previous) => ({ ...previous, [endpoint.id]: { kind: "running" } }));
     try {
       const output = await test(endpoint, values.secretsDir);
+      if (!current()) return;
       if (output.status === "ok") {
         setTests((previous) => ({ ...previous, [endpoint.id]: { kind: "ok", models: output.models.length } }));
         // Test fills the model list; an empty answer leaves it alone.
@@ -171,6 +178,7 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test, keySt
         }));
       }
     } catch (thrown) {
+      if (!current()) return;
       setTests((previous) => ({
         ...previous,
         [endpoint.id]: { kind: "error", message: thrown instanceof Error ? thrown.message : String(thrown) },
@@ -181,8 +189,8 @@ export function ApiEndpointSection({ values, disabled, epoch, patch, test, keySt
   const testHint =
     testState.kind === "ok"
       ? testState.models === 0
-        ? "Reachable, but the endpoint lists no models. Type the model id below."
-        : `Reachable. ${testState.models} models are now in the model list below.`
+        ? "Model-list request succeeded with an empty list. Generation has not been tested."
+        : `Model list received: ${testState.models}. Generation has not been tested.`
       : "Asks the endpoint which models it offers, with the same key lookup a rewrite uses.";
   const keyFound =
     selected === null || testState.kind !== "ok"

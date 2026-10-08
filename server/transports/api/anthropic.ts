@@ -55,7 +55,7 @@ export const anthropicProtocol: ApiProtocol = {
       body: "",
     };
   },
-  parseModelsResponse(payload: unknown): string[] {
+  parseModelsResponse(payload: unknown): string[] | null {
     return stringFieldAt(payload, ["data"], "id");
   },
 };

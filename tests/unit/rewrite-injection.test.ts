@@ -113,7 +113,6 @@ describe("bundled packs", () => {
     for (const example of examples.slice(0, -1)) expect(example).toMatch(/^[\x00-\x7F]*$/);
     expect(examples.at(-1)).toMatch(/<before>[^<]*[^\x00-\x7F][^<]*keep the current session API<\/before>/);
     for (const entry of ACTION_SAMPLES) {
-      if (entry.key === "general") continue;
       expect(entry.pack.system, entry.key).toMatch(/^[\x00-\x7F]*$/);
       expect(entry.pack.task, entry.key).toMatch(/^[\x00-\x7F]*$/);
     }

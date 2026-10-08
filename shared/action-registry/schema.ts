@@ -31,6 +31,13 @@ export const actionPackSchema = z.strictObject({
 
 export type ActionPack = z.output<typeof actionPackSchema>;
 
+export const actionOverrideSchema = z.strictObject({
+  system: z.string().trim().min(1).max(MAX_INSTRUCTION_CHARS),
+  task: z.string().trim().min(1).max(MAX_INSTRUCTION_CHARS),
+});
+export const actionOverridesSchema = z.record(z.string().regex(ACTION_ID_PATTERN), actionOverrideSchema);
+export type ActionOverrides = z.output<typeof actionOverridesSchema>;
+
 /**
  * A pack as the rest of the plugin sees it. The rewrite contract, the wrapper
  * (`<task>`, `<draft>` and delimiter escaping) belong to Core, so a definition
