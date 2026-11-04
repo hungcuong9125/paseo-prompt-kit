@@ -23,6 +23,7 @@ describe("prompt kit settings", () => {
       secretsDir: null,
       timeoutMs: 25_000,
       debugLog: false,
+      sidebarEntry: false,
       actionEnabled: {},
       actionOverrides: {},
       outputLanguage: "source",

@@ -793,3 +793,35 @@ describe("custom actions", () => {
     expect(statusText(over)).toContain(`keep at most ${MAX_ENABLED_ACTIONS}`);
   });
 });
+
+describe("interface section", () => {
+  async function toggle(view: HTMLDivElement, label: string, checked: boolean) {
+    const box = view.querySelector<HTMLInputElement>(`input[data-label="${label}"]`);
+    if (!box) throw new Error(`no switch labelled "${label}"`);
+    // React tracks the last checked state it set; the native setter bypasses
+    // that tracker so the bubbling change event is seen as a real change.
+    // React normalizes checkbox onChange from the click event; jsdom's click
+    // activation behavior flips `checked`, so no manual setter is needed.
+    await act(async () => {
+      box.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+    expect(box.checked).toBe(checked);
+  }
+
+  it("renders the sidebar switch reflecting the saved document", async () => {
+    holder.state = readyState({});
+    const view = await render();
+    expect(view.querySelector('section[data-title="Interface"]')).not.toBeNull();
+    expect(view.querySelector<HTMLInputElement>('input[data-label="Show in the left sidebar"]')?.checked).toBe(false);
+  });
+
+  it("saves the toggled sidebar entry", async () => {
+    holder.state = readyState({});
+    const view = await render();
+    await toggle(view, "Show in the left sidebar", true);
+    expect(view.querySelector('[data-testid="prompt-kit-save"]')).not.toBeNull();
+    await press(view, "prompt-kit-save");
+    expect(holder.save.mock.calls[0]?.[0]).toMatchObject({ sidebarEntry: true });
+  });
+});

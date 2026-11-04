@@ -23,6 +23,7 @@ import { CustomActionsSection } from "./sections/custom-actions-section.js";
 import { ApiEndpointSection } from "./sections/api-endpoint-section.js";
 import { DedicatedModelSection } from "./sections/dedicated-model-section.js";
 import { EngineSection } from "./sections/engine-section.js";
+import { InterfaceSection } from "./sections/interface-section.js";
 import { StatusBar } from "./ui/status-bar.js";
 import { SPACE, textStyles } from "./ui/tokens.js";
 
@@ -138,6 +139,8 @@ function ReadyScreen({ settings, theme, layout }: { settings: ReadySettings } & 
       </CustomActionsSection>
 
       <EngineSection theme={theme} compact={layout.compact} values={values} disabled={disabled} patch={draft.patch} />
+
+      <InterfaceSection values={values} disabled={disabled} patch={draft.patch} />
 
       {values.transport === "cli" && values.modelMode === "dedicated" ? (
         <DedicatedModelSection

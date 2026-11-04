@@ -74,6 +74,8 @@ export const promptKitSettingsSchema = z.object({
   timeoutMs: z.number().int().min(TIMEOUT_MS.min).max(TIMEOUT_MS.max).default(TIMEOUT_MS.default),
   /** Writes per-rewrite detail lines (target, request, CLI or HTTP result) to the plugin log. */
   debugLog: z.boolean().default(false),
+  /** Shows the PromptKit entry in the host's left sidebar; the entry opens the settings screen. */
+  sidebarEntry: z.boolean().default(false),
   /**
    * Per-action user toggle, keyed by action id. An id absent here falls back to
    * the pack's `enabledByDefault`, so a newly added pack is usable without a
