@@ -15,7 +15,7 @@ export function InterfaceSection({ values, disabled, patch }: InterfaceSectionPr
       <SettingsCard>
         <SettingsSwitch
           label="Show in the left sidebar"
-          hint="Adds a PromptKit entry to the host's left sidebar; it opens this settings screen. The entry appears and disappears when you Save. If this screen is open from the sidebar, close that page before turning the switch off — the host keeps a stale panel with a notice otherwise."
+          hint="Adds a PromptKit entry to the host's left sidebar; it opens this settings screen. The entry appears and disappears when you Save — an open settings page keeps working either way."
           value={values.sidebarEntry}
           disabled={disabled}
           onValueChange={(next) => patch({ sidebarEntry: next })}

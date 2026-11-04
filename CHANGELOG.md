@@ -7,10 +7,8 @@
 - A **left-sidebar entry** (Settings → Interface → *Show in the left sidebar*, off by default):
   adds a PromptKit item to the host's sidebar that opens the settings screen. The entry follows
   Save on that client, the same save pipeline the pills follow, and is removed when the switch
-  is turned off, the settings document is unreadable, or the plugin unloads. Host behavior to
-  know: removing the entry while its settings screen is open leaves that open panel with the
-  host's "surface unavailable" notice (the panel is anchored to the entry and there is no
-  close-panel API); close the page first, or toggle back on and Save.
+  is turned off, the settings document is unreadable, or the plugin unloads. The settings screen
+  itself is registered independently, so an open page keeps working when the entry is removed.
 - Twelve more CLI families: `gemini`, `qwen`, `codebuddy`, `qoder`, `omp`, `kimi`, `grok`,
   `kilo`, `mimo` as one-shot processes, and `cline`, `hermes`, `dsh` over a new ACP transport
   (one warm agent per CLI, a fresh session per rewrite, every tool permission denied). Each

@@ -26,7 +26,7 @@ No path sends the message on its own. You review the result and send it yourself
 
 ## Requirements
 
-- Paseo `>=0.9.0` (Desktop, Web or mobile). Built and tested against the 0.9.0 plugin SDK.
+- Paseo `>=0.11.0` (Desktop, Web or mobile). Built and tested against the 0.11.1 plugin SDK.
 - For **Provider CLI**: that provider's CLI on the daemon's `PATH`, and a model it can reach.
 - For **Direct API**: an endpoint URL, a model id, and a key — see [API keys](#api-keys).
 
@@ -143,7 +143,7 @@ How each CLI runs a rewrite:
 
 **ACP families (`cline`, `hermes`, `dsh`) run the model their own CLI has.** ACP carries no model selection, so **Dedicated model** refuses them (both sides report the same reason); use the current agent model or Direct API. The rewrite contract travels inside the prompt rather than a system channel, and every tool permission the agent asks for is denied — the client advertises no file-system or terminal capabilities, sessions run in an empty temporary directory with no MCP servers, and the shared process stops after 10 idle minutes or with the plugin. As with codex, a rewrite timeout closes the shared warm agent, which can also fail another concurrent rewrite on that same family; each rewrite still runs in its own fresh session, so conversations never cross.
 
-**Sidebar entry caveat (host behavior):** turning **Show in the left sidebar** off while the settings screen is open *from that sidebar entry* makes the host keep the open panel with its own "This plugin surface is unavailable." notice — the panel is anchored to the entry, and the plugin has no API to close it. Close the page first (or press the switch back on and Save) and the notice is gone; nothing else is affected.
+**Sidebar entry**: the entry and the screen it opens are independent registrations — turning **Show in the left sidebar** off while the settings screen is open *from that entry* removes only the sidebar item; the open page keeps working until you navigate away.
 
 **Providers resolve to a family by id**: the exact id, a `<family>-…` or `…-<family>` segment. `codebuddy-code` resolves to `codebuddy`; `dsh-pi` and `dsh-acp` resolve to the `dsh` ACP family (a real `dsh` agent, not the `pi` binary). Anything else needs **Advanced → CLI per provider**, and an unresolved provider is refused, never guessed.
 
@@ -335,7 +335,7 @@ Every one of these leaves the Composer text untouched.
 ## Limitations
 
 - In-place rewriting works on Desktop and Web only: the mobile app renders the Composer as a native text input with no DOM, and Paseo 0.9.0 exposes no plugin API for Composer text. On mobile the `PromptKit` pill opens the **PromptKit sheet** instead (see above); it reads and clears the Composer through the app's React tree rather than the DOM, which a Paseo update can break in the same way. Nothing is copied or sent on its own. `/rewrite` is not available on mobile. On Web, writes require an unambiguous visible Composer with matching workspace and agent identity evidence.
-- Requires Paseo `>=0.9.0`. Because text access depends on the Composer DOM (or, on mobile, the React tree), a Paseo UI change can break it even when the public plugin SDK is compatible.
+- Requires Paseo `>=0.11.0`. Because text access depends on the Composer DOM (or, on mobile, the React tree), a Paseo UI change can break it even when the public plugin SDK is compatible.
 - PromptKit refuses to replace text if the bound Composer becomes unavailable, its identity changes, or its text no longer matches the starting snapshot. Web identity checks depend on private React Fiber fields as well as DOM visibility; missing or conflicting evidence fails closed.
 - Only `General` ships. Any other action is a custom action you write in Settings, or a pack you bundle as a JSON file — see `docs/EXTENDING.md`.
 - A rewrite has at most 27 seconds, because the daemon drops a plugin call at 30 s. The API transport does not stream, and a slow CLI model can take longer (`opencode` with `zcode/glm-5.3-flash` took about 33 s); PromptKit then reports its own timeout. Use a faster model or the Direct API transport.

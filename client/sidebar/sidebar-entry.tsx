@@ -1,7 +1,9 @@
+import { SidebarRow } from "@getpaseo/plugin/client/ui";
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { PLUGIN_ICON } from "../icon.js";
 import type { SettingsRead } from "../settings/read-settings.js";
 import { onSettingsSaved } from "../settings/settings-saved.js";
+import { SCREEN_ID } from "./screen-ids.js";
 import { SidebarSurface } from "./sidebar-surface.js";
 
 export interface SidebarEntryDependencies {
@@ -9,7 +11,8 @@ export interface SidebarEntryDependencies {
 }
 
 const ENTRY_ID = "prompt-kit";
-const SURFACE_ID = "prompt-kit-settings";
+
+export interface SidebarEntryDependenciesFull extends SidebarEntryDependencies {}
 
 /**
  * The left-sidebar entry: opens PromptKit's settings screen from the host's
@@ -18,20 +21,22 @@ const SURFACE_ID = "prompt-kit-settings";
  * re-read on every save, and fail closed on an unreadable document — an entry
  * the user never chose must not appear.
  *
- * The surface registers once for the plugin's lifetime and never toggles: the
- * switch may be turned off while the view is open on screen, and unregistering
- * an open surface tears the view down under the reader. Only the sidebar item
- * comes and goes; the surface itself is unreachable without its item.
+ * The screen registers once for the plugin's lifetime and never toggles: the
+ * switch may be turned off while the screen is open on display, and screens
+ * are independent of sidebar items, so the open page keeps working. Only the
+ * sidebar item comes and goes; the screen itself is unreachable without it.
+ *
+ * Hosts (and test fakes) without a screen registry skip the screen and item
+ * entirely: there the entry simply cannot exist.
  */
 export function registerSidebarEntry(
   client: PluginClientContext,
   dependencies: SidebarEntryDependencies,
 ): () => void {
-  // Some hosts (and every test fake that predates surfaces) have no surface
-  // registry; there the entry simply cannot exist, and only a real desktop
-  // client registers the view.
-  const removeSurface =
-    typeof client.addSurface === "function" ? client.addSurface(SURFACE_ID, SidebarSurface) : null;
+  const hasScreens = typeof client.addScreen === "function" && typeof client.addSidebarHeaderItem === "function";
+  const removeScreen = hasScreens
+    ? client.addScreen({ id: SCREEN_ID, title: "PromptKit", Component: SidebarSurface })
+    : () => undefined;
   let removeItem: (() => void) | null = null;
   let cancelled = false;
   let syncing = 0;
@@ -40,9 +45,13 @@ export function registerSidebarEntry(
     const read = await dependencies.readSettings();
     // Cleanup ran while the read was in flight: drop the answer.
     if (cancelled || generation !== syncing) return;
-    const wanted = read.status === "ready" && read.values.sidebarEntry === true;
+    const wanted = hasScreens && read.status === "ready" && read.values.sidebarEntry === true;
     if (wanted && removeItem === null) {
-      removeItem = client.addSidebarItem({ id: ENTRY_ID, title: "PromptKit", icon: PLUGIN_ICON, surface: SURFACE_ID });
+      removeItem = client.addSidebarHeaderItem({
+        id: ENTRY_ID,
+        title: "PromptKit",
+        Component: SidebarRowForSettings,
+      });
     }
     if (!wanted && removeItem !== null) {
       removeItem();
@@ -66,6 +75,11 @@ export function registerSidebarEntry(
     cancelled = true;
     unsubscribe();
     removeItem?.();
-    removeSurface?.();
+    removeScreen();
   };
+}
+
+/** The sidebar row: opens the PromptKit settings screen. */
+function SidebarRowForSettings({ openScreen }: { openScreen(params: { screenId: string }): void }) {
+  return <SidebarRow icon={PLUGIN_ICON} onPress={() => openScreen({ screenId: SCREEN_ID })} />;
 }
