@@ -62,7 +62,23 @@ export function stdoutFor(command: string, text: string): string {
     case "claude":
       return JSON.stringify({ type: "result", subtype: "success", result: text });
     case "opencode":
+    case "kilo":
+    case "mimo":
       return `${JSON.stringify({ type: "text", part: { type: "text", text } })}\n`;
+    case "gemini":
+      return JSON.stringify({ response: text, stats: {} });
+    case "qwen":
+    case "codebuddy":
+      return JSON.stringify([
+        { type: "message", role: "user" },
+        { type: "result", subtype: "success", is_error: false, result: text },
+      ]);
+    case "qodercli":
+      return JSON.stringify({ type: "result", subtype: "success", is_error: false, result: text, stop_reason: "end_turn" });
+    case "kimi":
+      return `${JSON.stringify({ role: "assistant", content: text })}\n`;
+    case "grok":
+      return JSON.stringify({ text, stopReason: "end_turn", usage: {} });
     default:
       return cliStdout(text);
   }

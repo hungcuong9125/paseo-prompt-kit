@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 
 /** A runaway CLI must not be able to exhaust the daemon's memory. */
-const MAX_CAPTURE_CHARS = 2 * 1024 * 1024;
+export const MAX_CAPTURE_CHARS = 2 * 1024 * 1024;
 
 export interface CliRunInput {
   readonly command: string;

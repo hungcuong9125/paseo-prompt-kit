@@ -104,6 +104,11 @@ async function resolveDedicatedCli(
   }
   const family = resolveFamily(provider, settings.providerCli);
   if (family === null) return unsupported(provider);
+  if (family.kind === "acp") {
+    return invalidSelection(
+      `"${provider}" runs on its own agent CLI over ACP, which has no model selection. Use the current agent model or Direct API.`,
+    );
+  }
 
   let catalog: Awaited<ReturnType<typeof readProviderCatalog>>;
   try {

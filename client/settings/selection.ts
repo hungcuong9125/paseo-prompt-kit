@@ -1,3 +1,4 @@
+import { isAcpFamilyId, resolveCliFamilyId } from "../../shared/cli-families.js";
 import type { ProviderCatalogOutput } from "../../shared/rpc.js";
 import type { PromptKitSettings } from "../../shared/settings.js";
 
@@ -14,6 +15,11 @@ export function validateDedicatedSelection(
   const model = settings.dedicatedModel;
   if (provider === null || model === null) {
     return "Select a dedicated provider and model.";
+  }
+  // Same reason the daemon refuses: an ACP family carries no model selection.
+  const familyId = resolveCliFamilyId(provider, settings.providerCli);
+  if (familyId !== null && isAcpFamilyId(familyId)) {
+    return `"${provider}" runs on its own agent CLI over ACP, which has no model selection. Use the current agent model or Direct API.`;
   }
   const entry = providers.find((candidate) => candidate.provider === provider);
   if (!entry || !entry.available) return `Provider is unavailable: ${provider}`;

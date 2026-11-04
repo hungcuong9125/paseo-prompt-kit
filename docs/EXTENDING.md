@@ -90,15 +90,24 @@ with the same shape is just a preset — see §5.)
 
 1. `shared/cli-families.ts`: add the id to `CLI_FAMILY_IDS`. This id is also the **binary
    name** and the string `resolveCliFamilyId` matches against the provider id (`<id>`,
-   `<id>-*`, `*-<id>`).
+   `<id>-*`, `*-<id>`). ACP families are also listed in `ACP_FAMILY_IDS`.
 2. `server/transports/cli/family.ts`: add a `ProcessCliFamily` following
    `docs/templates/cli-family.template.ts.md` and put it in the `FAMILIES` array. Required: the
    prompt goes through `stdin` or a file, **never** through `argv`; the system prompt reaches
-   the model (a flag, or `env` when the CLI has none); disable tools/context/session if the
-   CLI has a flag for it; parse that CLI's exact JSON output format.
+   the model (a flag, or `env` when the CLI has none); disable tools/context/session if the CLI
+   has a flag for it; parse that CLI's exact JSON output format. When the instruction must
+   reach the CLI as a file, declare `scratchFiles`: the runner writes them (0600) into the
+   per-rewrite scratch directory and hands their absolute paths to `buildInvocation` in
+   `request.scratchFilePaths` (declaration order, so a later file can point at an earlier one).
+   A CLI that only speaks ACP becomes an `AcpCliFamily` (`kind: "acp"`, command and args that
+   start its `--acp` server): the runner hands it to a warm `AcpSessions` process, permissions
+   are denied, and the contract travels inside the prompt — ACP has no system-prompt channel,
+   so that prepend is the accepted trade-off, and Dedicated model refuses these families on
+   both sides because ACP carries no model selection.
 3. Test: `tests/unit/cli-family.test.ts` (no prompt in argv, correct flags, correct parser),
    `tests/server/harness.ts` → add a stdout sample for the new CLI to `stdoutFor()`.
-4. Optional live probe: `npx tsx scripts/probe-cli.ts` with a cheap model (DLF-013).
+4. Optional live probe: run the CLI once with a tiny prompt on a cheap model and write the
+   real stdout into the parser test.
 
 Settings → Advanced → "CLI per provider" lists the new family automatically because it reads
 `CLI_FAMILY_IDS`.

@@ -82,7 +82,7 @@ describe("provider CLI mapping", () => {
     });
     expect(values.providerCli).toEqual({ "gateway": "opencode", "pi-custom": "pi" });
     await expect(
-      promptKitSettingsSchema.parseAsync({ providerCli: { "unknown": "gemini" } }),
+      promptKitSettingsSchema.parseAsync({ providerCli: { "unknown": "not-a-family" } }),
     ).rejects.toThrow();
   });
 });

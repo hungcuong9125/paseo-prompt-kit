@@ -4,6 +4,7 @@ import { noTrace, type Trace } from "../log.js";
 import { resolveTarget } from "../model-resolver/resolver.js";
 import type { PaseoApi } from "../paseo-types.js";
 import { runApiRewrite } from "../transports/api/runner.js";
+import type { AcpSessions } from "../transports/cli/acp-sessions.js";
 import type { CodexSessions } from "../transports/cli/codex-sessions.js";
 import type { CliSpawner } from "../transports/cli/process.js";
 import { runCliRewrite } from "../transports/cli/runner.js";
@@ -28,6 +29,8 @@ export interface RewriteDependencies {
   spawn?: CliSpawner;
   /** The warm codex server; the composition root owns one for the plugin's lifetime. */
   codex?: CodexSessions;
+  /** The warm ACP agent per family id; the composition root owns them for the plugin's lifetime. */
+  acp?: (familyId: string) => AcpSessions;
   /** Test seam: replaces the HTTP call under the API runner. */
   fetch?: typeof globalThis.fetch;
   /** Test seam: replaces the environment an API key is read from. */
@@ -95,6 +98,7 @@ export async function runRewrite(
           {
             ...(dependencies.spawn === undefined ? {} : { spawn: dependencies.spawn }),
             ...(dependencies.codex === undefined ? {} : { codex: dependencies.codex }),
+            ...(dependencies.acp === undefined ? {} : { acp: dependencies.acp }),
             trace,
           },
         ))());
