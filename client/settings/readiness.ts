@@ -2,6 +2,7 @@ import type { ProviderCatalogOutput } from "../../shared/rpc.js";
 import { resolveLanguage } from "../../shared/language-registry/registry.js";
 import type { PromptKitSettings } from "../../shared/settings.js";
 import { validateDedicatedSelection } from "./selection.js";
+import { tNow } from "../i18n/core.js";
 
 type Providers = ProviderCatalogOutput["providers"];
 
@@ -20,20 +21,21 @@ export interface ReadinessInput {
 }
 
 function pathLabel(values: PromptKitSettings): string {
-  const transport = values.transport === "api" ? "Direct API" : "Provider CLI";
+  const transport = values.transport === "api" ? tNow("path.api") : tNow("path.cli");
   if (values.transport === "api") {
     const mapped = Object.keys(values.apiEndpointByProvider).length;
-    const viaMapping = `agent model via ${mapped} mapped provider${mapped === 1 ? "" : "s"}`;
-    if (values.apiEndpointId === null) return `${transport} · ${mapped > 0 ? viaMapping : "no endpoint"}`;
-    const selected = `${transport} · ${values.apiEndpointId} · ${values.apiModel ?? "no model"}`;
+    const viaMapping = tNow("path.viaMapping", { count: mapped, s: mapped === 1 ? "" : "s" });
+    if (values.apiEndpointId === null)
+      return `${transport} · ${mapped > 0 ? viaMapping : tNow("path.noEndpoint")}`;
+    const selected = `${transport} · ${values.apiEndpointId} · ${values.apiModel ?? tNow("path.noModel")}`;
     return mapped > 0 ? `${selected} · ${viaMapping}` : selected;
   }
   if (values.modelMode === "dedicated") {
-    const provider = values.dedicatedProvider ?? "no provider";
-    const model = values.dedicatedModel ?? "no model";
+    const provider = values.dedicatedProvider ?? tNow("path.noProvider");
+    const model = values.dedicatedModel ?? tNow("path.noModel");
     return `${transport} · ${provider} · ${model}`;
   }
-  return `${transport} · current agent model`;
+  return `${transport} · ${tNow("path.currentModel")}`;
 }
 
 export function describeReadiness(input: ReadinessInput): Readiness {
@@ -44,7 +46,7 @@ export function describeReadiness(input: ReadinessInput): Readiness {
     return {
       kind: "blocked",
       path,
-      reason: "No action is enabled, so the Composer shows no PromptKit pill.",
+      reason: tNow("ready.blocked.noActions"),
     };
   }
 
@@ -52,12 +54,12 @@ export function describeReadiness(input: ReadinessInput): Readiness {
     return {
       kind: "blocked",
       path,
-      reason: `No output language is loaded with the id "${values.outputLanguage}".`,
+      reason: tNow("ready.blocked.language", { id: values.outputLanguage }),
     };
   }
 
   if (values.transport === "cli" && values.modelMode === "dedicated" && providers === null) {
-    return { kind: "checking", path, detail: "Reading the provider catalog…" };
+    return { kind: "checking", path, detail: tNow("ready.checking.catalog") };
   }
 
   const problem = validateDedicatedSelection(values, providers ?? []);
@@ -69,8 +71,8 @@ export function describeReadiness(input: ReadinessInput): Readiness {
       path,
       detail:
         values.apiEndpointId !== null
-          ? "One HTTP request to the selected endpoint. No CLI is started."
-          : "Each mapped provider's agent model is sent to its endpoint; other providers are refused.",
+          ? tNow("ready.api.endpoint")
+          : tNow("ready.api.mapped"),
     };
   }
   return {
@@ -78,7 +80,7 @@ export function describeReadiness(input: ReadinessInput): Readiness {
     path,
     detail:
       values.modelMode === "dedicated"
-        ? "The dedicated provider's CLI runs headlessly in a scratch directory."
-        : "The agent's own provider CLI runs the model the Composer shows.",
+        ? tNow("ready.cli.dedicated")
+        : tNow("ready.cli.current"),
   };
 }

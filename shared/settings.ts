@@ -77,6 +77,11 @@ export const promptKitSettingsSchema = z.object({
   /** Shows the PromptKit entry in the host's left sidebar; the entry opens the settings screen. */
   sidebarEntry: z.boolean().default(false),
   /**
+   * The language PromptKit's own screens use. "auto" follows the device
+   * locale; anything else is a language PromptKit ships catalogs for.
+   */
+  uiLanguage: z.enum(["auto", "en", "zh-CN"]).default("auto"),
+  /**
    * Per-action user toggle, keyed by action id. An id absent here falls back to
    * the pack's `enabledByDefault`, so a newly added pack is usable without a
    * settings migration and a removed pack leaves no stale state behind.

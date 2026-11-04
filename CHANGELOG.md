@@ -9,6 +9,10 @@
   Save on that client, the same save pipeline the pills follow, and is removed when the switch
   is turned off, the settings document is unreadable, or the plugin unloads. The settings screen
   itself is registered independently, so an open page keeps working when the entry is removed.
+- **Interface language** (Settings → Interface): *follow system*, English or 中文. The settings
+  screens, status line, readiness and validation copy, the mobile sheet and the rewrite error
+  messages follow the choice at once; Save persists it host-wide. Missing translations fall
+  back to English.
 - Twelve more CLI families: `gemini`, `qwen`, `codebuddy`, `qoder`, `omp`, `kimi`, `grok`,
   `kilo`, `mimo` as one-shot processes, and `cline`, `hermes`, `dsh` over a new ACP transport
   (one warm agent per CLI, a fresh session per rewrite, every tool permission denied). Each

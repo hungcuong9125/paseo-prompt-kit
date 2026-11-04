@@ -114,7 +114,7 @@ describe("rewrite flow", () => {
       async () => ({ status: "error", error: { code: "timeout", message: "The rewrite timed out." } }),
       "keep me",
     );
-    await expect(itemPress(fake.fake.live()[0]!)()).rejects.toThrow("The rewrite timed out.");
+    await expect(itemPress(fake.fake.live()[0]!)()).rejects.toThrow("did not answer within");
     expect(document.querySelector("textarea")!.value).toBe("keep me");
     fake.cleanup();
   });

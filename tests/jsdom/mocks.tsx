@@ -1,4 +1,9 @@
 import { createElement, type ReactNode } from "react";
+import { applyUiLanguage } from "../../client/i18n/core.js";
+
+// The jsdom suites assert English copy; the device this runs on may resolve
+// "auto" to Chinese, so every jsdom test pins the UI language up front.
+applyUiLanguage("en");
 
 /**
  * Resolves the React Native style shorthands the host's primitives accept.

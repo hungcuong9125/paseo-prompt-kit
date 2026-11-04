@@ -13,6 +13,8 @@ import {
   type ComposerLookup,
 } from "../composer-bridge/fiber.js";
 import { Button } from "../settings/ui/button.js";
+import { applyUiLanguage, tNow, useI18n } from "../i18n/core.js";
+import { localizedRewriteError } from "../i18n/errors.js";
 import { RADIUS, SPACE, textStyles } from "../settings/ui/tokens.js";
 
 /** Locates the agent's Composer from a mounted probe element. */
@@ -58,6 +60,7 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
     const rewrite = useRpc(rewriteRpc);
     const listActions = useRpc(actionsListRpc);
     const text = useMemo(() => textStyles(theme), [theme]);
+    const { t } = useI18n();
     const probeRef = useRef<unknown>(null);
     const composerRef = useRef<ComposerLookup | null>(null);
     const [value, setValue] = useState("");
@@ -81,12 +84,13 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
 
     const runRewrite = useCallback(
       async (source: string, actionId: string) => {
+        if (settings.status === "ready") applyUiLanguage(settings.values.uiLanguage);
         if (settings.status !== "ready") {
-          toast.error(settings.status === "loading" ? "Settings are still loading." : settings.error);
+          toast.error(settings.status === "loading" ? t("error.settingsLoading") : settings.error);
           return;
         }
         if (source.trim() === "") {
-          toast.error("Write a prompt first.");
+          toast.error(t("error.writePrompt"));
           return;
         }
         if (inFlight.current) return;
@@ -100,7 +104,8 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
             originalPrompt: source,
             settings: promptKitSettingsSchema.parse(settings.values),
           });
-          if (output.status === "error") throw new Error(output.error.message);
+          if (output.status === "error")
+            throw new Error(localizedRewriteError(output.error.code, output.error.message, settings.values.timeoutMs));
           if (mounted.current) remember(output.rewrittenPrompt);
         } catch (error) {
           toast.error(error instanceof Error ? error.message : String(error));
@@ -136,7 +141,7 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
       const initial = composerText.trim() !== "" ? composerText : (drafts.get(agentId) ?? "");
       remember(initial);
       if (!lookup.ok) setNote(describeLookupFailure(lookup.reason));
-      else if (choices.length === 0) setNote("No PromptKit action is enabled.");
+      else if (choices.length === 0) setNote(t("error.noActions"));
       if (composerText.trim() !== "" && choices.length === 1) void runRewrite(composerText, choices[0]!.id);
     }, [agentId, choices, remember, runRewrite]);
 
@@ -195,7 +200,7 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
           multiline
           value={value}
           onChangeText={remember}
-          placeholder={several ? "Write the prompt, then pick an action" : "Write the prompt, then press Rewrite"}
+          placeholder={several ? t("sheet.placeholder.multi") : t("sheet.placeholder.single")}
           placeholderTextColor={theme.colors.foregroundMuted}
           editable={busy === "idle"}
           returnKeyType="go"
@@ -208,11 +213,9 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
         />
         <Text style={text.muted} testID="prompt-kit-sheet-note">
           {busy === "rewriting"
-            ? "Rewriting…"
+            ? t("sheet.rewriting")
             : (note ??
-              (several
-                ? "Pick how to rewrite; the result replaces the text here. Send hands it to the agent and clears the Composer."
-                : "Rewrite replaces the text here. Send hands it to the agent and clears the Composer."))}
+              (several ? t("sheet.note.multi") : t("sheet.note.rewrite")))}
         </Text>
         {several
           ? rows(choices).map((row) => (
@@ -236,7 +239,7 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
           {several ? null : (
             <Button
               theme={theme}
-              label={busy === "rewriting" ? "Rewriting…" : "Rewrite"}
+              label={busy === "rewriting" ? t("sheet.rewriting") : t("sheet.rewrite")}
               fill
               onPress={() => {
                 if (only !== undefined) void runRewrite(value, only.id);
@@ -247,7 +250,7 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
           )}
           <Button
             theme={theme}
-            label={busy === "sending" ? "Sending…" : "Send"}
+            label={busy === "sending" ? t("sheet.sending") : t("sheet.send")}
             variant="primary"
             fill
             onPress={() => void send()}

@@ -5,6 +5,7 @@ import { CLI_FAMILY_IDS, isCliFamilyId } from "../../../shared/cli-families.js";
 import type { ProviderCatalogOutput } from "../../../shared/rpc.js";
 import { TIMEOUT_MS, type PromptKitSettings } from "../../../shared/settings.js";
 import type { SettingsPatch } from "../draft.js";
+import { useI18n } from "../../i18n/core.js";
 import { Button } from "../ui/button.js";
 import { ProviderMapCard } from "./provider-map-card.js";
 import { describeTimeout } from "../validation.js";
@@ -24,17 +25,19 @@ const NONE = "";
 
 /** Timeout, debug log, per-provider maps. Collapsed by default. */
 export function AdvancedSection({ theme, values, providers, disabled, epoch, patch }: AdvancedSectionProps) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const timeout = describeTimeout(values.timeoutMs);
+  const timeoutDefault = TIMEOUT_MS.default.toLocaleString();
 
   return (
     <SettingsSection
-      title="Advanced"
-      info="Timeout, debug log, and per-provider overrides. Most setups never need these."
+      title={t("advanced.title")}
+      info={t("advanced.info")}
       trailing={
         <Button
           theme={theme}
-          label={open ? "Hide" : "Show"}
+          label={open ? t("common.hide") : t("common.show")}
           onPress={() => setOpen((current) => !current)}
           testID="prompt-kit-advanced-toggle"
         />
@@ -45,8 +48,8 @@ export function AdvancedSection({ theme, values, providers, disabled, epoch, pat
           <SettingsCard>
             <SettingsInput
               key={`${epoch}-timeout`}
-              label="Timeout (ms)"
-              hint={timeout.note ?? `How long one rewrite may run. Default ${TIMEOUT_MS.default.toLocaleString()} ms.`}
+              label={t("advanced.timeout.label")}
+              hint={timeout.note ?? t("advanced.timeout.hint.default", { default: timeoutDefault })}
               error={timeout.error}
               initialValue={String(values.timeoutMs)}
               placeholder={String(TIMEOUT_MS.default)}
@@ -57,8 +60,8 @@ export function AdvancedSection({ theme, values, providers, disabled, epoch, pat
               }}
             />
             <SettingsSwitch
-              label="Debug log"
-              hint="Writes each rewrite's target, request and CLI or HTTP result to `paseo plugin logs prompt-kit`. Lines can hold excerpts of the model's answer; read them before you share them."
+              label={t("advanced.debug.label")}
+              hint={t("advanced.debug.hint")}
               value={values.debugLog}
               disabled={disabled}
               onValueChange={(next) => patch({ debugLog: next })}
@@ -67,14 +70,14 @@ export function AdvancedSection({ theme, values, providers, disabled, epoch, pat
 
           {values.transport === "cli" ? (
             <ProviderMapCard
-              title="CLI per provider"
-              hint="Paseo names most providers after their CLI, so the family is read from the id and no entry is needed. Map only a provider whose id does not say which CLI runs it; an unresolved provider is refused, never guessed."
+              title={t("advanced.cliMap.title")}
+              hint={t("advanced.cliMap.hint")}
               providers={providers}
               map={values.providerCli}
               targets={CLI_FAMILY_IDS.map((family) => ({ label: family, value: family }))}
-              emptyTargetsLabel="No CLI family is available."
+              emptyTargetsLabel={t("advanced.cliMap.empty")}
               errorFor={(providerId, family) =>
-                isCliFamilyId(family) ? null : `"${family}" is not a supported CLI.`
+                isCliFamilyId(family) ? null : t("advanced.cliMap.error", { family })
               }
               disabled={disabled}
               onSet={(providerId, family) =>
@@ -94,12 +97,12 @@ export function AdvancedSection({ theme, values, providers, disabled, epoch, pat
             />
           ) : (
             <ProviderMapCard
-              title="Endpoint per provider"
-              hint="When you press the pill in an agent of a mapped provider, that agent's own model is sent to the endpoint over HTTP instead of through its CLI. A mapped provider ignores the Model chosen under API endpoint."
+              title={t("advanced.apiMap.title")}
+              hint={t("advanced.apiMap.hint")}
               providers={providers}
               map={values.apiEndpointByProvider}
               targets={values.apiEndpoints.map((endpoint) => ({ label: endpoint.label, value: endpoint.id }))}
-              emptyTargetsLabel="Add an endpoint above first."
+              emptyTargetsLabel={t("advanced.apiMap.empty")}
               disabled={disabled}
               onSet={(providerId, endpointId) =>
                 patch((current) => ({
@@ -119,12 +122,20 @@ export function AdvancedSection({ theme, values, providers, disabled, epoch, pat
       ) : (
         <SettingsCard>
           <SettingsRow
-            label={`Timeout ${values.timeoutMs.toLocaleString()} ms${values.debugLog ? " · Debug log on" : ""} · ${
+            label={`${t("advanced.summary.timeout", { ms: values.timeoutMs.toLocaleString() })}${
+              values.debugLog ? t("advanced.summary.debugOn") : ""
+            } · ${
               values.transport === "cli"
-                ? `${Object.keys(values.providerCli).length} CLI override${Object.keys(values.providerCli).length === 1 ? "" : "s"}`
-                : `${Object.keys(values.apiEndpointByProvider).length} mapped provider${Object.keys(values.apiEndpointByProvider).length === 1 ? "" : "s"}`
+                ? t("advanced.summary.cliOverrides", {
+                    count: Object.keys(values.providerCli).length,
+                    s: Object.keys(values.providerCli).length === 1 ? "" : "s",
+                  })
+                : t("advanced.summary.mapped", {
+                    count: Object.keys(values.apiEndpointByProvider).length,
+                    s: Object.keys(values.apiEndpointByProvider).length === 1 ? "" : "s",
+                  })
             }`}
-            hint="Press Show to change these."
+            hint={t("advanced.summary.hint")}
             error={timeout.error}
           />
         </SettingsCard>

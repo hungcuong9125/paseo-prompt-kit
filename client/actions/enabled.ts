@@ -1,5 +1,6 @@
 import type { ActionSummary } from "../../shared/rpc.js";
 import type { PromptKitSettings } from "../../shared/settings.js";
+import { tNow } from "../i18n/core.js";
 
 /** The most actions the pill menu and the mobile sheet show at once. */
 export const MAX_ENABLED_ACTIONS = 6;
@@ -27,6 +28,6 @@ export function describeEnabledLimit(
 ): string | null {
   const count = enabledActions(actions, settings).length;
   return count > MAX_ENABLED_ACTIONS
-    ? `${count} actions are enabled; turn some off to keep at most ${MAX_ENABLED_ACTIONS}.`
+    ? tNow("validate.enabled.over", { count, max: MAX_ENABLED_ACTIONS })
     : null;
 }

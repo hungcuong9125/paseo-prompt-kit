@@ -24,6 +24,7 @@ describe("prompt kit settings", () => {
       timeoutMs: 25_000,
       debugLog: false,
       sidebarEntry: false,
+      uiLanguage: "auto",
       actionEnabled: {},
       actionOverrides: {},
       outputLanguage: "source",

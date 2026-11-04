@@ -254,11 +254,11 @@ describe("rewrite sheet", () => {
   it("keeps the text across close and reopen, and a failed rewrite leaves it untouched", async () => {
     holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
     holder.listActions.mockResolvedValue(actions);
-    holder.rewrite.mockResolvedValue({ status: "error", error: { code: "timeout", message: "The rewrite timed out." } });
+    holder.rewrite.mockResolvedValue({ status: "error", error: { code: "timeout", message: "unused" } });
     let view = await render();
     await typeInto(view, "draft text");
     await press(view, "prompt-kit-sheet-rewrite");
-    expect(toastCalls).toContainEqual({ kind: "error", message: "The rewrite timed out." });
+    expect(toastCalls).toContainEqual({ kind: "error", message: "The rewrite did not answer within 25 s. A cold CLI start can take this long; try again, or use a faster model or the Direct API transport." });
     expect(field(view).value).toBe("draft text");
 
     await press(view, "prompt-kit-sheet-close");

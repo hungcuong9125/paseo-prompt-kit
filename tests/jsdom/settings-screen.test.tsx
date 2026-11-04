@@ -824,4 +824,17 @@ describe("interface section", () => {
     await press(view, "prompt-kit-save");
     expect(holder.save.mock.calls[0]?.[0]).toMatchObject({ sidebarEntry: true });
   });
+
+  // 选择中文后分区标题立即重绘（草稿预览），保存值携带 uiLanguage。
+  it("rewrites the screen in the chosen language and persists it", async () => {
+    holder.state = readyState({ uiLanguage: "zh-CN" });
+    const view = await render();
+    expect(view.querySelector('section[data-title="界面"]')).not.toBeNull();
+    expect(view.textContent).toContain("在左侧边栏显示");
+    const select = view.querySelector<HTMLSelectElement>('select[data-label="界面语言"]');
+    expect(select?.value).toBe("zh-CN");
+    await toggle(view, "在左侧边栏显示", true);
+    await press(view, "prompt-kit-save");
+    expect(holder.save.mock.calls[0]?.[0]).toMatchObject({ uiLanguage: "zh-CN", sidebarEntry: true });
+  });
 });
