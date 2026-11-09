@@ -3,6 +3,7 @@ import { Text, View } from "react-native";
 import { usePaseo, useRpc, useSettings } from "@getpaseo/plugin/client";
 import type { PluginButtonContentProps } from "@getpaseo/plugin/client";
 import { TextInput, useToast } from "@getpaseo/plugin/client/react-native";
+import { SettingsCard, SettingsRow } from "@getpaseo/plugin/client/ui";
 import { actionsListRpc, newRequestId, rewriteResultRpc, rewriteRpc, type ActionSummary } from "../../shared/rpc.js";
 import { promptKitSettings, promptKitSettingsSchema, effectiveTimeoutMs } from "../../shared/settings.js";
 import { enabledActions } from "../actions/enabled.js";
@@ -440,29 +441,19 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
               (several ? t("sheet.note.multi") : t("sheet.note.rewrite")))}
         </Text>
         {lastOriginal !== null ? (
-          <View
-            style={{
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-              borderRadius: RADIUS.md,
-              padding: SPACE.sm,
-              backgroundColor: theme.colors.surface0,
-            }}
-            testID="prompt-kit-sheet-original-block"
-          >
-            <Text style={text.muted} testID="prompt-kit-sheet-original-label">
-              {t("sheet.originalBlock")}
-            </Text>
-            <Text style={text.muted} selectable testID="prompt-kit-sheet-original">
-              {lastOriginal}
-            </Text>
-          </View>
+          <SettingsCard testID="prompt-kit-sheet-original-block">
+            <SettingsRow label={t("sheet.originalBlock")}>
+              <Text style={text.muted} selectable testID="prompt-kit-sheet-original">
+                {lastOriginal}
+              </Text>
+            </SettingsRow>
+          </SettingsCard>
         ) : null}
         {swappable ? (
           <Button
             theme={theme}
             label={value === lastPair!.original ? t("sheet.swapToRewritten") : t("sheet.swapToOriginal")}
-            variant="ghost"
+            variant="outline"
             fill
             onPress={() => swapVersions()}
             disabled={busy !== "idle"}

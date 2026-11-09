@@ -73,6 +73,7 @@ export function pillButton(
         kind: "item",
         id: "prompt-kit-swap",
         title: tNow("pill.swapVersions"),
+        icon: "ArrowLeftRight",
         behavior: { kind: "action", onPress: () => swap() },
       }
     : null;
@@ -92,7 +93,10 @@ export function pillButton(
     icon: action.icon,
     behavior: { kind: "action", onPress: () => run.run(action.id) },
   }));
-  if (swapItem !== null) items.push(swapItem);
+  if (swapItem !== null) {
+    items.push({ kind: "separator", id: "prompt-kit-swap-separator" });
+    items.push(swapItem);
+  }
   return { ...base, behavior: { kind: "menu", items } };
 }
 

@@ -87,8 +87,8 @@ export const pluginUiMock = {
     trailing?: ReactNode;
     children?: ReactNode;
   }) => createElement("section", { "data-title": title }, trailing ?? null, children),
-  SettingsCard: ({ children }: { children?: ReactNode }) =>
-    createElement("div", { "data-card": "" }, children),
+  SettingsCard: ({ children, testID }: { children?: ReactNode; testID?: string }) =>
+    createElement("div", { "data-card": "", "data-testid": testID }, children),
   SettingsRow: ({
     label,
     hint,
