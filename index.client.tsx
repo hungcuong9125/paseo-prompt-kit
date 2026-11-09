@@ -7,6 +7,7 @@ import { createSettingsReader } from "./client/settings/read-settings.js";
 import { onSettingsSaved } from "./client/settings/settings-saved.js";
 import { registerRewriteCommand } from "./client/commands/rewrite-command.js";
 import { registerAgentPills } from "./client/pills/agent-pills.js";
+import { registerSidebarEntry } from "./client/sidebar/sidebar-entry.js";
 import { createRewriteRunner } from "./client/pills/rewrite-runner.js";
 import { createRewriteStatusBus } from "./client/pills/rewrite-status.js";
 import { watchPillTint } from "./client/pills/pill-tint.js";
@@ -59,6 +60,7 @@ export default function contribute(client: PluginClientContext): () => void {
 
   const stopTint = composerSupported ? watchPillTint(document) : () => {};
   const removeCommand = registerRewriteCommand(client, { listActions, readSettings, statuses });
+  const removeSidebar = registerSidebarEntry(client, { readSettings });
 
   const removeSettingsScreen = client.addSettingsScreen({
     id: "prompt-kit",
@@ -71,6 +73,7 @@ export default function contribute(client: PluginClientContext): () => void {
     removePills();
     removeCommand();
     stopTint();
+    removeSidebar();
     removeSettingsScreen();
   };
 }

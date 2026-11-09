@@ -8,6 +8,7 @@ import type { PromptKitSettings } from "../../../shared/settings.js";
 import { REWRITE_CONTRACT } from "../../../shared/action-registry/rewrite-contract.js";
 import type { SettingsPatch } from "../draft.js";
 import { Button } from "../ui/button.js";
+import { useI18n } from "../../i18n/core.js";
 
 /** Edits bundled instructions inside the Settings transaction without changing action identity. */
 export function BundledPromptsSection({ actions, values, patch, disabled, theme }: {
@@ -17,6 +18,7 @@ export function BundledPromptsSection({ actions, values, patch, disabled, theme 
   disabled: boolean;
   theme: PluginTheme;
 }) {
+  const { t } = useI18n();
   const [editing, setEditing] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const selected = actions?.find((action) => action.id === editing && !action.custom);
@@ -40,18 +42,18 @@ export function BundledPromptsSection({ actions, values, patch, disabled, theme 
   const style = { padding: 12, borderWidth: 1, borderColor: theme.colors.border, color: theme.colors.foreground, backgroundColor: theme.colors.surface1, minHeight: 100, textAlignVertical: "top" as const };
   return <>
       {actions?.filter((action) => !action.custom).map((action) => <SettingsAction key={action.id} label={action.title}
-        hint={values.actionOverrides[action.id] ? "Default · Modified" : "Default · Bundled instructions"}
-        actionLabel="Edit" disabled={disabled} onPress={() => { setEditing(action.id); setConfirmReset(false); }} />)}
+        hint={values.actionOverrides[action.id] ? t("bundled.modified") : t("bundled.default")}
+        actionLabel={t("bundled.edit")} disabled={disabled} onPress={() => { setEditing(action.id); setConfirmReset(false); }} />)}
     {selected && instructions ? <View style={{ gap: 12, marginTop: 12 }}>
-      <Text style={{ color: theme.colors.foreground }}>Rewrite instructions</Text>
+      <Text style={{ color: theme.colors.foreground }}>{t("bundled.rewriteTitle")}</Text>
       <TextInput multiline value={instructions.system} onChangeText={(text) => change("system", text)} editable={!disabled} style={{ ...style, minHeight: 280 }} testID="prompt-kit-default-system" />
-      <Text style={{ color: theme.colors.foreground }}>Task instruction</Text>
+      <Text style={{ color: theme.colors.foreground }}>{t("bundled.taskTitle")}</Text>
       <TextInput multiline value={instructions.task} onChangeText={(text) => change("task", text)} editable={!disabled} style={style} testID="prompt-kit-default-task" />
-      <Text style={{ color: theme.colors.foregroundMuted }}>Use Save or Discard above. Core rules below are always applied and cannot be edited here.</Text>
+      <Text style={{ color: theme.colors.foregroundMuted }}>{t("bundled.note")}</Text>
       <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{REWRITE_CONTRACT}</Text>
-      {values.actionOverrides[selected.id] ? <Button theme={theme} label={confirmReset ? "Confirm reset to bundled default" : "Reset to bundled default"} disabled={disabled}
+      {values.actionOverrides[selected.id] ? <Button theme={theme} label={confirmReset ? t("bundled.confirmReset") : t("bundled.reset")} disabled={disabled}
         onPress={() => confirmReset ? reset() : setConfirmReset(true)} testID="prompt-kit-default-reset" /> : null}
-      <Button theme={theme} label="Close editor" onPress={() => { setEditing(null); setConfirmReset(false); }} />
+      <Button theme={theme} label={t("bundled.closeEditor")} onPress={() => { setEditing(null); setConfirmReset(false); }} />
     </View> : null}
   </>;
 }

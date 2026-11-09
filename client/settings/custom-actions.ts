@@ -2,6 +2,7 @@ import { actionPackSchema, type ActionPack } from "../../shared/action-registry/
 import type { ActionSummary } from "../../shared/rpc.js";
 import type { PromptKitSettings } from "../../shared/settings.js";
 import { MAX_ENABLED_ACTIONS, enabledActions } from "../actions/enabled.js";
+import { tNow } from "../i18n/core.js";
 
 export type ParsedAction = { ok: true; pack: ActionPack } | { ok: false; error: string };
 
@@ -28,16 +29,25 @@ export function parseCustomAction(text: string, takenIds: ReadonlySet<string>): 
   try {
     json = JSON.parse(text);
   } catch (error) {
-    return { ok: false, error: `Not valid JSON: ${error instanceof Error ? error.message : String(error)}` };
+    return {
+      ok: false,
+      error: tNow("validate.pack.notJson", { message: error instanceof Error ? error.message : String(error) }),
+    };
   }
   const parsed = actionPackSchema.safeParse(json);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     const path = issue?.path.join(".") ?? "";
-    return { ok: false, error: `${path === "" ? "The pack" : `"${path}"`}: ${issue?.message ?? "invalid"}` };
+    return {
+      ok: false,
+      error: tNow("validate.pack.schemaIssue", {
+        target: path === "" ? tNow("validate.pack.target") : `"${path}"`,
+        message: issue?.message ?? "invalid",
+      }),
+    };
   }
   if (takenIds.has(parsed.data.id)) {
-    return { ok: false, error: `Another action already uses the id "${parsed.data.id}".` };
+    return { ok: false, error: tNow("validate.pack.idTaken", { id: parsed.data.id }) };
   }
   return { ok: true, pack: parsed.data };
 }

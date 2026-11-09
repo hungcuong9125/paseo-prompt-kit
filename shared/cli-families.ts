@@ -1,7 +1,31 @@
 /** CLI families and the provider-id → family rule, shared by server and settings UI. */
-export const CLI_FAMILY_IDS = ["pi", "claude", "codex", "opencode"] as const;
+export const CLI_FAMILY_IDS = [
+  "pi",
+  "claude",
+  "codex",
+  "opencode",
+  "gemini",
+  "qwen",
+  "codebuddy",
+  "qoder",
+  "omp",
+  "kimi",
+  "grok",
+  "kilo",
+  "mimo",
+  "cline",
+  "hermes",
+  "dsh",
+] as const;
 
 export type CliFamilyId = (typeof CLI_FAMILY_IDS)[number];
+
+/** Families that answer over ACP, where the CLI owns the model choice. */
+export const ACP_FAMILY_IDS = ["cline", "hermes", "dsh"] as const;
+
+export function isAcpFamilyId(value: CliFamilyId): boolean {
+  return (ACP_FAMILY_IDS as readonly string[]).includes(value);
+}
 
 export function isCliFamilyId(value: string): value is CliFamilyId {
   return (CLI_FAMILY_IDS as readonly string[]).includes(value);

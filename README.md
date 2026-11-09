@@ -12,6 +12,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes. Version **0.7.0** includes e
 
 - **The pill** — write your prompt, press `PromptKit`. The text is rewritten in place; a leading `/rewrite ` left in the text is ignored. Available once the agent exists, so on a new seat it appears after the first message.
 - **`/rewrite <prompt>`** — type the command with the prompt after it and press Enter. Paseo empties the Composer and hands the text to PromptKit, which puts the `/rewrite …` line straight back, dims it with a light sweep while it works, and then replaces it with the rewrite. A failed rewrite leaves your line in place. Available immediately, including on a new seat before its first message. Because no agent exists yet on a draft, `/rewrite` cannot use `Current agent model`; choose `Dedicated model` or `Direct API` with a selected endpoint and model in Settings, or use the pill once the agent exists.
+- **The left-sidebar entry** (off by default) — Settings → Interface → **Show in the left sidebar** adds a `PromptKit` entry to the host's sidebar; it opens PromptKit's settings screen. The entry follows Save, per client, like the pills. The same section chooses **Interface language** (follow system, English or 中文); the settings screens, status messages and rewrite errors follow it at once, and Save persists the choice.
 - **The PromptKit sheet** (mobile) — write in the Composer as usual and press the pill. A sheet slides up holding your text. With one enabled action it rewrites at once and **Rewrite** runs it again; with several, each action has its own button and nothing runs until you press one. **Send** gives the message to the agent and closes the sheet. It clears the Composer only if it still contains the original snapshot, so a newer draft is kept. **✕** closes the sheet and leaves the Composer untouched.
 
 No path sends the message on its own. You review the result and send it yourself.
@@ -25,7 +26,7 @@ No path sends the message on its own. You review the result and send it yourself
 
 ## Requirements
 
-- Paseo `>=0.9.0` (Desktop, Web or mobile). Built and tested against the 0.9.0 plugin SDK.
+- Paseo `>=0.11.0` (Desktop, Web or mobile). Built and tested against the 0.11.1 plugin SDK.
 - For **Provider CLI**: that provider's CLI on the daemon's `PATH`, and a model it can reach.
 - For **Direct API**: an endpoint URL, a model id, and a key — see [API keys](#api-keys).
 
@@ -91,8 +92,9 @@ The screen reads top to bottom in setup order:
 2. **Prompts** — General, your custom prompts and **Add prompt** share one card. Press **Edit** beside General to change its rewrite and task instructions directly, then **Save**. Its identity stays `general`: editing does not create another action or turn the direct button into a menu. **Discard** removes unsaved edits. **Reset to default** requires confirmation and removes only that prompt's override, not endpoint or model settings. Core rules remain visible and read-only.
    **Add prompt** creates an optional additional action, written as action-pack JSON. It opens a sample (Blank template, Find the cause, Plan first, Review, Testable requirements, Session handoff, or a copy of one of yours); change the id, title and instructions, press **Apply** to check the JSON, then **Save**. Apply or cancel the custom editor before saving other settings. Existing custom actions are not automatically deleted or merged into General.
 3. **Rewrite engine** — Transport, Model source (Provider CLI only) and Output language. Every other section appears only when these need it.
-4. **Dedicated model** (Provider CLI with Dedicated model) or **API endpoint** (Direct API).
-5. **Advanced** (collapsed) — timeout, debug log and the two per-provider overrides.
+4. **Interface** — **Show in the left sidebar**: adds or removes the PromptKit entry in the host's sidebar; it opens PromptKit's settings screen. Off by default, applies on Save.
+5. **Dedicated model** (Provider CLI with Dedicated model) or **API endpoint** (Direct API).
+6. **Advanced** (collapsed) — timeout, debug log and the two per-provider overrides.
 
 ### Prompt samples
 
@@ -124,8 +126,26 @@ How each CLI runs a rewrite:
 | `pi` | One `pi -p` process per rewrite: no tools, context files, skills, extensions or session | `--system-prompt` |
 | `opencode` | One `opencode run` process per rewrite | An inline agent with every tool off, passed in `OPENCODE_CONFIG_CONTENT` |
 | `codex` | One warm `codex app-server` kept by the plugin; each rewrite is a turn on an in-memory (`ephemeral`) thread | Thread developer instructions |
+| `gemini` | One `gemini` process per rewrite; needs a recent Gemini CLI for `--admin-policy` | A scratch system-prompt file via `GEMINI_SYSTEM_MD`, plus a deny-all tool policy |
+| `qwen` | One `qwen` process per rewrite: safe mode, zero tool calls | `--system-prompt` |
+| `codebuddy` | One `codebuddy -p` process per rewrite: no tools, strict MCP config, no saved session | `--system-prompt` |
+| `qoder` | One `qodercli -p` process per rewrite: no tools, strict MCP config, no saved session (the npm package names the binary `qodercli`) | `--system-prompt` |
+| `omp` | One `omp -p` process per rewrite: no tools, LSP, PTY, context files, skills, extensions or session | `--system-prompt` |
+| `kimi` | One `kimi --print` process per rewrite | A scratch agent file: the instruction as the whole system prompt, `tools: []` |
+| `grok` | One `grok` process per rewrite: no subagents, no web search, no tools | `--system-prompt-override` |
+| `kilo` | One `kilo run --pure` process per rewrite | An inline agent with every tool off, passed in `KILO_CONFIG_CONTENT` |
+| `mimo` | One `mimo run --pure` process per rewrite | An inline agent with every tool off, passed in `MIMOCODE_CONFIG_CONTENT` |
+| `cline` | One warm `cline --acp` agent kept by the plugin; each rewrite is a fresh ACP session; every tool permission is denied | Inside the prompt (ACP has no system-prompt channel) |
+| `hermes` | One warm `hermes acp` agent kept by the plugin; each rewrite is a fresh ACP session; every tool permission is denied | Inside the prompt |
+| `dsh` | One warm `dsh --profile acp` agent kept by the plugin; each rewrite is a fresh ACP session; every tool permission is denied | Inside the prompt |
 
 **codex reuses its process, not its conversation.** Each rewrite starts a fresh ephemeral thread with its own instructions and draft, then unsubscribes from that thread. The deadline includes server initialization and thread startup. A timeout closes the shared server, which can also fail another concurrent Codex rewrite; no automatic retry occurs. The server starts on the first Codex rewrite, stops after 10 idle minutes, and stops with the plugin. A temporary working directory is removed on shutdown; ephemeral threads request no saved conversation. Tool-related feature flags are disabled, but this is not a verified sandbox against every capability of an installed Codex configuration. Latency and complete tool isolation still require live verification.
+
+**ACP families (`cline`, `hermes`, `dsh`) run the model their own CLI has.** ACP carries no model selection, so **Dedicated model** refuses them (both sides report the same reason); use the current agent model or Direct API. The rewrite contract travels inside the prompt rather than a system channel, and every tool permission the agent asks for is denied — the client advertises no file-system or terminal capabilities, sessions run in an empty temporary directory with no MCP servers, and the shared process stops after 10 idle minutes or with the plugin. As with codex, a rewrite timeout closes the shared warm agent, which can also fail another concurrent rewrite on that same family; each rewrite still runs in its own fresh session, so conversations never cross.
+
+**Sidebar entry**: the entry and the screen it opens are independent registrations — turning **Show in the left sidebar** off while the settings screen is open *from that entry* removes only the sidebar item; the open page keeps working until you navigate away.
+
+**Providers resolve to a family by id**: the exact id, a `<family>-…` or `…-<family>` segment. `codebuddy-code` resolves to `codebuddy`; `dsh-pi` and `dsh-acp` resolve to the `dsh` ACP family (a real `dsh` agent, not the `pi` binary). Anything else needs **Advanced → CLI per provider**, and an unresolved provider is refused, never guessed.
 
 ### Model source (Provider CLI only)
 
@@ -315,7 +335,7 @@ Every one of these leaves the Composer text untouched.
 ## Limitations
 
 - In-place rewriting works on Desktop and Web only: the mobile app renders the Composer as a native text input with no DOM, and Paseo 0.9.0 exposes no plugin API for Composer text. On mobile the `PromptKit` pill opens the **PromptKit sheet** instead (see above); it reads and clears the Composer through the app's React tree rather than the DOM, which a Paseo update can break in the same way. Nothing is copied or sent on its own. `/rewrite` is not available on mobile. On Web, writes require an unambiguous visible Composer with matching workspace and agent identity evidence.
-- Requires Paseo `>=0.9.0`. Because text access depends on the Composer DOM (or, on mobile, the React tree), a Paseo UI change can break it even when the public plugin SDK is compatible.
+- Requires Paseo `>=0.11.0`. Because text access depends on the Composer DOM (or, on mobile, the React tree), a Paseo UI change can break it even when the public plugin SDK is compatible.
 - PromptKit refuses to replace text if the bound Composer becomes unavailable, its identity changes, or its text no longer matches the starting snapshot. Web identity checks depend on private React Fiber fields as well as DOM visibility; missing or conflicting evidence fails closed.
 - Only `General` ships. Any other action is a custom action you write in Settings, or a pack you bundle as a JSON file — see `docs/EXTENDING.md`.
 - A rewrite has at most 27 seconds, because the daemon drops a plugin call at 30 s. The API transport does not stream, and a slow CLI model can take longer (`opencode` with `zcode/glm-5.3-flash` took about 33 s); PromptKit then reports its own timeout. Use a faster model or the Direct API transport.

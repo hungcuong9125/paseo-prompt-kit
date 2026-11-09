@@ -1,6 +1,7 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { piFamily, claudeFamily, codexFamily, opencodeFamily } from "../../server/transports/cli/family.js";
+import { geminiFamily, grokFamily, piFamily, claudeFamily, codexFamily, opencodeFamily, TRUNCATED_MESSAGE } from "../../server/transports/cli/family.js";
+import type { AcpSessions } from "../../server/transports/cli/acp-sessions.js";
 import { spawnCli, type CliRunInput } from "../../server/transports/cli/process.js";
 import { runCliRewrite } from "../../server/transports/cli/runner.js";
 
@@ -66,6 +67,86 @@ describe("runCliRewrite", () => {
     );
     expect(result).toEqual({ ok: true, text: "rewritten" });
     expect(stdin).toBe("TASK PROMPT");
+  });
+
+  it("writes the declared scratch files and hands their paths to the invocation", async () => {
+    let scratch = "";
+    let seen: CliRunInput | null = null;
+    const result = await runCliRewrite(
+      { ...BASE, family: geminiFamily },
+      {
+        onCwd: (cwd) => {
+          scratch = cwd;
+        },
+        spawn: async (run) => {
+          seen = run;
+          // The scratch dir still exists while the CLI runs: check file contents now.
+          expect(readFileSync(run.env.GEMINI_SYSTEM_MD!, "utf8")).toBe("SYSTEM");
+          expect(readFileSync(`${scratch}/deny-tools.toml`, "utf8")).toContain('decision = "deny"');
+          return { stdout: '{"response":"rewritten"}', stderr: "", exitCode: 0, timedOut: false, truncated: false };
+        },
+      },
+    );
+    expect(result).toEqual({ ok: true, text: "rewritten" });
+    const run = seen!;
+    expect(run.env.GEMINI_SYSTEM_MD).toBe(`${scratch}/system-prompt.md`);
+    expect(run.args).toContain(`${scratch}/deny-tools.toml`);
+    expect(run.args).not.toContain("SYSTEM");
+    expect(existsSync(scratch)).toBe(false);
+  });
+
+  it("delivers a file-prompt family's prompt by file, not argv", async () => {
+    let seen: readonly string[] = [];
+    await runCliRewrite(
+      { ...BASE, family: grokFamily },
+      {
+        spawn: async (run) => {
+          seen = run.args;
+          return { stdout: '{"text":"rewritten","stopReason":"end_turn"}', stderr: "", exitCode: 0, timedOut: false, truncated: false };
+        },
+      },
+    );
+    const promptIndex = seen.indexOf("--prompt-file");
+    expect(promptIndex).toBeGreaterThan(-1);
+    expect(seen[promptIndex + 1]).toMatch(/prompt\.txt$/);
+    expect(seen).not.toContain("TASK PROMPT");
+  });
+
+  it("hands an acp family to its warm agent without spawning a process", async () => {
+    const runs: { systemPrompt: string; taskPrompt: string }[] = [];
+    const acp = (familyId: string): AcpSessions => ({
+      run: async (input) => {
+        expect(familyId).toBe("cline");
+        runs.push({ systemPrompt: input.systemPrompt, taskPrompt: input.taskPrompt });
+        return { ok: true, text: "rewritten" };
+      },
+      close: () => undefined,
+    });
+    const result = await runCliRewrite(
+      { ...BASE, family: { kind: "acp", id: "cline", command: "cline", args: ["--acp"] } },
+      { acp },
+    );
+    expect(result).toEqual({ ok: true, text: "rewritten" });
+    expect(runs).toEqual([{ systemPrompt: "SYSTEM", taskPrompt: "TASK PROMPT" }]);
+    await expect(
+      runCliRewrite({ ...BASE, family: { kind: "acp", id: "cline", command: "cline", args: [] } }, {}),
+    ).rejects.toThrow('No ACP agent is wired for "cline".');
+  });
+
+  it("names a truncated CLI answer instead of an auth hint", async () => {
+    const result = await runCliRewrite(
+      { ...BASE, family: grokFamily },
+      {
+        spawn: async () => ({
+          stdout: '{"text":"half","stopReason":"max_tokens"}',
+          stderr: "",
+          exitCode: 0,
+          timedOut: false,
+          truncated: false,
+        }),
+      },
+    );
+    expect(result).toEqual({ ok: false, code: "generation_failed", message: TRUNCATED_MESSAGE });
   });
 
   it("reports a timeout without an answer", async () => {

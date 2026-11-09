@@ -5,6 +5,8 @@ import { promptKitSettingsSchema } from "../../shared/settings.js";
 import type { SettingsRead } from "../settings/read-settings.js";
 import { validateDedicatedSelection } from "../settings/selection.js";
 import type { RewriteStatus } from "./rewrite-status.js";
+import { applyUiLanguage, tNow } from "../i18n/core.js";
+import { localizedRewriteError } from "../i18n/errors.js";
 
 export interface RewriteRunnerInput {
   adapter: ComposerAdapter;
@@ -45,6 +47,9 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
   async function rewrite(actionId: string, source: string): Promise<string> {
     const settings = await input.readSettings();
     if (settings.status === "invalid") throw new Error(settings.error);
+    // The user's language rides on every settings read, so thrown messages
+    // below are phrased in the language this client is currently using.
+    applyUiLanguage(settings.values.uiLanguage);
     // API path needs no CLI catalog.
     if (settings.values.transport === "cli" && settings.values.modelMode === "dedicated") {
       const catalog = await input.rpc(providerCatalogRpc, {});
@@ -52,7 +57,7 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
       if (selectionError !== null) throw new Error(selectionError);
     }
     // API routing requires the agent's provider snapshot, which the server resolves.
-    if (!input.isActive()) throw new Error("This agent is no longer available.");
+    if (!input.isActive()) throw new Error(tNow("error.agentGone"));
     const request: RewriteInput = {
       actionId,
       agentId: input.agentId,
@@ -61,8 +66,9 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
       settings: promptKitSettingsSchema.parse(settings.values),
     };
     const output = await input.rpc(rewriteRpc, request);
-    if (output.status === "error") throw new Error(output.error.message);
-    if (!input.isActive()) throw new Error("This agent is no longer available; your text was kept.");
+    if (output.status === "error")
+      throw new Error(localizedRewriteError(output.error.code, output.error.message, settings.values.timeoutMs));
+    if (!input.isActive()) throw new Error(tNow("error.agentGoneKept"));
     return output.rewrittenPrompt;
   }
 

@@ -9,6 +9,7 @@ import { ACTION_SAMPLES } from "../action-samples.js";
 import { formatPack, freeActionId, parseCustomAction, removeCustomAction, storeCustomAction } from "../custom-actions.js";
 import type { SettingsPatch } from "../draft.js";
 import { Button } from "../ui/button.js";
+import { useI18n } from "../../i18n/core.js";
 import { RADIUS, SPACE, textStyles } from "../ui/tokens.js";
 
 export interface CustomActionsSectionProps {
@@ -36,6 +37,7 @@ export function CustomActionsSection({ theme, actions, values, disabled, patch, 
   useEffect(() => {
     if (editing?.id && !values.customActions.some((pack) => pack.id === editing.id)) setEditing(null);
   }, [values.customActions, editing?.id]);
+  const { t } = useI18n();
   const text = useMemo(() => textStyles(theme), [theme]);
   const busy = disabled || actions === null;
 
@@ -73,7 +75,7 @@ export function CustomActionsSection({ theme, actions, values, disabled, patch, 
 
   const startOptions = [
     ...ACTION_SAMPLES.map((sample) => ({ label: sample.label, value: sample.key })),
-    ...values.customActions.map((pack) => ({ label: `Copy of ${pack.title}`, value: `${COPY_PREFIX}${pack.id}` })),
+    ...values.customActions.map((pack) => ({ label: t("prompts.copyOf", { title: pack.title }), value: `${COPY_PREFIX}${pack.id}` })),
   ];
 
   const box = {
@@ -91,8 +93,8 @@ export function CustomActionsSection({ theme, actions, values, disabled, patch, 
 
   return (
     <SettingsSection
-      title="Prompts"
-      info="Edit General directly without adding another prompt. Add a prompt for a separate action: edit its JSON, then Apply and Save. Core rules apply to every prompt."
+      title={t("prompts.title")}
+      info={t("prompts.info")}
     >
       <SettingsCard>
         {children}
@@ -100,27 +102,27 @@ export function CustomActionsSection({ theme, actions, values, disabled, patch, 
           <SettingsAction
             key={pack.id}
             label={pack.title}
-            hint={`Custom · ${pack.description}`}
-            actionLabel="Edit"
+            hint={t("prompts.customHint", { description: pack.description })}
+            actionLabel={t("bundled.edit")}
             disabled={busy || editing !== null}
             onPress={() => setEditing({ id: pack.id, text: formatPack(pack), error: null })}
           />
         ))}
         {editing === null ? (
           <SettingsAction
-            label="Add prompt"
-            hint="Opens a sample to edit."
-            actionLabel="Add"
+            label={t("prompts.add")}
+            hint={t("prompts.add.hint")}
+            actionLabel={t("common.add")}
             disabled={busy}
             onPress={() => startFrom(ACTION_SAMPLES[0]!.key)}
             testID="prompt-kit-custom-add"
           />
         ) : editing.id === null ? (
           <SettingsSelect
-            label="Start from"
-            hint="Replaces the JSON below."
+            label={t("prompts.startFrom")}
+            hint={t("prompts.startFrom.hint")}
             value=""
-            options={[{ label: "Choose a sample…", value: "" }, ...startOptions]}
+            options={[{ label: t("prompts.chooseSample"), value: "" }, ...startOptions]}
             onValueChange={(choice) => {
               if (choice !== "") startFrom(choice);
             }}
@@ -148,18 +150,18 @@ export function CustomActionsSection({ theme, actions, values, disabled, patch, 
             </Text>
           ) : (
             <Text style={text.muted}>
-              Apply checks the JSON and adds it to the unsaved changes; Save stores it.
+              {t("prompts.applyNote")}
             </Text>
           )}
           <View style={{ flexDirection: "row", gap: SPACE.md }}>
             {editing.id !== null ? (
-              <Button theme={theme} label="Delete" onPress={remove} disabled={busy} testID="prompt-kit-custom-delete" />
+              <Button theme={theme} label={t("common.delete")} onPress={remove} disabled={busy} testID="prompt-kit-custom-delete" />
             ) : null}
             <View style={{ flex: 1 }} />
-            <Button theme={theme} label="Cancel" onPress={() => setEditing(null)} testID="prompt-kit-custom-cancel" />
+            <Button theme={theme} label={t("common.cancel")} onPress={() => setEditing(null)} testID="prompt-kit-custom-cancel" />
             <Button
               theme={theme}
-              label="Apply"
+              label={t("common.apply")}
               variant="primary"
               onPress={apply}
               disabled={busy}

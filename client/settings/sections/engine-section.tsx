@@ -4,6 +4,7 @@ import { listLanguages } from "../../../shared/language-registry/registry.js";
 import { SOURCE_LANGUAGE } from "../../../shared/language-registry/schema.js";
 import type { PromptKitSettings } from "../../../shared/settings.js";
 import type { SettingsPatch } from "../draft.js";
+import { useI18n } from "../../i18n/core.js";
 import { SplitSelect } from "../ui/split-select.js";
 
 export interface EngineSectionProps {
@@ -14,47 +15,44 @@ export interface EngineSectionProps {
   patch(update: SettingsPatch): void;
 }
 
-const TRANSPORT_OPTIONS = [
-  { label: "Provider CLI", value: "cli" },
-  { label: "Direct API", value: "api" },
-] as const;
-
-const MODEL_OPTIONS = [
-  { label: "Current agent model", value: "current" },
-  { label: "Dedicated model", value: "dedicated" },
-] as const;
-
-const TRANSPORT_HINT = {
-  cli: "The provider's own CLI runs the rewrite headlessly in an empty scratch directory. Needs that CLI on the daemon's PATH.",
-  api: "One HTTP request to an endpoint you configure below. Fastest, and works for providers with no CLI. Needs a key.",
-} as const;
-
-const MODEL_HINT = {
-  current: "The model the Composer shows for the agent whose pill you press. Nothing else to choose.",
-  dedicated: "A fixed provider and model, whatever the agent itself runs. Pick them below.",
-} as const;
-
-/** The built-in default first, then every loaded language in barrel order. */
-const LANGUAGE_OPTIONS = [
-  { label: "Same as the prompt", value: SOURCE_LANGUAGE },
-  ...listLanguages().map((language) => ({ label: language.label, value: language.id })),
-] as const;
-
 /** Transport, the CLI's model source, and output language. Model source exists only for Provider CLI. */
 export function EngineSection({ theme, compact, values, disabled, patch }: EngineSectionProps) {
+  const { t } = useI18n();
+  // Built at render: the "same as the prompt" label follows the UI language.
+  const languageOptions = [
+    { label: t("engine.output.sameAsPrompt"), value: SOURCE_LANGUAGE },
+    ...listLanguages().map((language) => ({ label: language.label, value: language.id })),
+  ];
+  const transportOptions = [
+    { label: t("engine.transport.cli"), value: "cli" },
+    { label: t("engine.transport.api"), value: "api" },
+  ] as const;
+  const modelOptions = [
+    { label: t("engine.model.current"), value: "current" },
+    { label: t("engine.model.dedicated"), value: "dedicated" },
+  ] as const;
+  const transportHints = {
+    cli: t("engine.transport.hint.cli"),
+    api: t("engine.transport.hint.api"),
+  } as const;
+  const modelHints = {
+    current: t("engine.model.hint.current"),
+    dedicated: t("engine.model.hint.dedicated"),
+  } as const;
+
   return (
     <SettingsSection
-      title="Rewrite engine"
-      info="Transport answers how the model is reached. On Provider CLI, Model source answers which model; on Direct API the model is chosen under API endpoint. Output language answers what language the rewrite is written in."
+      title={t("engine.title")}
+      info={t("engine.info")}
     >
       <SettingsCard>
         <SplitSelect
           theme={theme}
           compact={compact}
-          label="Transport"
-          hint={TRANSPORT_HINT[values.transport]}
+          label={t("engine.transport.label")}
+          hint={transportHints[values.transport]}
           value={values.transport}
-          options={TRANSPORT_OPTIONS}
+          options={transportOptions}
           disabled={disabled}
           onValueChange={(transport) => patch({ transport: transport === "api" ? "api" : "cli" })}
         />
@@ -62,10 +60,10 @@ export function EngineSection({ theme, compact, values, disabled, patch }: Engin
           <SplitSelect
             theme={theme}
             compact={compact}
-            label="Model source"
-            hint={MODEL_HINT[values.modelMode]}
+            label={t("engine.model.label")}
+            hint={modelHints[values.modelMode]}
             value={values.modelMode}
-            options={MODEL_OPTIONS}
+            options={modelOptions}
             disabled={disabled}
             onValueChange={(modelMode) =>
               patch({ modelMode: modelMode === "dedicated" ? "dedicated" : "current" })
@@ -75,22 +73,25 @@ export function EngineSection({ theme, compact, values, disabled, patch }: Engin
         <SplitSelect
           theme={theme}
           compact={compact}
-          label="Output language"
+          label={t("engine.output.label")}
           hint={
             values.outputLanguage === SOURCE_LANGUAGE
-              ? "The rewrite keeps the language the prompt was written in."
-              : "The prose is translated; paths, commands, code and names stay exactly as written."
+              ? t("engine.output.hint.source")
+              : t("engine.output.hint.translated")
           }
           error={
-            LANGUAGE_OPTIONS.some((option) => option.value === values.outputLanguage)
+            languageOptions.some((option) => option.value === values.outputLanguage)
               ? null
-              : `"${values.outputLanguage}" is not a loaded language. See docs/guides/output-languages.md.`
+              : t("engine.output.missing", { id: values.outputLanguage })
           }
           value={values.outputLanguage}
           options={
-            LANGUAGE_OPTIONS.some((option) => option.value === values.outputLanguage)
-              ? LANGUAGE_OPTIONS
-              : [{ label: `${values.outputLanguage} (missing)`, value: values.outputLanguage }, ...LANGUAGE_OPTIONS]
+            languageOptions.some((option) => option.value === values.outputLanguage)
+              ? languageOptions
+              : [
+                  { label: t("engine.output.missingSuffix", { id: values.outputLanguage }), value: values.outputLanguage },
+                  ...languageOptions,
+                ]
           }
           disabled={disabled}
           onValueChange={(outputLanguage) => patch({ outputLanguage })}

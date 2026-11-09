@@ -233,7 +233,7 @@ There are five named extension points, each one directory and one registration s
 | A new action | `shared/packs/<id>.json` + one line in `shared/packs/index.ts` | engine, validator, RPC, settings, UI |
 | A new output language | `shared/languages/<id>.json` + one line in `shared/languages/index.ts` | wrapper, handler, settings, UI |
 | A new API protocol | `server/transports/api/<protocol>.ts` + `PROTOCOLS` + `API_PROTOCOL_IDS` | resolver, engine |
-| A new CLI family | `server/transports/cli/family.ts` + `CLI_FAMILY_IDS` | resolver, engine |
+| A new CLI family | `server/transports/cli/family.ts` + `CLI_FAMILY_IDS` (+ `ACP_FAMILY_IDS` for an ACP family) | resolver, engine |
 | A new settings field | `shared/settings.ts` + a section under `client/settings/sections/` + `readiness/validation` if it affects the run path | other sections |
 
 ---

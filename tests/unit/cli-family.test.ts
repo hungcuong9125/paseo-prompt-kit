@@ -1,11 +1,24 @@
 import { describe, expect, it } from "vitest";
+import { ACP_FAMILY_IDS, CLI_FAMILY_IDS } from "../../shared/cli-families.js";
 import {
   claudeFamily,
+  clineFamily,
+  codebuddyFamily,
   codexFamily,
+  dshFamily,
   findFamily,
+  geminiFamily,
+  grokFamily,
+  hermesFamily,
+  kimiFamily,
+  kiloFamily,
   listFamilyIds,
+  mimoFamily,
+  ompFamily,
   opencodeFamily,
   piFamily,
+  qoderFamily,
+  qwenFamily,
   resolveFamily,
   TRUNCATED_MESSAGE,
   type ProcessCliFamily,
@@ -16,7 +29,28 @@ const REQUEST = {
   thinkingOptionId: null as string | null,
   systemPrompt: "SYSTEM",
   promptFilePath: "/scratch/prompt.txt",
+  scratchFilePaths: {
+    "system-prompt.md": "/scratch/system-prompt.md",
+    "deny-tools.toml": "/scratch/deny-tools.toml",
+    "system.md": "/scratch/system.md",
+    "kimi-agent.yaml": "/scratch/kimi-agent.yaml",
+  },
 };
+
+const PROCESS_FAMILIES = [
+  piFamily,
+  claudeFamily,
+  opencodeFamily,
+  geminiFamily,
+  qwenFamily,
+  codebuddyFamily,
+  qoderFamily,
+  ompFamily,
+  kimiFamily,
+  grokFamily,
+  kiloFamily,
+  mimoFamily,
+];
 
 function argv(family: ProcessCliFamily, overrides: Partial<typeof REQUEST> = {}) {
   const invocation = family.buildInvocation({ ...REQUEST, ...overrides });
@@ -24,18 +58,20 @@ function argv(family: ProcessCliFamily, overrides: Partial<typeof REQUEST> = {})
 }
 
 describe("CLI families", () => {
-  it("exposes exactly the four supported families", () => {
-    expect([...listFamilyIds()].sort()).toEqual(["claude", "codex", "opencode", "pi"]);
+  it("exposes exactly the sixteen supported families, matching the shared id list", () => {
+    expect(listFamilyIds().length).toBe(CLI_FAMILY_IDS.length);
+    for (const id of CLI_FAMILY_IDS) expect(findFamily(id)?.id).toBe(id);
+    expect([...listFamilyIds()].sort()).toEqual([...CLI_FAMILY_IDS].sort());
   });
 
   it("looks a family up by its exact id and rejects anything else", () => {
     expect(findFamily("pi")?.id).toBe("pi");
-    expect(findFamily("gemini")).toBeNull();
+    expect(findFamily("not-a-cli")).toBeNull();
   });
 
   // The prompt must never reach `argv`, or another user's `ps` can read it.
   it("keeps the prompt out of argv for every process family", () => {
-    for (const family of [piFamily, claudeFamily, opencodeFamily]) {
+    for (const family of PROCESS_FAMILIES) {
       const { args } = argv(family);
       for (const arg of args) {
         expect(arg).not.toContain("fix the bug");
@@ -137,6 +173,8 @@ describe("CLI families", () => {
 
     it("reads the result field of the JSON envelope", () => {
       expect(claudeFamily.parseOutput('{"type":"result","result":"rewritten"}')).toBe("rewritten");
+      // The old parser recovered the object from a bracket-prefixed line; parity holds.
+      expect(claudeFamily.parseOutput('[hook] {"type":"result","result":"rewritten"}')).toBe("rewritten");
     });
 
     it("returns null on a non-JSON answer or a missing result", () => {
@@ -162,32 +200,235 @@ describe("CLI families", () => {
     });
   });
 
-  // The rewrite contract is the only instruction in play; a family that drops it rewrites freely.
-  it("delivers the system prompt to every process family", () => {
-    for (const family of [piFamily, claudeFamily, opencodeFamily]) {
-      const { args, env } = family.buildInvocation({ ...REQUEST, promptFilePath: "/tmp/p.txt" });
-      const carried = [...args, ...Object.values(env)].some((value) => value.includes(REQUEST.systemPrompt));
-      expect(carried, family.id).toBe(true);
-    }
+  describe("gemini", () => {
+    it("points GEMINI_SYSTEM_MD at the scratch file and denies every tool by policy", () => {
+      const { command, args, env } = argv(geminiFamily);
+      expect(command).toBe("gemini");
+      expect(env.GEMINI_SYSTEM_MD).toBe("/scratch/system-prompt.md");
+      expect(args).toEqual(
+        expect.arrayContaining([
+          "--model",
+          "some-model",
+          "--output-format",
+          "json",
+          "--admin-policy",
+          "/scratch/deny-tools.toml",
+          "--skip-trust",
+        ]),
+      );
+      expect(geminiFamily.promptDelivery).toBe("stdin");
+    });
+
+    it("declares a scratch file that replaces the prompt and one that denies every tool", () => {
+      const files = geminiFamily.scratchFiles ?? [];
+      expect(files.map((file) => file.name)).toEqual(["system-prompt.md", "deny-tools.toml"]);
+      expect(files[0]!.content({ ...REQUEST, scratchFilePaths: {} })).toBe("SYSTEM");
+      expect(files[1]!.content({ ...REQUEST, scratchFilePaths: {} })).toContain('decision = "deny"');
+    });
+
+    it("reads the response field of the JSON object", () => {
+      expect(geminiFamily.parseOutput('{"response":"rewritten","stats":{}}')).toBe("rewritten");
+      expect(geminiFamily.parseOutput("plain text")).toBeNull();
+      expect(geminiFamily.parseOutput('{"stats":{}}')).toBeNull();
+    });
+
+    it("reports the error object, never a partial response", () => {
+      const failed = '{"error":{"message":"API key not valid"}}';
+      expect(geminiFamily.parseOutput(failed)).toBeNull();
+      expect(geminiFamily.parseError(failed)).toBe("API key not valid");
+      expect(geminiFamily.parseError('{"error":"quota exceeded"}')).toBe("quota exceeded");
+      expect(geminiFamily.parseError('{"error":{"code":403}}')).toBe("Gemini CLI reported an error.");
+      expect(geminiFamily.parseError('{"response":"done"}')).toBeNull();
+    });
   });
 
-  // codex runs on a warm app-server (codex-sessions.ts), never as a one-shot process.
-  it("runs codex as a session family", () => {
-    expect(codexFamily).toEqual({ kind: "session", id: "codex" });
-    expect(findFamily("codex")?.kind).toBe("session");
+  describe("qwen", () => {
+    it("delivers the prompt by stdin with the replacement system prompt and zero tool calls", () => {
+      const { command, args } = argv(qwenFamily);
+      expect(command).toBe("qwen");
+      expect(args).toEqual(
+        expect.arrayContaining([
+          "--model",
+          "some-model",
+          "--system-prompt",
+          "SYSTEM",
+          "--output-format",
+          "json",
+          "--safe-mode",
+          "--max-tool-calls",
+          "0",
+        ]),
+      );
+      expect(qwenFamily.promptDelivery).toBe("stdin");
+    });
+
+    it("reads the result element of the buffered session array", () => {
+      const stdout = JSON.stringify([
+        { type: "system", subtype: "session_start" },
+        { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "first" }] } },
+        { type: "result", subtype: "success", is_error: false, result: "rewritten" },
+      ]);
+      expect(qwenFamily.parseOutput(stdout)).toBe("rewritten");
+      expect(qwenFamily.parseOutput("[]")).toBeNull();
+    });
+
+    it("reports an is_error result as a failure, never as an answer", () => {
+      const failed = JSON.stringify([{ type: "result", subtype: "error_during_execution", is_error: true, result: "quota exceeded" }]);
+      expect(qwenFamily.parseOutput(failed)).toBeNull();
+      expect(qwenFamily.parseError(failed)).toBe("quota exceeded");
+      expect(qwenFamily.parseError("[]")).toBeNull();
+    });
+  });
+
+  describe("codebuddy", () => {
+    it("runs one print process with every tool and ambient source off", () => {
+      const { command, args } = argv(codebuddyFamily);
+      expect(command).toBe("codebuddy");
+      expect(args).toEqual(
+        expect.arrayContaining([
+          "-p",
+          "--model",
+          "some-model",
+          "--system-prompt",
+          "SYSTEM",
+          "--tools",
+          "",
+          "--disallowedTools",
+          "*",
+          "--strict-mcp-config",
+          "--no-session-persistence",
+          "--output-format",
+          "json",
+        ]),
+      );
+      expect(codebuddyFamily.promptDelivery).toBe("stdin");
+    });
+
+    // Shape of a real codebuddy probe: a pretty-printed array ending in the result.
+    it("reads the result element of the printed array", () => {
+      const stdout = JSON.stringify(
+        [
+          { type: "message", role: "user" },
+          { type: "result", subtype: "success", is_error: false, result: "rewritten" },
+        ],
+        null,
+        2,
+      );
+      expect(codebuddyFamily.parseOutput(stdout)).toBe("rewritten");
+    });
+
+    it("reports an is_error result as a failure, never as an answer", () => {
+      const failed = JSON.stringify([{ type: "result", subtype: "error_max_turns", is_error: true, result: "stopped early" }]);
+      expect(codebuddyFamily.parseOutput(failed)).toBeNull();
+      expect(codebuddyFamily.parseError(failed)).toBe("stopped early");
+      expect(codebuddyFamily.parseError("[]")).toBeNull();
+    });
+  });
+
+  describe("qoder", () => {
+    it("spawns qodercli with the replacement system prompt and no tools", () => {
+      const { command, args } = argv(qoderFamily, { thinkingOptionId: "high" });
+      expect(command).toBe("qodercli");
+      expect(args).toEqual(
+        expect.arrayContaining([
+          "-p",
+          "--model",
+          "some-model",
+          "--system-prompt",
+          "SYSTEM",
+          "--tools",
+          "",
+          "--strict-mcp-config",
+          "--no-session-persistence",
+          "--output-format",
+          "json",
+          "--reasoning-effort",
+          "high",
+        ]),
+      );
+      expect(qoderFamily.promptDelivery).toBe("stdin");
+    });
+
+    // Shape of a real qoder probe: one result object carrying stop_reason.
+    it("reads the single result object", () => {
+      const stdout = '{"type":"result","subtype":"success","is_error":false,"result":"rewritten","stop_reason":"end_turn"}';
+      expect(qoderFamily.parseOutput(stdout)).toBe("rewritten");
+      expect(qoderFamily.parseError(stdout)).toBeNull();
+    });
+
+    it("reports an error result or a cut-off answer", () => {
+      const failed = '{"type":"result","subtype":"error","is_error":true,"result":"Invalid API Key"}';
+      expect(qoderFamily.parseOutput(failed)).toBeNull();
+      expect(qoderFamily.parseError(failed)).toBe("Invalid API Key");
+      const cut = '{"type":"result","subtype":"success","is_error":false,"result":"half","stop_reason":"max_tokens"}';
+      expect(qoderFamily.parseOutput(cut)).toBeNull();
+      expect(qoderFamily.parseError(cut)).toBe(TRUNCATED_MESSAGE);
+    });
+  });
+
+  describe("omp", () => {
+    it("delivers the prompt by file and disables every ambient source", () => {
+      const { command, args } = argv(ompFamily, { thinkingOptionId: "high" });
+      expect(command).toBe("omp");
+      expect(args).toContain("@/scratch/prompt.txt");
+      expect(args).toEqual(
+        expect.arrayContaining([
+          "--no-tools",
+          "--no-lsp",
+          "--no-pty",
+          "--no-context-files",
+          "--no-skills",
+          "--no-extensions",
+          "--no-session",
+          "--system-prompt",
+          "SYSTEM",
+          "--mode",
+          "json",
+          "-p",
+          "--thinking",
+          "high",
+        ]),
+      );
+      expect(ompFamily.promptDelivery).toBe("file");
+    });
+
+    // Shape of a real omp probe: pi's turn events, thinking blocks included.
+    it("reads the final assistant text and ignores thinking blocks", () => {
+      const stdout = [
+        JSON.stringify({ type: "session", version: 3 }),
+        JSON.stringify({
+          type: "turn_end",
+          message: {
+            role: "assistant",
+            content: [
+              { type: "thinking", thinking: "internal" },
+              { type: "text", text: "rewritten" },
+            ],
+            stopReason: "stop",
+          },
+        }),
+      ].join("\n");
+      expect(ompFamily.parseOutput(stdout)).toBe("rewritten");
+      expect(ompFamily.parseError(stdout)).toBeNull();
+    });
+
+    it("reports a failed turn like pi does", () => {
+      const turn = `${JSON.stringify({ type: "turn_end", message: { role: "assistant", content: [], stopReason: "error", errorMessage: "429" } })}\n`;
+      expect(ompFamily.parseError(turn)).toBe("429");
+    });
   });
 
   describe("opencode", () => {
-    it("runs the model through --format json", () => {
-      const { command, args } = argv(opencodeFamily, { thinkingOptionId: "high" });
+    it("runs the inline agent through OPENCODE_CONFIG_CONTENT", () => {
+      const { command, args, env } = argv(opencodeFamily, { thinkingOptionId: "high" });
       expect(command).toBe("opencode");
       expect(args).toEqual(
-        expect.arrayContaining(["run", "--model", "some-model", "--format", "json"]),
+        expect.arrayContaining(["run", "--model", "some-model", "--agent", "promptkit-rewrite", "--format", "json"]),
       );
+      expect(args).not.toContain("--pure");
       expect(args[args.indexOf("--variant") + 1]).toBe("high");
-      const agent = args[args.indexOf("--agent") + 1]!;
-      const config = JSON.parse(argv(opencodeFamily).env.OPENCODE_CONFIG_CONTENT!);
-      expect(config.agent[agent]).toEqual({ mode: "primary", prompt: REQUEST.systemPrompt, tools: { "*": false } });
+      const config = JSON.parse(env.OPENCODE_CONFIG_CONTENT!);
+      expect(config.agent["promptkit-rewrite"]).toEqual({ mode: "primary", prompt: REQUEST.systemPrompt, tools: { "*": false } });
       expect(opencodeFamily.promptDelivery).toBe("stdin");
     });
 
@@ -214,12 +455,150 @@ describe("CLI families", () => {
       expect(opencodeFamily.parseError('{"type":"text","part":{"text":"ok"}}\n')).toBeNull();
     });
   });
+
+  describe("kimi", () => {
+    it("loads a scratch agent file that owns the system prompt and forbids tools", () => {
+      const { command, args } = argv(kimiFamily);
+      expect(command).toBe("kimi");
+      expect(args).toEqual(["--print", "--model", "some-model", "--agent-file", "/scratch/kimi-agent.yaml", "--output-format", "stream-json"]);
+      expect(kimiFamily.promptDelivery).toBe("stdin");
+      const files = kimiFamily.scratchFiles ?? [];
+      expect(files.map((file) => file.name)).toEqual(["system.md", "kimi-agent.yaml"]);
+      expect(files[0]!.content({ ...REQUEST, scratchFilePaths: {} })).toBe("SYSTEM");
+      const yaml = files[1]!.content(REQUEST);
+      expect(yaml).toContain("system_prompt_path: /scratch/system.md");
+      expect(yaml).toContain("tools: []");
+    });
+
+    it("reads the final assistant message of the stream", () => {
+      const stdout = [
+        JSON.stringify({ role: "assistant", content: "Let me check.", tool_calls: [{ type: "function" }] }),
+        JSON.stringify({ role: "tool", content: "listing" }),
+        JSON.stringify({ role: "assistant", content: "rewritten" }),
+      ].join("\n");
+      expect(kimiFamily.parseOutput(stdout)).toBe("rewritten");
+      expect(kimiFamily.parseOutput("")).toBeNull();
+      // Print mode reports failures through exit codes; its stream has no error event,
+      // so parseError is null by contract and the runner names the exit.
+      expect(kimiFamily.parseError('{"role":"assistant","content":"text"}')).toBeNull();
+    });
+  });
+
+  describe("grok", () => {
+    it("delivers the prompt by file with the override system prompt and no tools", () => {
+      const { command, args } = argv(grokFamily, { thinkingOptionId: "high" });
+      expect(command).toBe("grok");
+      expect(args).toEqual(
+        expect.arrayContaining([
+          "--prompt-file",
+          "/scratch/prompt.txt",
+          "--system-prompt-override",
+          "SYSTEM",
+          "--output-format",
+          "json",
+          "--no-subagents",
+          "--disable-web-search",
+          "--tools",
+          "",
+          "--reasoning-effort",
+          "high",
+        ]),
+      );
+      expect(grokFamily.promptDelivery).toBe("file");
+    });
+
+    // Shape of a real grok probe: one object with text and stopReason.
+    it("reads the text field of the result object", () => {
+      expect(grokFamily.parseOutput('{"text":"rewritten","stopReason":"end_turn"}')).toBe("rewritten");
+      expect(grokFamily.parseOutput("plain text")).toBeNull();
+    });
+
+    it("reports the error event and a cut-off answer", () => {
+      const failed = '{"type":"error","message":"Not signed in. To authenticate without a browser, run:\\n  grok login --device-code"}';
+      expect(grokFamily.parseOutput(failed)).toBeNull();
+      expect(grokFamily.parseError(failed)).toContain("Not signed in");
+      expect(grokFamily.parseError('{"type":"error"}')).toBe("Grok reported an error.");
+      const cut = '{"text":"half","stopReason":"max_tokens"}';
+      expect(grokFamily.parseOutput(cut)).toBe("half");
+      expect(grokFamily.parseError(cut)).toBe(TRUNCATED_MESSAGE);
+      expect(grokFamily.parseError('{"text":"done","stopReason":"end_turn"}')).toBeNull();
+    });
+  });
+
+  describe.each([
+    ["kilo", kiloFamily, "KILO_CONFIG_CONTENT"],
+    ["mimo", mimoFamily, "MIMOCODE_CONFIG_CONTENT"],
+  ] as const)("%s", (_id, family, configVar) => {
+    it("runs the inline agent through its own config variable with no plugins", () => {
+      const { command, args, env } = argv(family, { thinkingOptionId: "high" });
+      expect(command).toBe(_id);
+      expect(args).toEqual(
+        expect.arrayContaining([
+          "run",
+          "--pure",
+          "--model",
+          "some-model",
+          "--agent",
+          "promptkit-rewrite",
+          "--format",
+          "json",
+          "--variant",
+          "high",
+        ]),
+      );
+      const config = JSON.parse(env[configVar]!);
+      expect(config.agent["promptkit-rewrite"]).toEqual({ mode: "primary", prompt: "SYSTEM", tools: { "*": false } });
+      expect(family.promptDelivery).toBe("stdin");
+    });
+
+    it("reads the last text event and reports the error event", () => {
+      const stdout = [
+        JSON.stringify({ type: "step_start" }),
+        JSON.stringify({ type: "text", part: { type: "text", text: "first" } }),
+        JSON.stringify({ type: "text", part: { type: "text", text: "final" } }),
+      ].join("\n");
+      expect(family.parseOutput(stdout)).toBe("final");
+      const failed = `${JSON.stringify({ type: "error", error: { name: "UnknownError", data: { message: "Model not found" } } })}\n`;
+      expect(family.parseOutput('{"type":"error"}')).toBeNull();
+      expect(family.parseError(failed)).toBe("Model not found");
+      const plain = `${JSON.stringify({ type: "error", error: "run ended without an assistant message" })}\n`;
+      expect(family.parseError(plain)).toBe("run ended without an assistant message");
+    });
+  });
+
+  // The rewrite contract is the only instruction in play; a family that drops it rewrites freely.
+  it("delivers the system prompt to every process family", () => {
+    for (const family of PROCESS_FAMILIES) {
+      const { args, env } = family.buildInvocation({ ...REQUEST, promptFilePath: "/tmp/p.txt" });
+      const carried = [...args, ...Object.values(env)].some((value) => value.includes(REQUEST.systemPrompt));
+      const declared = (family.scratchFiles ?? []).some((file) => file.content(REQUEST).includes(REQUEST.systemPrompt));
+      expect(carried || declared, family.id).toBe(true);
+    }
+  });
+
+  // codex runs on a warm app-server (codex-sessions.ts), never as a one-shot process.
+  it("runs codex as a session family", () => {
+    expect(codexFamily).toEqual({ kind: "session", id: "codex" });
+    expect(findFamily("codex")?.kind).toBe("session");
+  });
+
+  it("runs cline, hermes and dsh as ACP families", () => {
+    expect(clineFamily).toEqual({ kind: "acp", id: "cline", command: "cline", args: ["--acp"] });
+    expect(hermesFamily).toEqual({ kind: "acp", id: "hermes", command: "hermes", args: ["acp"] });
+    expect(dshFamily).toEqual({ kind: "acp", id: "dsh", command: "dsh", args: ["--profile", "acp"] });
+    for (const family of [clineFamily, hermesFamily, dshFamily]) {
+      expect(ACP_FAMILY_IDS).toContain(family.id);
+      expect(findFamily(family.id)?.kind).toBe("acp");
+    }
+  });
 });
 
 describe("resolveFamily", () => {
   it("resolves a built-in provider id to itself", () => {
     expect(resolveFamily("pi")?.id).toBe("pi");
     expect(resolveFamily("codex")?.id).toBe("codex");
+    expect(resolveFamily("gemini")?.id).toBe("gemini");
+    expect(resolveFamily("omp")?.id).toBe("omp");
   });
 
   // Paseo names a custom profile after its role, so the CLI is a segment.
@@ -228,16 +607,21 @@ describe("resolveFamily", () => {
     expect(resolveFamily("codex-custom")?.id).toBe("codex");
     expect(resolveFamily("opencode-custom")?.id).toBe("opencode");
     expect(resolveFamily("claude-custom")?.id).toBe("claude");
+    expect(resolveFamily("codebuddy-code")?.id).toBe("codebuddy");
+    expect(resolveFamily("gemini-custom")?.id).toBe("gemini");
   });
 
   it("prefers the longest matching id so a prefix cannot steal a family", () => {
     expect(resolveFamily("opencode")?.id).toBe("opencode");
     expect(resolveFamily("opencode-custom")?.id).toBe("opencode");
+    // The approved behavior change: dsh claims its own provider instead of pi.
+    expect(resolveFamily("dsh")?.id).toBe("dsh");
+    expect(resolveFamily("dsh-pi")?.id).toBe("dsh");
+    expect(resolveFamily("dsh-acp")?.id).toBe("dsh");
   });
 
   // A wrong guess would silently run the user's prompt through the wrong CLI.
   it("fails closed on a provider that names no supported CLI", () => {
-    expect(resolveFamily("unknown")).toBeNull();
     expect(resolveFamily("unknown")).toBeNull();
     expect(resolveFamily("unknown-custom")).toBeNull();
     expect(resolveFamily("")).toBeNull();
@@ -245,7 +629,8 @@ describe("resolveFamily", () => {
 
   it("lets an explicit mapping override the id, and still fails closed on a bad target", () => {
     expect(resolveFamily("gateway", { "gateway": "opencode" })?.id).toBe("opencode");
-    expect(resolveFamily("gateway", { "gateway": "gemini" })).toBeNull();
+    expect(resolveFamily("gateway", { "gateway": "gemini" })?.id).toBe("gemini");
+    expect(resolveFamily("gateway", { "gateway": "not-a-family" })).toBeNull();
     expect(resolveFamily("unknown", { "unknown": "pi" })?.id).toBe("pi");
   });
 });

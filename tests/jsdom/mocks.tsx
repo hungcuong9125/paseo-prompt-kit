@@ -1,4 +1,9 @@
 import { createElement, type ReactNode } from "react";
+import { applyUiLanguage } from "../../client/i18n/core.js";
+
+// The jsdom suites assert English copy; the device this runs on may resolve
+// "auto" to Chinese, so every jsdom test pins the UI language up front.
+applyUiLanguage("en");
 
 /**
  * Resolves the React Native style shorthands the host's primitives accept.
@@ -40,6 +45,8 @@ function domProps(props: Record<string, unknown>): Record<string, unknown> {
  * renderings below stand in for the host's primitives.
  */
 export const reactNativeMock = {
+  ScrollView: ({ children, ...props }: { children?: ReactNode } & Record<string, unknown>) =>
+    createElement("div", { "data-scrollview": "", ...domProps(props) }, children),
   Text: ({ children, ...props }: { children?: ReactNode } & Record<string, unknown>) =>
     createElement("span", domProps(props), children),
   View: ({ children, ...props }: { children?: ReactNode } & Record<string, unknown>) =>
