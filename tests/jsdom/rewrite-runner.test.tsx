@@ -1,7 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRewriteRunner } from "../../client/pills/rewrite-runner.js";
 import type { ComposerAdapter } from "../../client/composer-bridge/adapter.js";
 import { promptKitSettingsSchema } from "../../shared/settings.js";
+import { forgetLastRewrites, readLastRewrite } from "../../client/rewrite-records.js";
 import type { RewriteStatus } from "../../client/pills/rewrite-status.js";
 
 const settings = promptKitSettingsSchema.parse({});
@@ -118,5 +119,52 @@ describe("rewrite runner", () => {
     await expect(runner({ adapter: adapter({ readText: () => "/rewrite" }) }).run("general")).rejects.toThrow(
       "Write a prompt first.",
     );
+  });
+});
+
+describe("rewrite pair record and swap", () => {
+  afterEach(() => forgetLastRewrites());
+
+  it("records the rewrite pair and swaps the Composer between the versions", async () => {
+    let text = "original";
+    const current = runner({
+      adapter: adapter({
+        readText: () => text,
+        replaceText: (next: string) => { text = next; return true; },
+      }),
+    });
+    await current.run("general");
+    expect(readLastRewrite("agent-a")).toEqual({ rewritten: "improved", original: "original" });
+
+    current.swapOriginal();
+    expect(text).toBe("original"); // swapped back to the original
+    current.swapOriginal();
+    expect(text).toBe("improved"); // and back again
+  });
+
+  it("leaves the Composer alone when it holds neither recorded version", async () => {
+    let text = "original";
+    const current = runner({
+      adapter: adapter({
+        readText: () => text,
+        replaceText: (next: string) => { text = next; return true; },
+      }),
+    });
+    await current.run("general");
+    text = "the user's own draft";
+    current.swapOriginal();
+    expect(text).toBe("the user's own draft");
+  });
+
+  it("swaps nothing when no rewrite has been recorded", () => {
+    let text = "original";
+    const current = runner({
+      adapter: adapter({
+        readText: () => text,
+        replaceText: (next: string) => { text = next; return true; },
+      }),
+    });
+    current.swapOriginal();
+    expect(text).toBe("original");
   });
 });

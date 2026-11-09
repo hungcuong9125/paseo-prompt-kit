@@ -23,9 +23,6 @@ const catalog = {
     "Adds a PromptKit entry to the host's left sidebar; it opens this settings screen. The entry appears and disappears when you Save — an open settings page keeps working either way.",
   "interface.language.label": "Interface language",
   "interface.language.hint": "Applies to PromptKit's screens in this client immediately; Save stores it for every client.",
-  "interface.composerOriginal.label": "Keep the original in the Composer",
-  "interface.composerOriginal.hint":
-    "When a mobile rewrite lands, the Composer keeps both versions — the rewrite on top and your original below a marker — for comparison. Off: the Composer shows only the rewritten text. What reaches the agent is always the rewritten text.",
   "language.auto": "Follow system",
   "language.en": "English",
   "language.zh-CN": "中文",
@@ -182,13 +179,16 @@ const catalog = {
 
   "sheet.rewriting": "Rewriting…",
   "sheet.rewrite": "Rewrite",
+  "sheet.swapToOriginal": "Use the original",
+  "sheet.swapToRewritten": "Back to the rewrite",
+  "sheet.originalBlock": "Original prompt",
   "sheet.sending": "Sending…",
   "sheet.send": "Send",
   "sheet.placeholder.single": "Write the prompt, then press Rewrite",
   "sheet.placeholder.multi": "Write the prompt, then pick an action",
   "sheet.note.rewrite": "Rewrite replaces the text here. Send hands it to the agent and clears the Composer.",
+  "pill.swapVersions": "Swap rewrite/original",
   "sheet.note.multi": "Pick how to rewrite; the result replaces the text here. Send hands it to the agent and clears the Composer.",
-  "sheet.originalMarker": "—— Original prompt ——",
 } as const;
 
 export type CatalogKey = keyof typeof catalog;

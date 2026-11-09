@@ -6,6 +6,7 @@ import { TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { actionsListRpc, newRequestId, rewriteResultRpc, rewriteRpc, type ActionSummary } from "../../shared/rpc.js";
 import { promptKitSettings, promptKitSettingsSchema, effectiveTimeoutMs } from "../../shared/settings.js";
 import { enabledActions } from "../actions/enabled.js";
+import { readLastRewrite, recordLastRewrite } from "../rewrite-records.js";
 import {
   describeLookupFailure,
   fiberOf,
@@ -33,14 +34,13 @@ const BODY_LIFT = SPACE.lg;
 const drafts = new Map<string, string>();
 
 /**
- * The last rewrite this plugin delivered into each agent's Composer. One
- * record per agent answers every question about delivered text: what the
- * Composer should hold (`composed`), what the sheet and Send carry
- * (`rewritten`), and what the rewrite started from (`original`). Reopening on
- * exactly `composed` resumes from `rewritten` instead of re-rewriting the
- * delivery; anything else is the user's text and re-arms the auto-rewrite.
+ * The last rewrite pair per agent lives in `client/rewrite-records.ts`, shared
+ * with the desktop pill path. The Composer always carries what gets sent — the
+ * rewritten text or the user's own edit — and the original is surfaced for
+ * review here instead of being written into the send surface. Reopening on the
+ * rewritten text must not auto-rewrite it again: that would drift the prompt
+ * further from the original each round.
  */
-const deliveryRecords = new Map<string, { composed: string; rewritten: string; original: string }>();
 
 /**
  * The rewrite in flight per agent — identity only. The result itself travels
@@ -57,17 +57,9 @@ export function forgetInFlightRewrites(): void {
   inFlightByAgent.clear();
 }
 
-/** Test seam: forgets every per-agent sheet draft and delivery record between tests. */
+/** Test seam: forgets every per-agent sheet draft between tests. */
 export function forgetDrafts(): void {
   drafts.clear();
-  deliveryRecords.clear();
-}
-
-/** What the Composer receives when a rewrite lands: the rewrite alone, or
- *  both versions — rewrite on top, original below the marker — when the
- *  keep-original switch is on. What reaches the agent is always the rewrite. */
-function composeDelivery(rewritten: string, original: string, includeOriginal: boolean, marker: string): string {
-  return includeOriginal && original.trim() !== "" ? `${rewritten}\n\n${marker}\n${original}` : rewritten;
 }
 
 /** Action buttons per row when several actions are enabled. */
@@ -110,13 +102,13 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
     const [choices, setChoices] = useState<readonly ActionSummary[] | null>(null);
     const started = useRef(false);
     /** The Composer text this sheet expects right now: the open-time text, or
-     *  the delivered composition once a rewrite lands. Delivery only writes
-     *  over a Composer that matches it — anything else is the user's edit. */
+     *  the delivered rewrite once it lands. Delivery only writes over a
+     *  Composer that matches it — anything else is the user's edit. */
     const expected = useRef("");
-    /** The text the current rewrite started from (keep-original composition base). */
-    const original = useRef("");
     const mounted = useRef(true);
     const inFlight = useRef(false);
+    /** The original of the last recorded rewrite, shown read-only for review. */
+    const [lastOriginal, setLastOriginal] = useState<string | null>(null);
     useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
     const remember = useCallback(
@@ -127,13 +119,14 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
       [agentId],
     );
 
-    // Composer delivery, per the Interface switch. Runs even after the sheet
-    // unmounted — the Composer is the delivery surface on mobile — but a
-    // mounted sheet re-locates the Composer first: the host may rebuild the
-    // Composer's fiber (keyboard, focus, agent output) while the rewrite is
-    // running, and a handle captured at open then writes into a dead
-    // component. The text never changes on screen, which reads as "the
-    // rewrite never succeeded" even though the daemon finished.
+    // Composer delivery. Runs even after the sheet unmounted — the Composer is
+    // the delivery surface on mobile — but a mounted sheet re-locates the
+    // Composer first: the host may rebuild the Composer's fiber (keyboard,
+    // focus, agent output) while the rewrite is running, and a handle captured
+    // at open then writes into a dead component. The text never changes on
+    // screen, which reads as "the rewrite never succeeded" even though the
+    // daemon finished. The Composer receives the rewritten text only: the
+    // original is reviewed in the sheet, never sent unfiltered.
     const deliverToComposer = useCallback(
       (rewritten: string) => {
         if (settings.status !== "ready") return;
@@ -147,17 +140,10 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
         }
         if (!lookup?.ok) return;
         if (lookup.handle.getText() !== expected.current) return; // the user's edit wins
-        const composed = composeDelivery(
-          rewritten,
-          original.current,
-          settings.values.composerIncludeOriginal,
-          t("sheet.originalMarker"),
-        );
-        lookup.handle.replaceText(composed);
-        expected.current = composed;
-        if (agentId !== null) deliveryRecords.set(agentId, { composed, rewritten, original: original.current });
+        lookup.handle.replaceText(rewritten);
+        expected.current = rewritten;
       },
-      [agentId, locate, settings, t],
+      [agentId, locate, settings],
     );
 
     const runRewrite = useCallback(
@@ -259,8 +245,17 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
           const rewritten = await Promise.race([fromRpc ?? new Promise<string>(() => {}), fromPoll, budget]);
           fromRpc?.catch(() => undefined);
           fromPoll.catch(() => undefined);
-          finishRun(agentId, requestId, rewritten);
-          if (mounted.current) remember(rewritten);
+          const owned = agentId !== null && finishRun(agentId, requestId);
+          if (owned) {
+            // The record pairs this run's result with the text it rewrote; a
+            // superseded run owns neither the draft nor the record.
+            drafts.set(agentId, rewritten);
+            recordLastRewrite(agentId, { rewritten, original: source });
+          }
+          if (mounted.current) {
+            remember(rewritten);
+            setLastOriginal(source);
+          }
           deliverToComposer(rewritten);
         } catch (error) {
           finishRun(agentId, requestId);
@@ -276,15 +271,14 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
       [agentId, deliverToComposer, remember, rewriteResult, rewrite, settings, toast, workspaceId],
     );
 
-    /** Registry bookkeeping with ownership: only this run's entry is removed
-     *  and only this run's result becomes the resume draft — a newer run for
-     *  the same agent (edited text, other action) supersedes both. */
-    function finishRun(agentId: string | null, requestId: string, rewritten?: string): void {
-      if (agentId === null) return;
+    /** Registry bookkeeping with ownership: only this run's entry is removed;
+     *  returns false when a newer run for the same agent superseded this one. */
+    function finishRun(agentId: string | null, requestId: string): boolean {
+      if (agentId === null) return false;
       const current = inFlightByAgent.get(agentId);
-      if (current !== undefined && current.requestId !== requestId) return; // superseded
+      if (current !== undefined && current.requestId !== requestId) return false; // superseded
       inFlightByAgent.delete(agentId);
-      if (rewritten !== undefined) drafts.set(agentId, rewritten);
+      return true;
     }
 
     // Read the enabled actions once settings are ready.
@@ -307,26 +301,20 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
       const lookup = locate(probeRef.current, agentId);
       composerRef.current = lookup;
       const composerText = lookup.ok ? lookup.handle.getText() : "";
-      const record = deliveryRecords.get(agentId);
-      if (record !== undefined && composerText === record.composed) {
-        // Reopening on exactly what PromptKit delivered: the field resumes
-        // from the rewrite itself (so Send sends the rewritten text), the
-        // Composer is treated as already delivered, and the auto-rewrite
-        // below stays off — rewriting the delivery again is content drift.
-        expected.current = record.composed;
-        original.current = record.original;
-        remember(record.rewritten);
-      } else {
-        expected.current = composerText;
-        original.current = composerText;
-        remember(composerText.trim() !== "" ? composerText : (drafts.get(agentId) ?? ""));
-      }
+      const record = readLastRewrite(agentId);
+      setLastOriginal(record?.original ?? null);
+      // The Composer holds what gets sent: the delivered rewrite, or the
+      // user's own text. Either way it is the sheet's starting point — and
+      // reopening on the delivered rewrite must not auto-rewrite it again
+      // (content drift); editing the text re-arms the auto-rewrite.
+      expected.current = composerText;
+      remember(composerText.trim() !== "" ? composerText : (drafts.get(agentId) ?? ""));
       if (!lookup.ok) setNote(describeLookupFailure(lookup.reason));
       else if (choices.length === 0) setNote(t("error.noActions"));
       if (
         lookup.ok &&
         composerText.trim() !== "" &&
-        composerText !== record?.composed &&
+        composerText !== record?.rewritten &&
         choices.length === 1
       )
         void runRewrite(composerText, choices[0]!.id);
@@ -339,8 +327,10 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
       try {
         await paseo.agents.ref(agentId).send(value);
         // Clear the Composer only when it still holds text this sheet wrote or
-        // found there: the value just sent, the delivered composition, or the
-        // open-time text. Anything else is the user's own edit — keep it.
+        // found there: the value just sent, the expected text, or the recorded
+        // rewritten text. Anything else is the user's own edit — keep it. The
+        // rewrite record survives the send: reviewing the original afterwards
+        // is exactly what it is for.
         let lookup = composerRef.current;
         if (mounted.current) {
           const fresh = locate(probeRef.current, agentId);
@@ -350,13 +340,10 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
           }
         }
         const text = lookup?.ok ? lookup.handle.getText() : null;
-        const delivered = deliveryRecords.get(agentId);
-        const mine = text !== null && (text === value || text === expected.current || text === delivered?.composed);
+        const record = readLastRewrite(agentId);
+        const mine = text !== null && (text === value || text === expected.current || text === record?.rewritten);
         if (lookup?.ok && mine) lookup.handle.replaceText("");
-        if (mine) {
-          deliveryRecords.delete(agentId);
-          expected.current = "";
-        }
+        if (mine) expected.current = "";
         remember("");
         close();
       } catch (error) {
@@ -366,6 +353,34 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
         if (mounted.current) setBusy("idle");
       }
     }, [agentId, busy, close, locate, paseo, remember, toast, value]);
+
+    // Swap the sheet field between the two recorded versions ("Use the
+    // original" / "Back to the rewrite"). The Composer follows only when it
+    // still holds what this sheet last put there or is empty — the user's own
+    // edit is never overwritten. The swapped text becomes what Send sends and
+    // what the host's own send button would send: it is the user's explicit
+    // choice of Composer content.
+    const swapVersions = useCallback(() => {
+      if (agentId === null) return;
+      const record = readLastRewrite(agentId);
+      if (!record) return;
+      if (value !== record.rewritten && value !== record.original) return;
+      const other = value === record.rewritten ? record.original : record.rewritten;
+      remember(other);
+      let lookup = composerRef.current;
+      if (mounted.current) {
+        const fresh = locate(probeRef.current, agentId);
+        if (fresh.ok) {
+          composerRef.current = fresh;
+          lookup = fresh;
+        }
+      }
+      const text = lookup?.ok ? lookup.handle.getText() : null;
+      if (lookup?.ok && (text === value || text === "")) {
+        lookup.handle.replaceText(other);
+        expected.current = other;
+      }
+    }, [agentId, locate, remember, value]);
 
     const box = useMemo(
       () => ({
@@ -385,6 +400,9 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
 
     const several = choices !== null && choices.length > 1;
     const only = choices?.length === 1 ? choices[0] : undefined;
+    const lastPair = agentId !== null ? readLastRewrite(agentId) : undefined;
+    const swappable =
+      lastPair !== undefined && (value === lastPair.rewritten || value === lastPair.original);
 
     // The host pads the body and draws the title row; X is lifted into that row.
     return (
@@ -421,6 +439,36 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
             : (note ??
               (several ? t("sheet.note.multi") : t("sheet.note.rewrite")))}
         </Text>
+        {lastOriginal !== null ? (
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+              borderRadius: RADIUS.md,
+              padding: SPACE.sm,
+              backgroundColor: theme.colors.surface0,
+            }}
+            testID="prompt-kit-sheet-original-block"
+          >
+            <Text style={text.muted} testID="prompt-kit-sheet-original-label">
+              {t("sheet.originalBlock")}
+            </Text>
+            <Text style={text.muted} selectable testID="prompt-kit-sheet-original">
+              {lastOriginal}
+            </Text>
+          </View>
+        ) : null}
+        {swappable ? (
+          <Button
+            theme={theme}
+            label={value === lastPair!.original ? t("sheet.swapToRewritten") : t("sheet.swapToOriginal")}
+            variant="ghost"
+            fill
+            onPress={() => swapVersions()}
+            disabled={busy !== "idle"}
+            testID="prompt-kit-sheet-swap"
+          />
+        ) : null}
         {several
           ? rows(choices).map((row) => (
               <View key={row.map((action) => action.id).join(",")} style={{ flexDirection: "row", gap: SPACE.md }}>

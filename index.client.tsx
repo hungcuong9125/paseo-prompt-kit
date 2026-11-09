@@ -47,7 +47,7 @@ export default function contribute(client: PluginClientContext): () => void {
         isActive,
         onStatus: (status) => statuses.publish(agent, status),
       });
-      return (actionId) => runner.run(actionId);
+      return runner;
     },
     {
       listActions,

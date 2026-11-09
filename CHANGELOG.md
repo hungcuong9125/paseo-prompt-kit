@@ -13,21 +13,23 @@
   screens, status line, readiness and validation copy, the mobile sheet and the rewrite error
   messages follow the choice at once; Save persists it host-wide. Missing translations fall
   back to English.
-- **Mobile delivery**: when the sheet closes (or the app backgrounds) before a rewrite
-  finishes, the result is no longer dropped — it is delivered into the Composer as soon as
-  the verdict lands while the sheet is mounted; a closed sheet delivers through the handle
-  it captured at open. By default the Composer then shows the rewritten text alone; the
-  **Keep the original in the Composer** switch (Settings → Interface, shown where the sheet
-  is used) keeps both versions — rewrite on top, the original below a marker. Delivery
-  re-locates the Composer first, so a host that rebuilt the Composer's fiber mid-rewrite
-  still receives the text. Send clears the Composer when it still holds text this sheet
-  wrote into it or found there; an edit the user made is kept.
+- **The original prompt is kept for review, on every platform.** After a rewrite the
+  Composer carries the rewritten text only — so whatever a send button hands to the agent
+  is the rewritten text, never the original. The original lives in a per-agent record:
+  the mobile sheet shows it as a read-only block with a **Use the original** ⇄ **Back to
+  the rewrite** swap, and the desktop pill menu gains **Swap rewrite/original** once a
+  rewrite has run. The record holds until the next rewrite replaces it (not across a
+  client reload); a rewrite that failed or returned nothing leaves the Composer untouched.
+  Send clears the Composer when it still holds text this sheet wrote into it or found
+  there; an edit the user made is kept, and the record survives the send.
 - **Rewrite resilience on mobile**: the daemon archives each run's verdict under the run's
   `requestId`, and the sheet races the `rewrite` response against a poll of that archive —
   a response lost on the phone↔relay path still delivers, and a verdict from any other run
   of the same agent can never leak into this one. Pre-validation refusals (unknown or
   disabled action, unloaded language) are archived too, and archived failures carry their
-  code so poll-delivered errors localize like direct ones.
+  code so poll-delivered errors localize like direct ones. Delivery re-locates the Composer
+  while the sheet is mounted, so a host that rebuilt the Composer's fiber mid-rewrite still
+  receives the text.
 - A sheet reopened on text PromptKit itself delivered no longer auto-rewrites that delivery
   again: every pill press used to rewrite the previous rewrite, drifting the prompt further
   from the original each round. Editing the text re-arms the auto-rewrite; **Rewrite** always

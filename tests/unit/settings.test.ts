@@ -25,7 +25,6 @@ describe("prompt kit settings", () => {
       debugLog: false,
       sidebarEntry: false,
       uiLanguage: "auto",
-      composerIncludeOriginal: false,
       actionEnabled: {},
       actionOverrides: {},
       outputLanguage: "source",

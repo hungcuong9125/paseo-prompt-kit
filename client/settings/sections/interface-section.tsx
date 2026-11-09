@@ -7,13 +7,10 @@ export interface InterfaceSectionProps {
   values: PromptKitSettings;
   disabled: boolean;
   patch(update: SettingsPatch): void;
-  /** True where rewrites run through the popover sheet (no Composer DOM) — the
-   *  only surface the keep-original switch affects. */
-  mobileSheet?: boolean;
 }
 
 /** The host-surface switch and the UI language. The switch applies on Save; the language preview applies at once. */
-export function InterfaceSection({ values, disabled, patch, mobileSheet = false }: InterfaceSectionProps) {
+export function InterfaceSection({ values, disabled, patch }: InterfaceSectionProps) {
   const { t, language } = useI18n();
   const options = UI_LANGUAGES.map((entry) => ({
     value: entry.value,
@@ -41,15 +38,6 @@ export function InterfaceSection({ values, disabled, patch, mobileSheet = false 
           disabled={disabled}
           onValueChange={(next) => patch({ sidebarEntry: next })}
         />
-        {mobileSheet ? (
-          <SettingsSwitch
-            label={t("interface.composerOriginal.label")}
-            hint={t("interface.composerOriginal.hint")}
-            value={values.composerIncludeOriginal}
-            disabled={disabled}
-            onValueChange={(next) => patch({ composerIncludeOriginal: next })}
-          />
-        ) : null}
       </SettingsCard>
     </SettingsSection>
   );

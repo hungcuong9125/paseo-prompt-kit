@@ -10,6 +10,7 @@ import contribute from "../../index.client.js";
 import { createFakeClient, unmountComposer, type FakePill } from "./fakes.js";
 import { promptKitSettingsSchema } from "../../shared/settings.js";
 import { createRewriteStatusBus } from "../../client/pills/rewrite-status.js";
+import { forgetLastRewrites, recordLastRewrite } from "../../client/rewrite-records.js";
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -17,6 +18,7 @@ const agentA = { id: "agent-a", workspaceId: "ws-1" };
 const agentB = { id: "agent-b", workspaceId: "ws-2" };
 
 afterEach(unmountComposer);
+afterEach(() => forgetLastRewrites());
 
 function button(pill: FakePill): Record<string, unknown> {
   return pill.button;
@@ -256,7 +258,7 @@ describe("registry read economy", () => {
     const { registerAgentPills } = await import("../../client/pills/agent-pills.js");
     const cleanup = registerAgentPills(
       fake.client,
-      () => async () => {},
+      () => ({ run: async () => {} }),
       {
         listActions,
         onSettingsSaved: () => () => {},
@@ -283,7 +285,7 @@ describe("pill follows rewrite status", () => {
       },
     });
     const { registerAgentPills } = await import("../../client/pills/agent-pills.js");
-    const cleanup = registerAgentPills(fake.client, () => async () => {}, {
+    const cleanup = registerAgentPills(fake.client, () => ({ run: async () => {} }), {
       listActions: async () => [
         { id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I", custom: false, system: "Rules", task: "Rewrite", modified: false },
       ],
@@ -315,6 +317,42 @@ describe("pill follows rewrite status", () => {
   // Android 回归：popover pill 的任何 update 都会让宿主拆掉打开中的 sheet。
   // 移动端跳过按钮更新（状态发布与 settings 保存的 refresh 都算），sheet 保持
   // 打开直到改写完成。
+  // Desktop parity for the keep-original feature: once a rewrite is recorded,
+  // the pill menu carries a swap entry between the rewrite and the original.
+  it("offers the original swap in the pill menu once a rewrite is recorded", async () => {
+    recordLastRewrite("agent-a", { rewritten: "improved", original: "abcd" });
+    const fake = createFakeClient({
+      agents: [agentA],
+      rpc: async () => {
+        throw new Error("unexpected rpc");
+      },
+    });
+    const swap = vi.fn();
+    const { registerAgentPills } = await import("../../client/pills/agent-pills.js");
+    const cleanup = registerAgentPills(fake.client, () => ({ run: async () => {}, swapOriginal: swap }), {
+      listActions: async () => [
+        { id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I", custom: false, system: "Rules", task: "Rewrite", modified: false },
+      ],
+      onSettingsSaved: () => () => {},
+      readSettings: async () => ({ status: "ready", values: promptKitSettingsSchema.parse({}) }),
+      statuses: createRewriteStatusBus(),
+    });
+    await flush();
+    const button = fake.live()[0]!.button as {
+      behavior:
+        | { kind: "action" }
+        | { kind: "menu"; items: { id: string; behavior: { kind: string; onPress(): unknown } }[] };
+    };
+    expect(button.behavior.kind).toBe("menu");
+    if (button.behavior.kind === "menu") {
+      const swapEntry = button.behavior.items.find((item) => item.id === "prompt-kit-swap");
+      expect(swapEntry).toBeDefined();
+      await swapEntry!.behavior.onPress();
+      expect(swap).toHaveBeenCalledTimes(1);
+    }
+    cleanup();
+  });
+
   it("never updates a popover pill (the update would dismiss the open sheet)", async () => {
     const statuses = createRewriteStatusBus();
     const fake = createFakeClient({
@@ -325,7 +363,7 @@ describe("pill follows rewrite status", () => {
     });
     const { registerAgentPills } = await import("../../client/pills/agent-pills.js");
     let fireSettingsSaved: (() => void) | undefined;
-    const cleanup = registerAgentPills(fake.client, () => async () => {}, {
+    const cleanup = registerAgentPills(fake.client, () => ({ run: async () => {} }), {
       listActions: async () => [
         { id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I", custom: false, system: "Rules", task: "Rewrite", modified: false },
       ],

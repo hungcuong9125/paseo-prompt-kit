@@ -82,13 +82,6 @@ export const promptKitSettingsSchema = z.object({
    */
   uiLanguage: z.enum(["auto", "en", "zh-CN"]).default("auto"),
   /**
-   * When a mobile rewrite lands, the Composer keeps both versions side by
-   * side (the rewrite on top, the original below a marker). Off: the Composer
-   * shows only the rewritten text. What reaches the agent is always the
-   * rewritten text either way.
-   */
-  composerIncludeOriginal: z.boolean().default(false),
-  /**
    * Per-action user toggle, keyed by action id. An id absent here falls back to
    * the pack's `enabledByDefault`, so a newly added pack is usable without a
    * settings migration and a removed pack leaves no stale state behind.

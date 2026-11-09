@@ -10,7 +10,9 @@ import type { ActionPack, ActionOverrides } from "../../shared/action-registry/s
 import type { ActionSummary } from "../../shared/rpc.js";
 import { enabledActions } from "../actions/enabled.js";
 import { PLUGIN_ICON } from "../icon.js";
+import { readLastRewrite } from "../rewrite-records.js";
 import type { SettingsRead } from "../settings/read-settings.js";
+import { tNow } from "../i18n/core.js";
 import { reachesPill, type RewriteStatus, type RewriteStatusBus } from "./rewrite-status.js";
 
 export interface AgentPillAgent {
@@ -18,7 +20,12 @@ export interface AgentPillAgent {
   agentId: string;
 }
 
-export type AgentPillRunner = (actionId: string) => Promise<void>;
+export interface AgentPillRunner {
+  run(actionId: string): Promise<void>;
+  /** Swaps the Composer between the last rewrite and its original; absent
+   *  where the underlying runner cannot reach a Composer. */
+  swapOriginal?(): void;
+}
 
 export interface AgentPillDependencies {
   /** Loaded actions for these custom packs, from `prompt-kit.actions.list`. */
@@ -41,12 +48,18 @@ export function pillPresentation(status: RewriteStatus): Pick<PluginButton, "lab
   return { label: "PromptKit" };
 }
 
-/** Pill for the enabled set `E`: one action → button, several → menu, popover → sheet. */
+/**
+ * Pill for the enabled set `E`: one action → button, several → menu, popover →
+ * sheet. `swap` (present once a rewrite has been recorded for the agent) turns
+ * a single-action button into a menu and appends a "swap rewrite/original"
+ * item to a menu: the pill is the desktop's surface for reviewing the original.
+ */
 export function pillButton(
   enabled: readonly ActionSummary[],
   run: AgentPillRunner,
   popover?: ComponentType<PluginButtonContentProps>,
   status: RewriteStatus = "idle",
+  swap?: () => void,
 ): PluginButton {
   const first = enabled[0]!;
   const base = { title: "PromptKit", icon: PLUGIN_ICON, ...pillPresentation(status) };
@@ -55,21 +68,31 @@ export function pillButton(
     return { ...base, behavior: { kind: "popover", Content: popover } };
   }
 
-  if (enabled.length === 1) {
+  const swapItem: PluginButtonMenuEntry | null = swap
+    ? {
+        kind: "item",
+        id: "prompt-kit-swap",
+        title: tNow("pill.swapVersions"),
+        behavior: { kind: "action", onPress: () => swap() },
+      }
+    : null;
+
+  if (enabled.length === 1 && swapItem === null) {
     return {
       ...base,
       title: first.title,
-      behavior: { kind: "action", onPress: () => run(first.id) },
+      behavior: { kind: "action", onPress: () => run.run(first.id) },
     };
   }
 
-  const items: readonly PluginButtonMenuEntry[] = enabled.map((action) => ({
+  const items: PluginButtonMenuEntry[] = enabled.map((action) => ({
     kind: "item",
     id: action.id,
     title: action.title,
     icon: action.icon,
-    behavior: { kind: "action", onPress: () => run(action.id) },
+    behavior: { kind: "action", onPress: () => run.run(action.id) },
   }));
+  if (swapItem !== null) items.push(swapItem);
   return { ...base, behavior: { kind: "menu", items } };
 }
 
@@ -90,9 +113,10 @@ export function registerAgentPills(
     {
       workspaceId: string;
       registration: PluginButtonRegistration;
-      run: AgentPillRunner;
+      runner: AgentPillRunner;
+      enabled: readonly ActionSummary[];
       status: RewriteStatus;
-      reset: ReturnType<typeof setTimeout> | null;
+      reset: ReturnType<typeof setTimeout> | undefined;
     }
   >();
   /** Every live agent, with or without a pill, so a save can add a pill that was missing. */
@@ -160,14 +184,17 @@ export function registerAgentPills(
 
     const isActive = () =>
       live.get(agent.agentId) === agent && entries.get(agent.agentId)?.workspaceId === agent.workspaceId;
-    const run = createRunner(agent, isActive);
+    const runner = createRunner(agent, isActive);
+    // A record can already exist when this pill registers (a sheet rewrite
+    // ran before the pill came up) — the menu then starts with the swap item.
+    const swap = readLastRewrite(agent.agentId) === undefined ? undefined : () => runner.swapOriginal?.();
     const registration = client.addComposerPill({
       id: PILL_ID,
       workspaceId: agent.workspaceId,
       agentId: agent.agentId,
-      button: pillButton(enabled, run, dependencies.popover),
+      button: pillButton(enabled, runner, dependencies.popover, undefined, swap),
     });
-    entries.set(agent.agentId, { workspaceId: agent.workspaceId, registration, run, status: "idle", reset: null });
+    entries.set(agent.agentId, { workspaceId: agent.workspaceId, registration, runner, enabled, status: "idle", reset: undefined });
   }
 
   /** After a save: each live agent's pill follows the new `E` — updated, added, or dropped. */
@@ -188,25 +215,36 @@ export function registerAgentPills(
         // it (see `show`). The 15 s poll lands here too, so the guard is not
         // optional; on popover the descriptor is enabled-independent anyway.
         if (dependencies.popover === undefined)
-          entry.registration.update(pillButton(enabled, entry.run, undefined, entry.status));
+          entry.registration.update(pillButton(enabled, entry.runner, undefined, entry.status, swapFor(agent.agentId)));
       }
       else void upsert(agent);
     }
+  }
+
+  /** The desktop swap callback for an agent when a rewrite is recorded — the
+   *  pill menu is the desktop's surface for reviewing the original. */
+  function swapFor(agentId: string): (() => void) | undefined {
+    if (readLastRewrite(agentId) === undefined) return undefined;
+    const entry = entries.get(agentId);
+    if (!entry) return undefined;
+    return () => entry.runner.swapOriginal?.();
   }
 
   /** "Rewritten" holds for REWRITTEN_MS, then the pill returns to idle. */
   function show(agentId: string, status: RewriteStatus): void {
     const entry = entries.get(agentId);
     if (!entry) return;
-    if (entry.reset !== null) clearTimeout(entry.reset);
-    entry.reset = status === "rewritten" ? setTimeout(() => show(agentId, "idle"), REWRITTEN_MS) : null;
+    clearTimeout(entry.reset);
+    entry.reset = status === "rewritten" ? setTimeout(() => show(agentId, "idle"), REWRITTEN_MS) : undefined;
     entry.status = status;
     // On mobile the pill is a popover, and updating the button dismisses the
     // open sheet mid-rewrite (the host rebuilds the popover from the new
     // descriptor). The sheet shows its own progress, so the label update is
     // desktop-only.
     if (dependencies.popover !== undefined) return;
-    entry.registration.update(pillPresentation(status));
+    // Desktop rebuilds the whole button, not just the label: a first recorded
+    // rewrite must upgrade the pill to a menu that carries the swap entry.
+    entry.registration.update(pillButton(entry.enabled, entry.runner, undefined, status, swapFor(agentId)));
   }
 
   function accept(agent: {

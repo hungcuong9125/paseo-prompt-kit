@@ -4,6 +4,7 @@ import { providerCatalogRpc, rewriteRpc, newRequestId, type RewriteInput } from 
 import { promptKitSettingsSchema } from "../../shared/settings.js";
 import type { SettingsRead } from "../settings/read-settings.js";
 import { validateDedicatedSelection } from "../settings/selection.js";
+import { recordLastRewrite, readLastRewrite } from "../rewrite-records.js";
 import type { RewriteStatus } from "./rewrite-status.js";
 import { applyUiLanguage, tNow } from "../i18n/core.js";
 import { localizedRewriteError } from "../i18n/errors.js";
@@ -25,6 +26,9 @@ export interface RewriteRunner {
   run(actionId: string): Promise<void>;
   /** Slash path: restore `/rewrite <text>` in the emptied Composer, then replace it with the rewrite. */
   runText(actionId: string, text: string): Promise<void>;
+  /** Swaps the Composer between the last rewrite and its original (edit-wins;
+   *  a no-op when the Composer holds neither version or no rewrite ran yet). */
+  swapOriginal(): void;
   isBusy(): boolean;
 }
 
@@ -90,6 +94,9 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
     try {
       const rewritten = await rewrite(actionId, prompt);
       apply(shown, rewritten, "The prompt changed while PromptKit was rewriting; your text was kept.");
+      // The original now lives only in the record: the Composer carries what
+      // gets sent, the pill menu can swap back to the original on demand.
+      if (input.agentId !== null) recordLastRewrite(input.agentId, { rewritten, original: prompt });
       status = "rewritten";
     } finally {
       endEffect();
@@ -108,6 +115,17 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
   }
 
   return {
+    swapOriginal: () => {
+      // Best-effort view swap between the two recorded versions; the user's
+      // own edit wins, so a Composer holding neither version is left alone.
+      if (input.agentId === null) return;
+      const record = readLastRewrite(input.agentId);
+      if (!record) return;
+      const current = input.adapter.readText();
+      if (current !== record.rewritten && current !== record.original) return;
+      const next = current === record.rewritten ? record.original : record.rewritten;
+      if (input.adapter.replaceText(next)) input.adapter.focus();
+    },
     run: (actionId) =>
       guarded(async () => {
         const source = input.adapter.readText();

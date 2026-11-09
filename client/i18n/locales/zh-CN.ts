@@ -24,9 +24,6 @@ const zhCN: Record<CatalogKey, string> = {
     "在宿主左侧边栏添加 PromptKit 入口，点击打开本设置页。开关在保存后生效——无论开或关，已打开的设置页不受影响。",
   "interface.language.label": "界面语言",
   "interface.language.hint": "本客户端的 PromptKit 界面立即生效；保存后对所有客户端生效。",
-  "interface.composerOriginal.label": "改写后在输入框保留原文",
-  "interface.composerOriginal.hint":
-    "改写完成后，输入框同时保留改写后文本与原文（改写在上、原文在下带标记），便于对比修改；关闭时输入框仅显示改写后文本。发送给 agent 的始终是改写后的文本。",
   "language.auto": "跟随系统",
   "language.en": "English",
   "language.zh-CN": "中文",
@@ -178,13 +175,16 @@ const zhCN: Record<CatalogKey, string> = {
 
   "sheet.rewriting": "改写中…",
   "sheet.rewrite": "改写",
+  "sheet.swapToOriginal": "改用原文",
+  "sheet.swapToRewritten": "改回改写文",
+  "sheet.originalBlock": "原始提示词",
   "sheet.sending": "发送中…",
   "sheet.send": "发送",
   "sheet.placeholder.single": "输入提示词，然后按改写",
   "sheet.placeholder.multi": "输入提示词，然后选择一个动作",
   "sheet.note.rewrite": "改写会替换此处文本。发送会把内容交给 agent 并清空 Composer。",
+  "pill.swapVersions": "改写文/原文互换",
   "sheet.note.multi": "选择改写方式；结果会替换此处文本。发送会把内容交给 agent 并清空 Composer。",
-  "sheet.originalMarker": "—— 以下为原文 ——",
 } as const;
 
 export default zhCN;
