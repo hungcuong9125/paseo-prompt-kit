@@ -312,6 +312,44 @@ describe("pill follows rewrite status", () => {
       cleanup();
     }
   });
+  // Android 回归：popover pill 的任何 update 都会让宿主拆掉打开中的 sheet。
+  // 移动端跳过按钮更新（状态发布与 settings 保存的 refresh 都算），sheet 保持
+  // 打开直到改写完成。
+  it("never updates a popover pill (the update would dismiss the open sheet)", async () => {
+    const statuses = createRewriteStatusBus();
+    const fake = createFakeClient({
+      agents: [agentA],
+      rpc: async () => {
+        throw new Error("unexpected rpc");
+      },
+    });
+    const { registerAgentPills } = await import("../../client/pills/agent-pills.js");
+    let fireSettingsSaved: (() => void) | undefined;
+    const cleanup = registerAgentPills(fake.client, () => async () => {}, {
+      listActions: async () => [
+        { id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I", custom: false, system: "Rules", task: "Rewrite", modified: false },
+      ],
+      onSettingsSaved: (listener: () => void) => {
+        fireSettingsSaved = listener;
+        return () => {};
+      },
+      readSettings: async () => ({ status: "ready", values: promptKitSettingsSchema.parse({}) }),
+      statuses,
+      popover: () => null,
+    });
+    await flush();
+    statuses.publish({ workspaceId: "ws-1", agentId: "agent-a" }, "rewriting");
+    statuses.publish({ workspaceId: "ws-1", agentId: "agent-a" }, "rewritten");
+    // The label must stay frozen: updating the popover pill would dismiss the
+    // open sheet.
+    expect(fake.live()[0]!.button.label).toBe("PromptKit");
+    // The 15 s refresh and a settings save land on the same update path —
+    // neither may touch a popover pill either.
+    fireSettingsSaved?.();
+    await flush();
+    expect(fake.live()[0]!.updates).toBe(0);
+    cleanup();
+  });
 
   it("reaches every pill in the workspace from the slash path", async () => {
     const statuses = createRewriteStatusBus();

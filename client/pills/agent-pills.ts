@@ -182,7 +182,14 @@ export function registerAgentPills(
     for (const agent of live.values()) {
       const entry = entries.get(agent.agentId);
       if (enabled.length === 0) remove(agent.agentId);
-      else if (entry) entry.registration.update(pillButton(enabled, entry.run, dependencies.popover, entry.status));
+      else if (entry) {
+        // Popover pills must never be updated: the Android host rebuilds the
+        // popover from the descriptor and dismisses a sheet that is open on
+        // it (see `show`). The 15 s poll lands here too, so the guard is not
+        // optional; on popover the descriptor is enabled-independent anyway.
+        if (dependencies.popover === undefined)
+          entry.registration.update(pillButton(enabled, entry.run, undefined, entry.status));
+      }
       else void upsert(agent);
     }
   }
@@ -194,6 +201,11 @@ export function registerAgentPills(
     if (entry.reset !== null) clearTimeout(entry.reset);
     entry.reset = status === "rewritten" ? setTimeout(() => show(agentId, "idle"), REWRITTEN_MS) : null;
     entry.status = status;
+    // On mobile the pill is a popover, and updating the button dismisses the
+    // open sheet mid-rewrite (the host rebuilds the popover from the new
+    // descriptor). The sheet shows its own progress, so the label update is
+    // desktop-only.
+    if (dependencies.popover !== undefined) return;
     entry.registration.update(pillPresentation(status));
   }
 
