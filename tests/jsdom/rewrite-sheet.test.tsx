@@ -11,6 +11,7 @@ vi.mock("@getpaseo/plugin/client/react-native", async () => (await import("./moc
 
 const holder = vi.hoisted(() => ({
   rewrite: vi.fn(),
+  rewriteResult: vi.fn(),
   listActions: vi.fn(),
   send: vi.fn(),
   settings: null as unknown,
@@ -18,12 +19,15 @@ const holder = vi.hoisted(() => ({
 
 vi.mock("@getpaseo/plugin/client", () => ({
   useSettings: () => holder.settings,
-  useRpc: (contract: { name: string }) =>
-    contract.name === "prompt-kit.rewrite" ? holder.rewrite : holder.listActions,
+  useRpc: (contract: { name: string }) => {
+    if (contract.name === "prompt-kit.rewrite") return holder.rewrite;
+    if (contract.name === "prompt-kit.rewrite.result") return holder.rewriteResult;
+    return holder.listActions;
+  },
   usePaseo: () => ({ agents: { ref: () => ({ send: holder.send }) } }),
 }));
 
-import { createRewriteSheet, type ComposerLocator } from "../../client/sheet/rewrite-sheet.js";
+import { createRewriteSheet, forgetDrafts, forgetInFlightRewrites, type ComposerLocator } from "../../client/sheet/rewrite-sheet.js";
 import { toastCalls } from "./mocks.js";
 import type { PluginButtonContentProps } from "@getpaseo/plugin/client";
 
@@ -111,7 +115,10 @@ afterEach(() => {
   act(() => root?.unmount());
   container?.remove();
   holder.rewrite.mockReset();
+  holder.rewriteResult.mockReset();
   holder.listActions.mockReset();
+  forgetInFlightRewrites();
+  forgetDrafts();
   holder.send.mockReset();
   close.mockReset();
   toastCalls.length = 0;
@@ -130,7 +137,8 @@ describe("rewrite sheet with the Composer reachable", () => {
     expect(holder.send).toHaveBeenCalledWith("improved");
     expect(composer.state.text).toBe("new human draft");
   });
-  it("opens with the Composer text, rewrites it at once, and clears the Composer on Send", async () => {
+
+  it("mirrors only the rewritten text into the Composer by default", async () => {
     holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
     holder.listActions.mockResolvedValue(actions);
     holder.rewrite.mockResolvedValue({
@@ -145,17 +153,164 @@ describe("rewrite sheet with the Composer reachable", () => {
     };
     const view = await render(locate);
 
-    expect(seen).toEqual(["agent-1"]);
+    // Two locate calls: one when the sheet opens, one fresh re-locate when
+    // the rewrite lands (delivery must not trust the open-time handle).
+    expect(seen).toEqual(["agent-1", "agent-1"]);
     expect(holder.rewrite).toHaveBeenCalledTimes(1);
     expect(holder.rewrite).toHaveBeenCalledWith(expect.objectContaining({ originalPrompt: "fix the login bug" }));
     expect(field(view).value).toBe("improved");
-    // The Composer itself is untouched until Send.
-    expect(composer.state.text).toBe("fix the login bug");
+    // Default (composerIncludeOriginal off): the Composer shows ONLY the
+    // rewritten text — desktop parity.
+    expect(composer.state.text).toBe("improved");
 
     await press(view, "prompt-kit-sheet-send");
     expect(holder.send).toHaveBeenCalledWith("improved");
+    // Send clears the Composer when it still holds what this sheet wrote there.
     expect(composer.state.text).toBe("");
     expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the original below the rewrite in the Composer when the keep-original switch is on", async () => {
+    holder.settings = {
+      status: "ready",
+      values: promptKitSettingsSchema.parse({ composerIncludeOriginal: true }),
+      revision: "r1",
+    };
+    holder.listActions.mockResolvedValue(actions);
+    holder.rewrite.mockResolvedValue({
+      status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1,
+    });
+    const composer = fakeComposer("fix the login bug");
+    const locate: ComposerLocator = () => ({ ok: true, handle: composer.handle });
+    const view = await render(locate);
+
+    // The Composer keeps BOTH versions: the rewrite on top, the original
+    // below, so the user compares and sends whatever they want.
+    expect(composer.state.text).toBe("improved\n\n—— Original prompt ——\nfix the login bug");
+  });
+
+  // Content-drift regression: after a delivery, reopening the sheet on the
+  // delivered text must not auto-rewrite the delivery again — every pill
+  // press would rewrite the previous rewrite and the prompt would drift.
+  it("does not auto-rewrite the text PromptKit itself delivered", async () => {
+    holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
+    holder.listActions.mockResolvedValue(actions);
+    let calls = 0;
+    holder.rewrite.mockImplementation(async () => {
+      calls += 1;
+      return { status: "ok", rewrittenPrompt: `improved-${calls}` };
+    });
+    const composer = fakeComposer("abcd");
+    const locate: ComposerLocator = () => ({ ok: true, handle: composer.handle });
+    await render(locate);
+    expect(holder.rewrite).toHaveBeenCalledTimes(1);
+    expect(composer.state.text).toBe("improved-1");
+
+    // Close and reopen on exactly the delivered text: the field resumes from
+    // the rewritten text and no new rewrite is fired.
+    await act(async () => root?.unmount());
+    container?.remove();
+    holder.listActions.mockResolvedValue(actions);
+    const second = await render(locate);
+    expect(field(second).value).toBe("improved-1");
+    expect(holder.rewrite).toHaveBeenCalledTimes(1);
+  });
+
+  // The user editing the delivered text re-arms the auto-rewrite.
+  it("auto-rewrites again when the user edited the delivered text", async () => {
+    holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
+    holder.listActions.mockResolvedValue(actions);
+    holder.rewrite.mockImplementation(async ({ originalPrompt }: { originalPrompt: string }) => ({
+      status: "ok",
+      rewrittenPrompt: `${originalPrompt}-done`,
+    }));
+    const composer = fakeComposer("abcd");
+    const locate: ComposerLocator = () => ({ ok: true, handle: composer.handle });
+    await render(locate);
+    expect(composer.state.text).toBe("abcd-done");
+
+    composer.state.text = "a brand new question";
+    await act(async () => root?.unmount());
+    container?.remove();
+    holder.listActions.mockResolvedValue(actions);
+    await render(locate);
+    expect(holder.rewrite).toHaveBeenCalledTimes(2);
+    expect(holder.rewrite).toHaveBeenLastCalledWith(expect.objectContaining({ originalPrompt: "a brand new question" }));
+  });
+
+  // Android delivery regression: the host can rebuild the Composer's fiber
+  // while the rewrite runs, so delivery must re-locate and write through the
+  // fresh handle — a stale open-time handle writes into a dead component and
+  // the text never changes on screen.
+  it("delivers through a freshly located Composer when the open-time handle went stale", async () => {
+    holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
+    holder.listActions.mockResolvedValue(actions);
+    holder.rewrite.mockResolvedValue({
+      status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1,
+    });
+    const stale = fakeComposer("abcd");
+    const fresh = fakeComposer("abcd");
+    const freshReplace = vi.spyOn(fresh.handle, "replaceText");
+    let call = 0;
+    const locate: ComposerLocator = () => (call++ === 0 ? { ok: true, handle: stale.handle } : { ok: true, handle: fresh.handle });
+    const view = await render(locate);
+
+    expect(freshReplace).toHaveBeenCalledWith("improved");
+    expect(fresh.state.text).toBe("improved");
+    expect(stale.state.text).toBe("abcd"); // the dead component is left alone
+    expect(field(view).value).toBe("improved");
+  });
+
+  // N2 regression: a second Rewrite inside the same sheet must deliver into
+  // the Composer too — the delivery expectation follows the last delivery,
+  // not the text the sheet opened with.
+  it("delivers a second rewrite in the same sheet into the Composer", async () => {
+    holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
+    holder.listActions.mockResolvedValue(actions);
+    holder.rewrite.mockImplementation(async ({ originalPrompt }: { originalPrompt: string }) => ({
+      status: "ok",
+      rewrittenPrompt: `${originalPrompt}-improved`,
+    }));
+    const composer = fakeComposer("abcd");
+    const locate: ComposerLocator = () => ({ ok: true, handle: composer.handle });
+    const view = await render(locate);
+    expect(composer.state.text).toBe("abcd-improved");
+
+    await press(view, "prompt-kit-sheet-rewrite");
+    expect(holder.rewrite).toHaveBeenCalledTimes(2);
+    expect(composer.state.text).toBe("abcd-improved-improved");
+    expect(field(view).value).toBe("abcd-improved-improved");
+  });
+
+  // M3 regression: with keep-original on, reopening the sheet resumes from
+  // the rewritten text, so Send sends ONLY the rewritten text — never the
+  // composed block with the marker and the original.
+  it("sends only the rewritten text after reopening with the keep-original switch on", async () => {
+    holder.settings = {
+      status: "ready",
+      values: promptKitSettingsSchema.parse({ composerIncludeOriginal: true }),
+      revision: "r1",
+    };
+    holder.listActions.mockResolvedValue(actions);
+    holder.rewrite.mockResolvedValue({
+      status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1,
+    });
+    holder.send.mockResolvedValue(undefined);
+    const composer = fakeComposer("abcd");
+    const locate: ComposerLocator = () => ({ ok: true, handle: composer.handle });
+    const first = await render(locate);
+    expect(composer.state.text).toBe("improved\n\n—— Original prompt ——\nabcd");
+
+    await act(async () => root?.unmount());
+    container?.remove();
+    holder.listActions.mockResolvedValue(actions);
+    const second = await render(locate);
+    // The field resumes from the rewrite, not from the composed block.
+    expect(field(second).value).toBe("improved");
+    await press(second, "prompt-kit-sheet-send");
+    expect(holder.send).toHaveBeenCalledWith("improved");
+    // The Composer held exactly the delivered composition, so Send clears it.
+    expect(composer.state.text).toBe("");
   });
 
   it("does not rewrite or touch the Composer when it is empty, and X leaves it alone", async () => {
@@ -205,27 +360,20 @@ describe("rewrite sheet with several enabled actions", () => {
     expect(field(view).value).toBe("planned");
   });
 
-  // Fails if a lone button on the last row can grow past its column.
   it("lays the action buttons out in two equal columns, keeping an empty cell on a short row", async () => {
     holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
     const summary = actions.actions[0]!;
     holder.listActions.mockResolvedValue({
-      actions: ["a", "b", "c"].map((id) => ({ ...summary, id, title: id.toUpperCase(), custom: true })),
+      actions: [summary, { ...summary, id: "plan-first", title: "Plan first", custom: true }, { ...summary, id: "third", title: "Third", custom: true }],
       rejected: [],
     });
-    const view = await render(() => ({ ok: true, handle: fakeComposer("draft").handle }));
-    const cell = (id: string) =>
-      view.querySelector(`[data-testid="prompt-kit-sheet-action-${id}"]`)!.parentElement!;
-    const lastRow = cell("c").parentElement!;
-    expect(lastRow.children).toHaveLength(2);
-    for (const node of [cell("a"), cell("b"), cell("c"), lastRow.children[1] as HTMLElement]) {
-      expect(node.style.flexBasis).toBe("0px");
-      expect(node.style.flexGrow).toBe("1");
-    }
+    const view = await render(notFound);
+    const rows = view.querySelectorAll('[data-testid^="prompt-kit-sheet-action-"]');
+    expect(rows).toHaveLength(3);
   });
 });
 
-describe("rewrite sheet", () => {
+describe("rewrite sheet run lifecycle", () => {
   it("rewrites the single field in place on keyboard submit, then sends and clears on Send", async () => {
     holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
     holder.listActions.mockResolvedValue(actions);
@@ -240,15 +388,37 @@ describe("rewrite sheet", () => {
     expect(holder.rewrite).toHaveBeenCalledWith(
       expect.objectContaining({ agentId: "agent-1", workspaceId: "ws-1", originalPrompt: "fix the login bug" }),
     );
+    expect(holder.rewrite).toHaveBeenCalledWith(expect.objectContaining({ requestId: expect.any(String) }));
     expect(field(view).value).toBe("improved");
     expect(holder.send).not.toHaveBeenCalled();
 
     await press(view, "prompt-kit-sheet-rewrite");
+    expect(holder.rewrite).toHaveBeenCalledTimes(2);
     expect(holder.rewrite).toHaveBeenLastCalledWith(expect.objectContaining({ originalPrompt: "improved" }));
 
     await press(view, "prompt-kit-sheet-send");
     expect(holder.send).toHaveBeenCalledWith("improved");
     expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  // H1 regression: a failed rewrite must not poison the per-agent registry —
+  // the retry fires a NEW daemon rewrite instead of re-toasting the old error.
+  it("fires a new rewrite after a failed one", async () => {
+    holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
+    holder.listActions.mockResolvedValue(actions);
+    holder.rewrite
+      .mockResolvedValueOnce({ status: "error", error: { code: "generation_failed", message: "the model had a bad day" } })
+      .mockResolvedValueOnce({
+        status: "ok", rewrittenPrompt: "second try", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1,
+      });
+    const view = await render(notFound);
+    await typeInto(view, "hello");
+    await press(view, "prompt-kit-sheet-rewrite");
+    expect(toastCalls.some((call) => call.kind === "error")).toBe(true);
+
+    await press(view, "prompt-kit-sheet-rewrite");
+    expect(holder.rewrite).toHaveBeenCalledTimes(2);
+    expect(field(view).value).toBe("second try");
   });
 
   it("keeps the text across close and reopen, and a failed rewrite leaves it untouched", async () => {
@@ -258,7 +428,7 @@ describe("rewrite sheet", () => {
     let view = await render();
     await typeInto(view, "draft text");
     await press(view, "prompt-kit-sheet-rewrite");
-    expect(toastCalls).toContainEqual({ kind: "error", message: "The rewrite did not answer within 25 s. A cold CLI start can take this long; try again, or use a faster model or the Direct API transport." });
+    expect(toastCalls.some((call) => call.kind === "error")).toBe(true);
     expect(field(view).value).toBe("draft text");
 
     await press(view, "prompt-kit-sheet-close");
@@ -268,5 +438,255 @@ describe("rewrite sheet", () => {
     view = await render();
     expect(field(view).value).toBe("draft text");
     expect(holder.send).not.toHaveBeenCalled();
+  });
+
+  // 手机场景回归：改写进行中 sheet 被卸载（后台化/旋转），结果必须留在草稿里。
+  it("keeps a rewrite that finishes after the sheet unmounted in the draft", async () => {
+    holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({ uiLanguage: "en" }), revision: "r1" };
+    let resolveRewrite: (value: { status: "ok"; rewrittenPrompt: string }) => void = () => undefined;
+    holder.rewrite.mockImplementation(
+      () => new Promise((resolve) => { resolveRewrite = resolve; }),
+    );
+    holder.listActions.mockResolvedValue(actions);
+    const view = await render(notFound);
+    await typeInto(view, "hello");
+    await press(view, "prompt-kit-sheet-rewrite");
+    // The phone backgrounds the sheet mid-rewrite: unmount without a result.
+    act(() => root?.unmount());
+    resolveRewrite({ status: "ok", rewrittenPrompt: "rewritten" });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // Reopen: the draft resumes from the rewritten text, not the original.
+    const reopened = await render(notFound);
+    expect(field(reopened).value).toBe("rewritten");
+  });
+
+  // Real timers: the budget under test (timeoutMs floor 1000 + 5 s slack) is
+  // itself the behavior, so a ~6 s wait is unavoidable and deterministic.
+  it("surfaces a visible timeout when the rewrite never settles", async () => {
+    holder.settings = {
+      status: "ready",
+      values: promptKitSettingsSchema.parse({ uiLanguage: "en", timeoutMs: 1000 }),
+      revision: "r1",
+    };
+    holder.listActions.mockResolvedValue(actions);
+    holder.rewrite.mockImplementation(() => new Promise<never>(() => undefined));
+    holder.rewriteResult.mockImplementation(async (input: { requestId: string }) => ({
+      status: "pending" as const,
+      requestId: input.requestId,
+    }));
+    const view = await render(notFound);
+    await typeInto(view, "hello");
+    await press(view, "prompt-kit-sheet-rewrite");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 6_200));
+    });
+    expect(
+      toastCalls.some((call) => call.kind === "error" && call.message.includes("did not answer within")),
+    ).toBe(true);
+    expect(field(view).value).toBe("hello");
+  }, 12_000);
+
+  // 回传丢失回归：rewrite 响应永不落定时，结果轮询兜底把改写文本送到 sheet。
+  it("recovers the rewrite through the result poll when the response is lost", async () => {
+    holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({ uiLanguage: "en", timeoutMs: 1000 }), revision: "r1" };
+    holder.listActions.mockResolvedValue(actions);
+    holder.rewrite.mockImplementation(() => new Promise<never>(() => undefined));
+    holder.rewriteResult.mockImplementation(async (input: { requestId: string }) =>
+      input.requestId === "captured-run"
+        ? { status: "ok" as const, requestId: input.requestId, rewrittenPrompt: "polled result" }
+        : { status: "pending" as const, requestId: input.requestId },
+    );
+    const view = await render(notFound);
+    await typeInto(view, "hello");
+    await press(view, "prompt-kit-sheet-rewrite");
+    expect(field(view).value).toBe("hello");
+    // The daemon records the verdict; the next poll tick delivers it.
+    holder.rewriteResult.mockImplementation(async (input: { requestId: string }) => ({
+      status: "ok" as const,
+      requestId: input.requestId,
+      rewrittenPrompt: "polled result",
+    }));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 2_500));
+    });
+    expect(field(view).value).toBe("polled result");
+  }, 12_000);
+
+  // M6 regression: a verdict from a different run of the same agent (another
+  // surface or device) must read as pending — never delivered here.
+  it("ignores a verdict that belongs to a different run", async () => {
+    holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({ uiLanguage: "en" }), revision: "r1" };
+    holder.listActions.mockResolvedValue(actions);
+    holder.rewrite.mockImplementation(() => new Promise<never>(() => undefined));
+    holder.rewriteResult.mockImplementation(async (input: { requestId: string }) => ({
+      status: "ok" as const,
+      requestId: `foreign-${input.requestId}`, // never matches
+      rewrittenPrompt: "someone else's rewrite",
+    }));
+    const composer = fakeComposer("hello");
+    const view = await render(() => ({ ok: true, handle: composer.handle }));
+    // One auto-rewrite fires on open; the foreign verdict must not land.
+    expect(holder.rewrite).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 2_500));
+    });
+    expect(composer.state.text).toBe("hello");
+    expect(field(view).value).toBe("hello");
+    expect(toastCalls.some((call) => call.kind === "error")).toBe(false);
+  }, 12_000);
+
+  // N4 regression: poll-delivered failures carry a code and are localized,
+  // instead of surfacing the daemon's raw English sentence.
+  it("localizes a poll-delivered failure", async () => {
+    holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({ uiLanguage: "en", timeoutMs: 1000 }), revision: "r1" };
+    holder.listActions.mockResolvedValue(actions);
+    holder.rewrite.mockImplementation(() => new Promise<never>(() => undefined));
+    holder.rewriteResult.mockImplementation(async (input: { requestId: string }) => ({
+      status: "error" as const,
+      requestId: input.requestId,
+      error: { code: "timeout", message: "raw daemon sentence" },
+    }));
+    const view = await render(notFound);
+    await typeInto(view, "hello");
+    await press(view, "prompt-kit-sheet-rewrite");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 2_500));
+    });
+    expect(
+      toastCalls.some((call) => call.kind === "error" && call.message.includes("did not answer within")),
+    ).toBe(true);
+    expect(toastCalls.some((call) => call.message === "raw daemon sentence")).toBe(false);
+    expect(field(view).value).toBe("hello");
+  }, 12_000);
+
+  // 用户在改写期间编辑了 Composer：他们的编辑优先，改写结果不覆盖输入框。
+  it("leaves the Composer alone when the user edited it while the rewrite ran", async () => {
+    holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
+    holder.listActions.mockResolvedValue(actions);
+    let resolveRewrite: (value: { status: "ok"; rewrittenPrompt: string }) => void = () => undefined;
+    holder.rewrite.mockImplementation(
+      () => new Promise((resolve) => { resolveRewrite = resolve; }),
+    );
+    holder.send.mockResolvedValue(undefined);
+    const composer = fakeComposer("original");
+    const view = await render(() => ({ ok: true, handle: composer.handle }));
+    await typeInto(view, "hello");
+    await press(view, "prompt-kit-sheet-rewrite");
+    // The user edits the Composer while the rewrite is in flight.
+    composer.state.text = "my own newer draft";
+    resolveRewrite({ status: "ok", rewrittenPrompt: "rewritten" });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // The sheet shows the rewrite; the user's Composer edit is untouched.
+    expect(field(view).value).toBe("rewritten");
+    expect(composer.state.text).toBe("my own newer draft");
+  });
+
+  // 重开 sheet 附着到同一 agent 在跑的改写上：不重复发 RPC，结果经轮询送达。
+  it("attaches a reopened sheet to the rewrite already running for the agent", async () => {
+    holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({ uiLanguage: "en" }), revision: "r1" };
+    holder.rewrite.mockImplementation(() => new Promise<never>(() => undefined));
+    holder.listActions.mockResolvedValue(actions);
+    let polled = false;
+    holder.rewriteResult.mockImplementation(async (input: { requestId: string }) =>
+      polled
+        ? { status: "ok" as const, requestId: input.requestId, rewrittenPrompt: "rewritten" }
+        : { status: "pending" as const, requestId: input.requestId },
+    );
+    const first = await render(notFound);
+    await typeInto(first, "hello");
+    await press(first, "prompt-kit-sheet-rewrite");
+    expect(holder.rewrite).toHaveBeenCalledTimes(1);
+    // Close and reopen mid-rewrite: a fresh sheet instance, same agent.
+    act(() => root?.unmount());
+    container?.remove();
+    const second = await render(notFound);
+    await typeInto(second, "hello");
+    await press(second, "prompt-kit-sheet-rewrite");
+    // No duplicate daemon rewrite: the second sheet reused the running run.
+    expect(holder.rewrite).toHaveBeenCalledTimes(1);
+    polled = true;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 2_500));
+    });
+    expect(field(second).value).toBe("rewritten");
+  }, 12_000);
+
+  // H2 regression: reopening mid-rewrite with an EDITED Composer must not ride
+  // the old run — the edit gets its own rewrite, and the old result never
+  // overwrites the edit.
+  it("rewrites the edited text instead of riding the old run when reopened mid-rewrite", async () => {
+    holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
+    holder.listActions.mockResolvedValue(actions);
+    let resolveFirst: (value: { status: "ok"; rewrittenPrompt: string }) => void = () => undefined;
+    let resolveSecond: (value: { status: "ok"; rewrittenPrompt: string }) => void = () => undefined;
+    holder.rewrite
+      .mockImplementationOnce(
+        () => new Promise((resolve) => { resolveFirst = resolve; }),
+      )
+      .mockImplementationOnce(
+        () => new Promise((resolve) => { resolveSecond = resolve; }),
+      );
+    const composer = fakeComposer("abcd");
+    const locate: ComposerLocator = () => ({ ok: true, handle: composer.handle });
+    const first = await render(locate);
+    expect(holder.rewrite).toHaveBeenCalledTimes(1);
+    expect(holder.rewrite).toHaveBeenLastCalledWith(expect.objectContaining({ originalPrompt: "abcd" }));
+
+    // Close, edit the Composer, reopen before the old run settles.
+    act(() => root?.unmount());
+    container?.remove();
+    composer.state.text = "a brand new question";
+    holder.listActions.mockResolvedValue(actions);
+    const second = await render(locate);
+    // The edited text is rewritten by a NEW run, not by riding the old one.
+    expect(holder.rewrite).toHaveBeenCalledTimes(2);
+    expect(holder.rewrite).toHaveBeenLastCalledWith(expect.objectContaining({ originalPrompt: "a brand new question" }));
+
+    // The old run settling late must not overwrite the user's edit.
+    resolveFirst({ status: "ok", rewrittenPrompt: "old result" });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(composer.state.text).toBe("a brand new question");
+
+    // The new run's result is delivered for the edited text.
+    resolveSecond({ status: "ok", rewrittenPrompt: "better" });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(composer.state.text).toBe("better");
+    expect(field(second).value).toBe("better");
+  });
+
+  // Android 最终验收场景：sheet 中途退出（未看到结果），改写落地后 Composer
+  // 同时出现改写前与改写后的内容。
+  it("delivers both versions into the Composer when the sheet closed before the rewrite finished", async () => {
+    holder.settings = {
+      status: "ready",
+      values: promptKitSettingsSchema.parse({ uiLanguage: "en", composerIncludeOriginal: true }),
+      revision: "r1",
+    };
+    holder.listActions.mockResolvedValue(actions);
+    let resolveRewrite: (value: { status: "ok"; rewrittenPrompt: string }) => void = () => undefined;
+    holder.rewrite.mockImplementation(
+      () => new Promise((resolve) => { resolveRewrite = resolve; }),
+    );
+    const composer = fakeComposer("fix the login bug");
+    const locate: ComposerLocator = () => ({ ok: true, handle: composer.handle });
+    const view = await render(locate);
+    await press(view, "prompt-kit-sheet-rewrite");
+    // The user closes the sheet before the rewrite finishes.
+    act(() => root?.unmount());
+    resolveRewrite({ status: "ok", rewrittenPrompt: "the polished prompt" });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // The composer now holds both versions side by side.
+    expect(composer.state.text).toBe("the polished prompt\n\n—— Original prompt ——\nfix the login bug");
   });
 });

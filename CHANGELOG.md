@@ -13,6 +13,25 @@
   screens, status line, readiness and validation copy, the mobile sheet and the rewrite error
   messages follow the choice at once; Save persists it host-wide. Missing translations fall
   back to English.
+- **Mobile delivery**: when the sheet closes (or the app backgrounds) before a rewrite
+  finishes, the result is no longer dropped — it is delivered into the Composer as soon as
+  the verdict lands while the sheet is mounted; a closed sheet delivers through the handle
+  it captured at open. By default the Composer then shows the rewritten text alone; the
+  **Keep the original in the Composer** switch (Settings → Interface, shown where the sheet
+  is used) keeps both versions — rewrite on top, the original below a marker. Delivery
+  re-locates the Composer first, so a host that rebuilt the Composer's fiber mid-rewrite
+  still receives the text. Send clears the Composer when it still holds text this sheet
+  wrote into it or found there; an edit the user made is kept.
+- **Rewrite resilience on mobile**: the daemon archives each run's verdict under the run's
+  `requestId`, and the sheet races the `rewrite` response against a poll of that archive —
+  a response lost on the phone↔relay path still delivers, and a verdict from any other run
+  of the same agent can never leak into this one. Pre-validation refusals (unknown or
+  disabled action, unloaded language) are archived too, and archived failures carry their
+  code so poll-delivered errors localize like direct ones.
+- A sheet reopened on text PromptKit itself delivered no longer auto-rewrites that delivery
+  again: every pill press used to rewrite the previous rewrite, drifting the prompt further
+  from the original each round. Editing the text re-arms the auto-rewrite; **Rewrite** always
+  runs on demand.
 - Twelve more CLI families: `gemini`, `qwen`, `codebuddy`, `qoder`, `omp`, `kimi`, `grok`,
   `kilo`, `mimo` as one-shot processes, and `cline`, `hermes`, `dsh` over a new ACP transport
   (one warm agent per CLI, a fresh session per rewrite, every tool permission denied). Each
