@@ -13,6 +13,7 @@ import {
 } from "../../shared/rpc.js";
 import type { ActionPack, ActionOverrides } from "../../shared/action-registry/schema.js";
 import { promptKitSettings } from "../../shared/settings.js";
+import { createWebComposerAdapter } from "../composer-bridge/web.js";
 import { describeEnabledLimit, enabledActions } from "../actions/enabled.js";
 import { useSettingsDraft } from "./draft.js";
 import { describeReadiness } from "./readiness.js";
@@ -27,6 +28,9 @@ import { InterfaceSection } from "./sections/interface-section.js";
 import { StatusBar } from "./ui/status-bar.js";
 import { applyUiLanguage, useI18n } from "../i18n/core.js";
 import { SPACE, textStyles } from "./ui/tokens.js";
+
+/** Where rewrites run through the popover sheet instead of in place — the keep-original switch only matters there. */
+const composerSupported = createWebComposerAdapter().isSupported();
 
 type Providers = ProviderCatalogOutput["providers"];
 type ReadySettings = Extract<SettingsState<typeof promptKitSettings.schema>, { status: "ready" }>;
@@ -147,7 +151,7 @@ function ReadyScreen({ settings, theme, layout }: { settings: ReadySettings } & 
 
       <EngineSection theme={theme} compact={layout.compact} values={values} disabled={disabled} patch={draft.patch} />
 
-      <InterfaceSection values={values} disabled={disabled} patch={draft.patch} />
+      <InterfaceSection values={values} disabled={disabled} patch={draft.patch} mobileSheet={!composerSupported} />
 
       {values.transport === "cli" && values.modelMode === "dedicated" ? (
         <DedicatedModelSection
