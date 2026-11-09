@@ -155,6 +155,7 @@ describe("core-owned wrapper", () => {
 describe("enabled set E drives the pill shape", () => {
   it("refuses a disabled action whose id names an inherited object property", async () => {
     const output = await createRewriteHandler()({
+      requestId: "req-fixed-0002",
       actionId: "constructor",
       agentId: null,
       workspaceId: "workspace",

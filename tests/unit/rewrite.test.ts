@@ -228,6 +228,7 @@ describe("runRewrite: output language", () => {
     const handler = createRewriteHandler({ spawn: harness.spawn });
     const output = await handler(
       {
+        requestId: "req-fixed-0001",
         actionId: "general",
         agentId: "agent-1",
         workspaceId: "ws-1",
@@ -253,6 +254,7 @@ describe("runRewrite: output language", () => {
     const handler = createRewriteHandler({ spawn: harness.spawn });
     const output = await handler(
       {
+        requestId: "req-fixed-0001",
         actionId: "general",
         agentId: "agent-1",
         workspaceId: "ws-1",
@@ -278,6 +280,7 @@ describe("runRewrite: output language", () => {
     const handler = createRewriteHandler({ spawn: harness.spawn });
     await handler(
       {
+        requestId: "req-fixed-0001",
         actionId: "general",
         agentId: "agent-1",
         workspaceId: "ws-1",
@@ -300,6 +303,7 @@ describe("runRewrite: output language", () => {
     const handler = createRewriteHandler({ spawn: harness.spawn });
     const output = await handler(
       {
+        requestId: "req-fixed-0001",
         actionId: custom.id,
         agentId: "agent-1",
         workspaceId: "ws-1",

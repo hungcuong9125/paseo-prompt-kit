@@ -35,7 +35,7 @@ directory read at runtime.
 
 ```text
 index.client.tsx                 Registers pills, the /rewrite command, panel and Settings screen; no DOM → pill opens a sheet.
-index.server.ts                  Registers settings and the six RPCs; the daemon's composition root.
+index.server.ts                  Registers settings and the seven RPCs; the daemon's composition root.
 
 shared/                          Contract shared by both bundles
   packs/                         ★ ACTION PACKS — plain data, one JSON per action
@@ -53,7 +53,7 @@ shared/                          Contract shared by both bundles
     wrapper.ts                     Core's injection boundary: <task>/<draft> + escaping;
                                    inserts "Output language: …" into <task> when an output language is set.
   settings.ts                    Host-scoped settings schema + the TIMEOUT_MS constants.
-  rpc.ts                         The six RPC contracts: rewrite, actions.list, providers, api.test, secrets.write, secrets.status.
+  rpc.ts                         The seven RPC contracts: rewrite, rewrite.result, actions.list, providers, api.test, secrets.write, secrets.status.
   api-protocol.ts                The list of API protocols and the schema for one endpoint.
   cli-families.ts                The list of CLI families + the rule for inferring a family from a provider id.
   protected-literals.ts          Extracts literals that must survive a rewrite unchanged.

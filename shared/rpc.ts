@@ -39,6 +39,9 @@ export const rewriteModelSchema = z.object({
 export const rewriteRpc = defineRpc({
   name: "prompt-kit.rewrite",
   input: z.object({
+    /** Client-generated correlation id; the verdict archive keys on it so the
+     *  poll fallback can never deliver a verdict from a different run. */
+    requestId: z.string().min(8),
     actionId: z.string().regex(ACTION_ID_PATTERN),
     /** Null for a draft Composer with no agent yet. */
     agentId: z.string().min(1).nullable(),
@@ -186,6 +189,47 @@ export const secretsStatusRpc = defineRpc({
 export type RewriteInput = z.output<typeof rewriteRpc.input>;
 export type RewriteOutput = z.output<typeof rewriteRpc.output>;
 export type RewriteError = z.output<typeof rewriteErrorSchema>;
+/** The closed set of rewrite failure codes — the verdict archive stores this so
+ *  poll-delivered failures localize exactly like direct ones. */
+export type RewriteErrorCode = RewriteError["code"];
+
+/**
+ * Fallback channel for the rewrite result. The `rewrite` response travels over
+ * the asking client's own connection; a phone behind a flaky relay can lose
+ * it. The daemon keeps each agent's latest verdict and this read returns it —
+ * only when `requestId` matches the archived verdict's run, so a concurrent
+ * rewrite of the same agent (another surface, another device) can never leak
+ * its result into this poll. A mismatch reads as "still running".
+ */
+export const rewriteResultRpc = defineRpc({
+  name: "prompt-kit.rewrite.result",
+  input: z.object({
+    agentId: z.string().min(1),
+    requestId: z.string().min(8),
+  }),
+  output: z.discriminatedUnion("status", [
+    z.object({ status: z.literal("pending"), requestId: z.string() }),
+    z.object({
+      status: z.literal("ok"),
+      requestId: z.string(),
+      rewrittenPrompt: z.string().min(1),
+    }),
+    z.object({
+      status: z.literal("error"),
+      requestId: z.string(),
+      error: rewriteErrorSchema,
+    }),
+  ]),
+});
+export type RewriteResultOutput = z.output<typeof rewriteResultRpc.output>;
+
+/** A run id for `rewriteRpc`/`rewriteResultRpc`. `crypto.randomUUID` is not
+ *  available in every client runtime (Hermes), so fall back to time + randomness. */
+export function newRequestId(): string {
+  const globalCrypto = globalThis.crypto as { randomUUID?: () => string } | undefined;
+  if (typeof globalCrypto?.randomUUID === "function") return globalCrypto.randomUUID();
+  return `r${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
 export type ActionSummary = z.output<typeof actionSummarySchema>;
 export type ActionsListOutput = z.output<typeof actionsListRpc.output>;
 export type ProviderCatalogOutput = z.output<typeof providerCatalogRpc.output>;

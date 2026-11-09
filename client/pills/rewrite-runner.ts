@@ -1,6 +1,6 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import type { ComposerAdapter } from "../composer-bridge/adapter.js";
-import { providerCatalogRpc, rewriteRpc, type RewriteInput } from "../../shared/rpc.js";
+import { providerCatalogRpc, rewriteRpc, newRequestId, type RewriteInput } from "../../shared/rpc.js";
 import { promptKitSettingsSchema } from "../../shared/settings.js";
 import type { SettingsRead } from "../settings/read-settings.js";
 import { validateDedicatedSelection } from "../settings/selection.js";
@@ -59,6 +59,7 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
     // API routing requires the agent's provider snapshot, which the server resolves.
     if (!input.isActive()) throw new Error(tNow("error.agentGone"));
     const request: RewriteInput = {
+      requestId: newRequestId(),
       actionId,
       agentId: input.agentId,
       workspaceId: input.workspaceId,

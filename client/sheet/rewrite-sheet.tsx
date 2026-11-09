@@ -3,7 +3,7 @@ import { Text, View } from "react-native";
 import { usePaseo, useRpc, useSettings } from "@getpaseo/plugin/client";
 import type { PluginButtonContentProps } from "@getpaseo/plugin/client";
 import { TextInput, useToast } from "@getpaseo/plugin/client/react-native";
-import { actionsListRpc, rewriteRpc, type ActionSummary } from "../../shared/rpc.js";
+import { actionsListRpc, newRequestId, rewriteRpc, type ActionSummary } from "../../shared/rpc.js";
 import { promptKitSettings, promptKitSettingsSchema } from "../../shared/settings.js";
 import { enabledActions } from "../actions/enabled.js";
 import {
@@ -98,6 +98,7 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
         setBusy("rewriting");
         try {
           const output = await rewrite({
+            requestId: newRequestId(),
             actionId,
             agentId,
             workspaceId,

@@ -5,12 +5,15 @@ import {
   actionsListRpc,
   apiTestRpc,
   providerCatalogRpc,
+  rewriteResultRpc,
   rewriteRpc,
   secretsStatusRpc,
   secretsWriteRpc,
   type ApiTestOutput,
   type ProviderCatalogOutput,
+  type RewriteResultOutput,
 } from "./shared/rpc.js";
+import { readRewriteVerdict } from "./server/rewrite-results.js";
 import { promptKitSettings } from "./shared/settings.js";
 import { testApiEndpoint } from "./server/transports/api/runner.js";
 import { hasApiKey, writeApiKey } from "./server/transports/api/secrets-store.js";
@@ -61,6 +64,18 @@ export default function contribute(
     return sessions;
   };
   server.handle(rewriteRpc, createRewriteHandler({ ...dependencies, codex, acp }));
+  // Fallback read for clients that lost the `rewrite` response on the way back.
+  server.handle(rewriteResultRpc, (input): RewriteResultOutput => {
+    const verdict = readRewriteVerdict(input.agentId, input.requestId);
+    if ("pending" in verdict) return { status: "pending", requestId: input.requestId };
+    return verdict.ok
+      ? { status: "ok", requestId: verdict.requestId, rewrittenPrompt: verdict.text }
+      : {
+          status: "error",
+          requestId: verdict.requestId,
+          error: { code: verdict.code ?? "generation_failed", message: verdict.text },
+        };
+  });
 
   server.handle(actionsListRpc, (input) => summarizeActions(input.customActions, input.actionOverrides));
 
