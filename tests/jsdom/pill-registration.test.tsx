@@ -314,6 +314,59 @@ describe("pill follows rewrite status", () => {
       cleanup();
     }
   });
+
+  // 失败可见性：桌面 pill 没有 toast，失败必须以标签呈现（红染），2 秒后回 idle。
+  it("shows Rewrite failed on a failed status and returns to idle", async () => {
+    const statuses = createRewriteStatusBus();
+    const { cleanup, label } = await mountPills(statuses);
+    vi.useFakeTimers();
+    try {
+      statuses.publish({ workspaceId: "ws-1", agentId: "agent-a" }, "failed");
+      expect(label("agent-a")).toBe("Rewrite failed");
+      vi.advanceTimersByTime(2000);
+      expect(label("agent-a")).toBe("PromptKit");
+    } finally {
+      vi.useRealTimers();
+      cleanup();
+    }
+  });
+
+  // 上游 automated review [high]：菜单/按钮的 onPress 返回的 run promise 若
+  // 拒绝而无人接住 → unhandled rejection。注册表内的 runner 必须捕获失败并
+  // 转成 failed 状态，调用点拿到的 promise 永不拒绝。
+  it("catches a rejected run and surfaces Rewrite failed instead of leaking the rejection", async () => {
+    const fake = createFakeClient({
+      agents: [agentA, { id: "agent-c", workspaceId: "ws-1" }],
+      rpc: async () => {
+        throw new Error("unexpected rpc");
+      },
+    });
+    const { registerAgentPills } = await import("../../client/pills/agent-pills.js");
+    const cleanup = registerAgentPills(fake.client, () => ({ run: async () => { throw new Error("boom"); } }), {
+      listActions: async () => [
+        { id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I", custom: false, system: "Rules", task: "Rewrite", modified: false },
+      ],
+      onSettingsSaved: () => () => {},
+      readSettings: async () => ({ status: "ready", values: promptKitSettingsSchema.parse({}) }),
+      statuses: createRewriteStatusBus(),
+    });
+    await flush();
+    const live = fake.live().find((pill) => pill.agentId === "agent-a")!;
+    const button = live.button as {
+      behavior:
+        | { kind: "action"; onPress(): Promise<void> }
+        | { kind: "menu"; items: { behavior: { onPress(): Promise<void> } }[] };
+    };
+    const press = async (): Promise<void> => {
+      if (button.behavior.kind === "action") await button.behavior.onPress();
+      else await button.behavior.items[0]!.behavior.onPress();
+    };
+    await expect(press()).resolves.toBeUndefined(); // no unhandled rejection
+    expect(live.button.label).toBe("Rewrite failed");
+    await new Promise((resolve) => setTimeout(resolve, 2_100));
+    expect(live.button.label).toBe("PromptKit");
+    cleanup();
+  });
   // Android 回归：popover pill 的任何 update 都会让宿主拆掉打开中的 sheet。
   // 移动端跳过按钮更新（状态发布与 settings 保存的 refresh 都算），sheet 保持
   // 打开直到改写完成。

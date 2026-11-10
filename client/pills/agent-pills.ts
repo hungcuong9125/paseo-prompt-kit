@@ -11,6 +11,7 @@ import type { ActionSummary } from "../../shared/rpc.js";
 import { enabledActions } from "../actions/enabled.js";
 import { PLUGIN_ICON } from "../icon.js";
 import { readLastRewrite } from "../rewrite-records.js";
+import { RewriteBusyError } from "./rewrite-runner.js";
 import type { SettingsRead } from "../settings/read-settings.js";
 import { tNow } from "../i18n/core.js";
 import { reachesPill, type RewriteStatus, type RewriteStatusBus } from "./rewrite-status.js";
@@ -45,6 +46,7 @@ const REWRITTEN_MS = 2000;
 export function pillPresentation(status: RewriteStatus): Pick<PluginButton, "label"> {
   if (status === "rewriting") return { label: "Rewriting..." };
   if (status === "rewritten") return { label: "Rewritten" };
+  if (status === "failed") return { label: "Rewrite failed" };
   return { label: "PromptKit" };
 }
 
@@ -188,7 +190,28 @@ export function registerAgentPills(
 
     const isActive = () =>
       live.get(agent.agentId) === agent && entries.get(agent.agentId)?.workspaceId === agent.workspaceId;
-    const runner = createRunner(agent, isActive);
+    const rawRunner = createRunner(agent, isActive);
+    // The host owns menu/button invocations and may ignore the returned
+    // promise, and a desktop pill has no toast — so the failure is surfaced
+    // here: log it and hold a "Rewrite failed" label on the pill. The stored
+    // runner never rejects, so no invocation site can leak an unhandled
+    // rejection.
+    const runner: AgentPillRunner = {
+      run: (actionId) =>
+        rawRunner.run(actionId).catch((error: unknown) => {
+          // Re-entry is flow control, not a failure: the running rewrite still
+          // owns the pill, so the state stays exactly as it is.
+          if (error instanceof RewriteBusyError) return;
+          // The host owns menu/button invocations and may ignore the returned
+          // promise, and a desktop pill has no toast — so the failure is
+          // surfaced here: log it and hold a "Rewrite failed" label on the
+          // pill. The stored runner never rejects, so no invocation site can
+          // leak an unhandled rejection.
+          console.error("[prompt-kit] rewrite failed", error);
+          show(agent.agentId, "failed");
+        }),
+      swapOriginal: () => rawRunner.swapOriginal?.(),
+    };
     // A record can already exist when this pill registers (a sheet rewrite
     // ran before the pill came up) — the menu then starts with the swap item.
     const swap = readLastRewrite(agent.agentId) === undefined ? undefined : () => runner.swapOriginal?.();
@@ -239,7 +262,10 @@ export function registerAgentPills(
     const entry = entries.get(agentId);
     if (!entry) return;
     clearTimeout(entry.reset);
-    entry.reset = status === "rewritten" ? setTimeout(() => show(agentId, "idle"), REWRITTEN_MS) : undefined;
+    entry.reset =
+      status === "rewritten" || status === "failed"
+        ? setTimeout(() => show(agentId, "idle"), REWRITTEN_MS)
+        : undefined;
     entry.status = status;
     // On mobile the pill is a popover, and updating the button dismisses the
     // open sheet mid-rewrite (the host rebuilds the popover from the new

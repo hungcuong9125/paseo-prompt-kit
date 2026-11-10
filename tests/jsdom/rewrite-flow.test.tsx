@@ -103,7 +103,7 @@ describe("rewrite flow", () => {
 
   it("does not call the rewrite RPC for empty or whitespace input", async () => {
     const fake = await mountWithRewrite(async () => ({}), "   \n  ");
-    await expect(itemPress(fake.fake.live()[0]!)()).rejects.toThrow("Write a prompt first.");
+    await itemPress(fake.fake.live()[0]!)();
     expect(rewriteCalls(fake.fake)).toHaveLength(0);
     expect(document.querySelector("textarea")!.value).toBe("   \n  ");
     fake.cleanup();
@@ -114,8 +114,9 @@ describe("rewrite flow", () => {
       async () => ({ status: "error", error: { code: "timeout", message: "The rewrite timed out." } }),
       "keep me",
     );
-    await expect(itemPress(fake.fake.live()[0]!)()).rejects.toThrow("did not answer within");
+    await itemPress(fake.fake.live()[0]!)();
     expect(document.querySelector("textarea")!.value).toBe("keep me");
+    expect(fake.fake.live()[0]!.button.label).toBe("Rewrite failed");
     fake.cleanup();
   });
 
@@ -123,7 +124,7 @@ describe("rewrite flow", () => {
     const fake = await mountWithRewrite(async () => {
       throw new Error("daemon offline");
     }, "keep me");
-    await expect(itemPress(fake.fake.live()[0]!)()).rejects.toThrow("daemon offline");
+    await itemPress(fake.fake.live()[0]!)();
     expect(document.querySelector("textarea")!.value).toBe("keep me");
     fake.cleanup();
   });
@@ -138,7 +139,7 @@ describe("rewrite flow", () => {
     field.value = "user typed this";
     pendingRewrite.resolve({ status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1 });
 
-    await expect(pending).rejects.toThrow("The prompt changed while PromptKit was rewriting");
+    await pending;
     expect(field.value).toBe("user typed this");
     fake.cleanup();
   });
@@ -164,7 +165,11 @@ describe("rewrite flow", () => {
     const fake = await mountWithRewrite(async () => {
       throw new Error("daemon offline");
     }, "keep me");
-    await expect(itemPress(fake.fake.live()[0]!)()).rejects.toThrow("daemon offline");
+    await itemPress(fake.fake.live()[0]!)();
+    // The failure is visible: "Rewrite failed" holds for 2 s, then the pill
+    // returns to idle.
+    expect(fake.fake.live()[0]!.button.label).toBe("Rewrite failed");
+    await new Promise((resolve) => setTimeout(resolve, 2_200));
     expect(fake.fake.live()[0]!.button.label).toBe("PromptKit");
     expect(fake.fake.live()[0]!.button.icon).toBe("Sparkles");
     fake.cleanup();
@@ -176,7 +181,7 @@ describe("rewrite flow", () => {
     const press = itemPress(fake.fake.live()[0]!);
     const first = press();
     await flush();
-    await expect(press()).rejects.toThrow("already rewriting");
+    await press();
     expect(rewriteCalls(fake.fake)).toHaveLength(1);
 
     pendingRewrite.resolve({ status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1 });
@@ -208,7 +213,7 @@ describe("rewrite flow", () => {
     await flush();
     mountComposer("keep me");
 
-    await expect(itemPress(fake.live()[0]!)()).rejects.toThrow("dedicated provider and model");
+    await itemPress(fake.live()[0]!)();
     expect(rewriteCalls(fake)).toHaveLength(0);
     expect(document.querySelector("textarea")!.value).toBe("keep me");
     cleanup();
@@ -244,7 +249,7 @@ describe("rewrite flow", () => {
     await flush();
     mountComposer("keep me");
 
-    await expect(itemPress(fake.live()[0]!)()).rejects.toThrow("Provider is unavailable: ghost");
+    await itemPress(fake.live()[0]!)();
     expect(rewriteCalls(fake)).toHaveLength(0);
     expect(document.querySelector("textarea")!.value).toBe("keep me");
     cleanup();
@@ -285,7 +290,7 @@ describe("rewrite flow", () => {
     );
     const press = itemPress(fake.fake.live()[0]!);
     unmountComposer();
-    await expect(press()).rejects.toThrow("found no Composer");
+    await press();
     fake.cleanup();
   });
 
@@ -299,7 +304,7 @@ describe("rewrite flow", () => {
     fake.fake.removeAgent("agent-a");
     pendingRewrite.resolve({ status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1 });
 
-    await expect(press).rejects.toThrow("no longer available");
+    await press;
     expect(field.value).toBe("original");
     fake.cleanup();
   });

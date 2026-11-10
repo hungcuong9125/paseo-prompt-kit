@@ -34,6 +34,10 @@ export interface RewriteRunner {
 
 const SLASH_PREFIX = /^\s*\/rewrite(?:\s+|$)/i;
 
+/** Re-entry while a rewrite is already in flight: flow control, not a failure —
+ *  the pill layer must not surface it as one. */
+export class RewriteBusyError extends Error {}
+
 /** What the host removed from the Composer when it ran the slash command. */
 export function slashLine(text: string): string {
   return `/rewrite ${text}`;
@@ -105,7 +109,7 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
   }
 
   async function guarded<T>(work: () => Promise<T>): Promise<T> {
-    if (busy) throw new Error("PromptKit is already rewriting this prompt.");
+    if (busy) throw new RewriteBusyError("PromptKit is already rewriting this prompt.");
     busy = true;
     try {
       return await work();

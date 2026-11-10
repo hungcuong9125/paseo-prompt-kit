@@ -4,6 +4,7 @@ const TINTED = "data-prompt-kit-tint";
 export const PILL_TINTS: Readonly<Record<string, string>> = {
   "Rewriting...": "#a78bfa",
   Rewritten: "#22c55e",
+  "Rewrite failed": "#ef4444",
 };
 
 function paintButton(button: HTMLElement, color: string): void {
