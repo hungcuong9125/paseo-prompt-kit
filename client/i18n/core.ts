@@ -47,8 +47,9 @@ export function autoLanguage(): string {
 
 /**
  * Applies the saved `uiLanguage` setting ("auto" resolves here). Called by the
- * settings screen (draft preview), the startup settings read, and every save
- * announcement, so every surface redraws in the same language.
+ * settings screen (draft preview), the client startup read, every save
+ * announcement, and the sheet as soon as its settings read lands, so every
+ * surface redraws in the same language.
  */
 export function applyUiLanguage(setting: string): void {
   const next = setting === "auto" ? autoLanguage() : setting in CATALOGS ? setting : FALLBACK;

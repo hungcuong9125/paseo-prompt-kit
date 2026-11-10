@@ -3,6 +3,7 @@ import type { ActionPack, ActionOverrides } from "./shared/action-registry/schem
 import { actionsListRpc } from "./shared/rpc.js";
 import { createWebComposerAdapter } from "./client/composer-bridge/web.js";
 import { PLUGIN_ICON } from "./client/icon.js";
+import { applyUiLanguage } from "./client/i18n/core.js";
 import { createSettingsReader } from "./client/settings/read-settings.js";
 import { onSettingsSaved } from "./client/settings/settings-saved.js";
 import { registerRewriteCommand } from "./client/commands/rewrite-command.js";
@@ -35,6 +36,17 @@ export default function contribute(client: PluginClientContext): () => void {
 
   const statuses = createRewriteStatusBus();
   const composerSupported = createWebComposerAdapter().isSupported();
+  // The saved interface language must be applied before the first sheet or
+  // settings screen renders, not lazily on the first rewrite: a pill tapped
+  // seconds after startup would otherwise paint the catalog default and
+  // switch later. Applies again whenever a save announcement arrives.
+  const applySavedLanguage = (): void => {
+    void readSettings().then((read) => {
+      if (read.status === "ready") applyUiLanguage(read.values.uiLanguage);
+    });
+  };
+  applySavedLanguage();
+  const stopLanguageFollow = onSettingsSaved(applySavedLanguage);
   const removePills = registerAgentPills(
     client,
     (agent, isActive) => {
@@ -74,6 +86,7 @@ export default function contribute(client: PluginClientContext): () => void {
     removeCommand();
     stopTint();
     removeSidebar();
+    stopLanguageFollow();
     removeSettingsScreen();
   };
 }

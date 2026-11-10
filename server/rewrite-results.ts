@@ -1,11 +1,14 @@
 /**
- * The daemon keeps each agent's latest rewrite verdict so the asking client
- * can poll it when the `rewrite` response is lost on the way back (a phone
- * behind a flaky relay). Only the latest verdict per agent is kept — bounded
- * by the live agent count; entries are superseded, never accumulated. The
- * verdict carries the run's `requestId`: a poll names the requestId it is
- * waiting for, so a verdict from a different run (another surface or device
- * rewriting the same agent) reads as "pending" and can never leak.
+ * The daemon keeps recent rewrite verdicts so the asking client can poll them
+ * when the `rewrite` response is lost on the way back (a phone behind a flaky
+ * relay). Verdicts are keyed by the run's `requestId` and kept per agent with
+ * a small per-agent retention (the last KEEP_PER_AGENT runs) — a verdict from
+ * another run of the same agent can never answer a different run's poll, and
+ * a concurrent run finishing in between cannot evict an unread verdict.
+ *
+ * Retention is in-memory only: bounded by KEEP_PER_AGENT × live agents,
+ * superseded entries age out of the per-agent window, and entries are never
+ * accumulated across client reloads.
  */
 import type { RewriteErrorCode } from "../shared/rpc.js";
 
@@ -18,25 +21,38 @@ export interface RewriteVerdict {
   code?: RewriteErrorCode;
 }
 
-const latest = new Map<string, RewriteVerdict>();
+const KEEP_PER_AGENT = 3;
 
-/** Records a finished rewrite as the agent's latest verdict. */
+const byAgent = new Map<string, Map<string, RewriteVerdict>>();
+
+/** Records a finished rewrite as the run's verdict, keeping the agent's last KEEP_PER_AGENT runs. */
 export function recordRewriteVerdict(
   agentId: string,
   requestId: string,
   verdict: { ok: boolean; text: string; code?: RewriteErrorCode },
 ): void {
-  latest.set(agentId, { requestId, ok: verdict.ok, text: verdict.text, ...(verdict.code === undefined ? {} : { code: verdict.code }) });
+  let runs = byAgent.get(agentId);
+  if (runs === undefined) {
+    runs = new Map<string, RewriteVerdict>();
+    byAgent.set(agentId, runs);
+  }
+  runs.set(requestId, { requestId, ok: verdict.ok, text: verdict.text, ...(verdict.code === undefined ? {} : { code: verdict.code }) });
+  while (runs.size > KEEP_PER_AGENT) {
+    const oldest = runs.keys().next().value;
+    if (oldest === undefined) break;
+    runs.delete(oldest);
+  }
 }
 
-/** The agent's latest verdict when it belongs to `requestId`; "still running" otherwise. */
+/** The verdict for exactly this run, or "still running" when it has none (yet). */
 export function readRewriteVerdict(agentId: string, requestId: string): RewriteVerdict | { pending: true } {
-  const verdict = latest.get(agentId);
-  if (verdict === undefined || verdict.requestId !== requestId) return { pending: true };
+  const runs = byAgent.get(agentId);
+  const verdict = runs?.get(requestId);
+  if (verdict === undefined) return { pending: true };
   return verdict;
 }
 
 /** Test seam: forgets every verdict. */
 export function forgetRewriteVerdicts(): void {
-  latest.clear();
+  byAgent.clear();
 }

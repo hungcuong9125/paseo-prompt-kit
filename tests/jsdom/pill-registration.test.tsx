@@ -392,12 +392,21 @@ describe("pill follows rewrite status", () => {
     });
     await flush();
     const button = fake.live()[0]!.button as {
+      title: string;
       behavior:
         | { kind: "action" }
-        | { kind: "menu"; items: { id: string; behavior: { kind: string; onPress(): unknown } }[] };
+        | {
+            kind: "menu";
+            items: { id: string; behavior: { kind: string; onPress(): unknown } }[];
+          };
     };
+    // The swap-upgraded menu keeps the action's own title as the menu's.
+    expect(button.title).toBe("T");
     expect(button.behavior.kind).toBe("menu");
     if (button.behavior.kind === "menu") {
+      const ids = button.behavior.items.map((item) => item.id);
+      // The action stays first; the swap entry rides behind a separator.
+      expect(ids).toEqual(["general", "prompt-kit-swap-separator", "prompt-kit-swap"]);
       const swapEntry = button.behavior.items.find((item) => item.id === "prompt-kit-swap");
       expect(swapEntry).toBeDefined();
       await swapEntry!.behavior.onPress();

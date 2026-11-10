@@ -7,6 +7,7 @@ vi.mock(
 );
 
 import contribute from "../../index.client.js";
+import { forgetActionsCache } from "../../client/sheet/rewrite-sheet.js";
 import { promptKitSettingsSchema, type PromptKitSettings } from "../../shared/settings.js";
 import { createWebComposerAdapter } from "../../client/composer-bridge/web.js";
 import { createFakeClient, mountComposer, unmountComposer } from "./fakes.js";
@@ -73,6 +74,7 @@ function rewriteCalls(fake: { rpcCalls: { method: string; input: unknown }[] }) 
 
 afterEach(() => {
   unmountComposer();
+  forgetActionsCache();
   vi.restoreAllMocks();
 });
 

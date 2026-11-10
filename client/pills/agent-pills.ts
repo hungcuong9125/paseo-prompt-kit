@@ -13,7 +13,6 @@ import { PLUGIN_ICON } from "../icon.js";
 import { readLastRewrite } from "../rewrite-records.js";
 import { RewriteBusyError } from "./rewrite-runner.js";
 import type { SettingsRead } from "../settings/read-settings.js";
-import { tNow } from "../i18n/core.js";
 import { reachesPill, type RewriteStatus, type RewriteStatusBus } from "./rewrite-status.js";
 
 export interface AgentPillAgent {
@@ -74,7 +73,7 @@ export function pillButton(
     ? {
         kind: "item",
         id: "prompt-kit-swap",
-        title: tNow("pill.swapVersions"),
+        title: "Swap original/rewrite",
         icon: "ArrowLeftRight",
         behavior: { kind: "action", onPress: () => swap() },
       }
@@ -99,7 +98,9 @@ export function pillButton(
     items.push({ kind: "separator", id: "prompt-kit-swap-separator" });
     items.push(swapItem);
   }
-  return { ...base, behavior: { kind: "menu", items } };
+  // A swap-upgraded single-action menu keeps the action's own title: the
+  // visible identity does not change when the swap entry appears.
+  return { ...base, title: first.title, behavior: { kind: "menu", items } };
 }
 
 /**

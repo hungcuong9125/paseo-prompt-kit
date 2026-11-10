@@ -34,17 +34,7 @@ const BODY_LIFT = SPACE.lg;
 /** Text kept per agent while the sheet is closed with X, so reopening resumes. */
 const drafts = new Map<string, string>();
 
-/**
- * The last rewrite pair per agent lives in `client/rewrite-records.ts`, shared
- * with the desktop pill path. The Composer always carries what gets sent — the
- * rewritten text or the user's own edit — and the original is surfaced for
- * review here instead of being written into the send surface. Reopening on the
- * rewritten text must not auto-rewrite it again: that would drift the prompt
- * further from the original each round.
- */
-
-/**
- * The rewrite in flight per agent — identity only. The result itself travels
+/** The rewrite in flight per agent — identity only. The result itself travels
  * through the verdict archive (`prompt-kit.rewrite.result`), so every sheet
  * instance (the one that fired the RPC or one reopened later) races the same
  * poll; no promise plumbing is shared across instances. The identity lets a
@@ -52,6 +42,25 @@ const drafts = new Map<string, string>();
  * keeps a mismatched request (edited text, other action) from riding it.
  */
 const inFlightByAgent = new Map<string, { requestId: string; source: string; actionId: string }>();
+
+/**
+ * The last fetched action list, keyed by the settings-derived pack set:
+ * reopening the sheet with unchanged settings reuses it instead of re-issuing
+ * the `actions.list` RPC (whose null→loaded swap-in read as a text flash).
+ * Invalidated whenever the pack set changes (a settings save announcing new
+ * or removed actions).
+ */
+let actionsCache: { key: string; actions: readonly ActionSummary[] } | null = null;
+/** The pack-set key whose list is currently being fetched — a second effect
+ *  pass (identity churn on toast/settings) must not fire a duplicate RPC
+ *  while the first fetch is still in flight. */
+let actionsInFlight: string | null = null;
+
+/** Test seam: forgets the cached action list between tests. */
+export function forgetActionsCache(): void {
+  actionsCache = null;
+  actionsInFlight = null;
+}
 
 /** Test seam: forgets every in-flight rewrite between tests. */
 export function forgetInFlightRewrites(): void {
@@ -111,6 +120,12 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
     /** The original of the last recorded rewrite, shown read-only for review. */
     const [lastOriginal, setLastOriginal] = useState<string | null>(null);
     useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+    // The sheet can mount before the settings read lands (first open behind a
+    // slow relay): apply the saved language the moment it arrives instead of
+    // staying on the catalog default until a rewrite happens.
+    useEffect(() => {
+      if (settings.status === "ready") applyUiLanguage(settings.values.uiLanguage);
+    }, [settings]);
 
     const remember = useCallback(
       (next: string) => {
@@ -126,11 +141,12 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
     // focus, agent output) while the rewrite is running, and a handle captured
     // at open then writes into a dead component. The text never changes on
     // screen, which reads as "the rewrite never succeeded" even though the
-    // daemon finished. The Composer receives the rewritten text only: the
-    // original is reviewed in the sheet, never sent unfiltered.
+    // daemon finished. Every non-delivery is reported to the caller so the
+    // sheet can say so — silence here is what made skipped rewrites look like
+    // a broken feature.
     const deliverToComposer = useCallback(
-      (rewritten: string) => {
-        if (settings.status !== "ready") return;
+      (rewritten: string): "ok" | "lookup" | "edit-wins" | "stale-handle" => {
+        if (settings.status !== "ready") return "lookup";
         let lookup = composerRef.current;
         if (mounted.current && agentId !== null) {
           const fresh = locate(probeRef.current, agentId);
@@ -139,10 +155,21 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
             lookup = fresh;
           }
         }
-        if (!lookup?.ok) return;
-        if (lookup.handle.getText() !== expected.current) return; // the user's edit wins
+        if (!lookup?.ok) {
+          console.error("[prompt-kit] rewrite delivery skipped: composer unreachable");
+          return "lookup";
+        }
+        if (lookup.handle.getText() !== expected.current) return "edit-wins"; // the user's edit wins
         lookup.handle.replaceText(rewritten);
+        // Verify the write landed: a stale handle accepts `replaceText` while
+        // the visible Composer keeps the old text. Detecting it here lets the
+        // sheet say "the rewrite finished but never reached the Composer".
+        if (lookup.handle.getText() !== rewritten) {
+          console.error("[prompt-kit] rewrite delivery lost: the Composer did not retain the rewrite");
+          return "stale-handle";
+        }
         expected.current = rewritten;
+        return "ok";
       },
       [agentId, locate, settings],
     );
@@ -249,16 +276,18 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
           const owned = agentId !== null && finishRun(agentId, requestId);
           if (owned) {
             // The record pairs this run's result with the text it rewrote; a
-            // superseded run owns neither the draft nor the record.
+            // superseded run owns neither the draft, the record, the field nor
+            // the Composer — those belong to whichever run the registry still
+            // holds, and a superseded delivery would only clobber them.
             drafts.set(agentId, rewritten);
             recordLastRewrite(agentId, { rewritten, original: source });
+            const outcome = deliverToComposer(rewritten);
+            if (mounted.current) {
+              remember(rewritten);
+              setLastOriginal(source);
+              setNote(outcome === "ok" ? null : t("sheet.note.undelivered"));
+            }
           }
-          if (mounted.current) {
-            remember(rewritten);
-            setLastOriginal(source);
-            setNote(null);
-          }
-          deliverToComposer(rewritten);
         } catch (error) {
           finishRun(agentId, requestId);
           const failure = error instanceof Error ? error : new Error(String(error));
@@ -288,8 +317,23 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
     useEffect(() => {
       if (settings.status !== "ready" || choices !== null) return;
       const values = settings.values;
+      // The action list only changes with the settings-derived packs: reuse a
+      // cached list for an unchanged set so reopening the sheet paints the
+      // action buttons immediately (the null→loaded swap-in read as a text
+      // flash on device).
+      const key = JSON.stringify([values.customActions, values.actionOverrides]);
+      if (actionsCache?.key === key) {
+        setChoices(enabledActions(actionsCache.actions, values));
+        return;
+      }
+      if (actionsInFlight === key) return; // a fetch for this set is already running
+      actionsInFlight = key;
       listActions({ customActions: values.customActions, actionOverrides: values.actionOverrides })
-        .then(({ actions }) => setChoices(enabledActions(actions, values)))
+        .then(({ actions }) => {
+          if (actionsInFlight === key) actionsCache = { key, actions };
+          actionsInFlight = null;
+          setChoices(enabledActions(actions, values));
+        })
         .catch((error: unknown) => {
           setChoices([]);
           toast.error(error instanceof Error ? error.message : String(error));
@@ -310,9 +354,21 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
       // reopening on the delivered rewrite must not auto-rewrite it again
       // (content drift); editing the text re-arms the auto-rewrite.
       expected.current = composerText;
-      remember(composerText.trim() !== "" ? composerText : (drafts.get(agentId) ?? ""));
+      let initial = composerText.trim() !== "" ? composerText : (drafts.get(agentId) ?? "");
+      // Catch-up: the last rewrite finished but never reached this Composer
+      // (the sheet closed first and delivery was lost). The original is on
+      // screen and the rewritten text is on record — restore it instead of
+      // re-rewriting the same source again.
+      const undelivered = record !== undefined && composerText !== "" && composerText === record.original && composerText !== record.rewritten;
+      if (lookup.ok && undelivered) {
+        lookup.handle.replaceText(record.rewritten);
+        expected.current = record.rewritten;
+        initial = record.rewritten;
+      }
+      remember(initial);
       if (!lookup.ok) setNote(describeLookupFailure(lookup.reason));
       else if (choices.length === 0) setNote(t("error.noActions"));
+      else if (undelivered) setNote(t("sheet.note.restored"));
       // The drift guard skipped the auto-rewrite on the delivered rewrite —
       // say so, or the reopen reads as a silent failure.
       else if (composerText !== "" && composerText === record?.rewritten)
@@ -321,6 +377,7 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
         lookup.ok &&
         composerText.trim() !== "" &&
         composerText !== record?.rewritten &&
+        !undelivered &&
         choices.length === 1
       )
         void runRewrite(composerText, choices[0]!.id);

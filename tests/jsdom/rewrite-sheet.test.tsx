@@ -28,6 +28,7 @@ vi.mock("@getpaseo/plugin/client", () => ({
 }));
 
 import { createRewriteSheet, forgetDrafts, forgetInFlightRewrites, type ComposerLocator } from "../../client/sheet/rewrite-sheet.js";
+import { forgetActionsCache } from "../../client/sheet/rewrite-sheet.js";
 import { forgetLastRewrites, readLastRewrite } from "../../client/rewrite-records.js";
 import { toastCalls } from "./mocks.js";
 import type { PluginButtonContentProps } from "@getpaseo/plugin/client";
@@ -56,11 +57,14 @@ const actions = {
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
-/** A stand-in for the host Composer's imperative handle. */
-function fakeComposer(initial: string) {
+/** A stand-in for the host Composer's imperative handle. `lying` models the
+ *  Android failure mode the delivery path must survive: the handle's
+ *  `replaceText` mutates dead state (no throw), but `getText` keeps answering
+ *  with the stale open-time value — writes succeed, the screen never changes. */
+function fakeComposer(initial: string, opts: { lying?: boolean } = {}) {
   const state = { text: initial, focused: 0 };
   const handle = {
-    getText: () => state.text,
+    getText: () => (opts.lying ? initial : state.text),
     replaceText: (next: string) => {
       state.text = next;
     },
@@ -120,6 +124,7 @@ afterEach(() => {
   holder.listActions.mockReset();
   forgetInFlightRewrites();
   forgetDrafts();
+  forgetActionsCache();
   forgetLastRewrites();
   holder.send.mockReset();
   close.mockReset();
@@ -360,6 +365,120 @@ describe("rewrite sheet with the Composer reachable", () => {
     // The Composer held exactly the recorded rewrite, so Send clears it.
     expect(composer.state.text).toBe("");
     expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  // 语言跟随回归：sheet 挂载早于设置读取落地时（弱网首开），不得卡在目录
+  // 默认语言——settings 一就绪立即应用已保存语言。
+  it("applies the saved language as soon as its settings read lands", async () => {
+    holder.settings = { status: "loading" };
+    holder.listActions.mockResolvedValue(actions);
+    const composer = fakeComposer("abcd");
+    const locate: ComposerLocator = () => ({ ok: true, handle: composer.handle });
+    const first = await render(locate);
+    // Loading: the catalog default shows, and no rewrite fires (settings gate).
+    expect(holder.rewrite).not.toHaveBeenCalled();
+    expect(field(first).placeholder).toContain("Rewrite");
+
+    holder.settings = {
+      status: "ready",
+      values: promptKitSettingsSchema.parse({ uiLanguage: "zh-CN" }),
+      revision: "r2",
+    };
+    await act(async () => root?.unmount());
+    container?.remove();
+    holder.listActions.mockResolvedValue(actions);
+    const second = await render(locate);
+    // The saved language applied: the sheet renders in Chinese at once.
+    expect(second.querySelector('[data-testid="prompt-kit-sheet-rewrite"]')?.textContent).toBe("改写");
+  });
+
+  // P3/P1 回归：真机上过期句柄写死组件（写入成功但屏幕不变）必须被回读
+  // 校验捕获，并以 note 告知用户结果在 sheet 里。
+  it("detects a stale Composer that swallows the delivery and says so", async () => {
+    holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
+    holder.listActions.mockResolvedValue(actions);
+    holder.rewrite.mockResolvedValue({
+      status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1,
+    });
+    const composer = fakeComposer("abcd", { lying: true });
+    const locate: ComposerLocator = () => ({ ok: true, handle: composer.handle });
+    const view = await render(locate);
+
+    expect(field(view).value).toBe("improved"); // the rewrite reached the sheet
+    // The write was swallowed by the stale handle: detected, logged, surfaced.
+    expect(composer.state.text).toBe("improved"); // mutated the dead state
+    expect(view.querySelector('[data-testid="prompt-kit-sheet-note"]')?.textContent).toContain(
+      "could not be written",
+    );
+  });
+
+  // P2 回归：未送达的改写在重开时补投递（恢复改写文），而不是把同一原文
+  // 再改写一遍。
+  it("restores an undelivered rewrite on reopen instead of re-rewriting", async () => {
+    holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
+    holder.listActions.mockResolvedValue(actions);
+    holder.rewrite.mockResolvedValue({
+      status: "ok", rewrittenPrompt: "improved", model: { provider: "x", model: null, thinkingOptionId: null }, durationMs: 1, modelMs: 1,
+    });
+    const composer = fakeComposer("abcd", { lying: true });
+    const locate: ComposerLocator = () => ({ ok: true, handle: composer.handle });
+    await render(locate);
+    expect(holder.rewrite).toHaveBeenCalledTimes(1);
+
+    await act(async () => root?.unmount());
+    container?.remove();
+    holder.listActions.mockResolvedValue(actions);
+    const second = await render(locate);
+    // The catch-up delivers the recorded rewrite; no new daemon rewrite.
+    expect(holder.rewrite).toHaveBeenCalledTimes(1);
+    expect(field(second).value).toBe("improved");
+    expect(second.querySelector('[data-testid="prompt-kit-sheet-note"]')?.textContent).toContain(
+      "Restored the last undelivered rewrite",
+    );
+  });
+
+  // 动作命名单一规则：动作名一律显示 pack 原文（bundled = 英文、custom = 作者
+  // 语言），任何界面语言下不本地化——中文界面同样显示 "General"。
+  it("shows pack-authored action titles in the grid regardless of UI language", async () => {
+    holder.settings = {
+      status: "ready",
+      values: promptKitSettingsSchema.parse({ uiLanguage: "zh-CN" }),
+      revision: "r1",
+    };
+    const summary = actions.actions[0]!;
+    holder.listActions.mockResolvedValue({
+      actions: [summary, { ...summary, id: "plan-first", title: "Plan first", custom: true }],
+      rejected: [],
+    });
+    const composer = fakeComposer("fix the login bug");
+    const view = await render(() => ({ ok: true, handle: composer.handle }));
+    const labels = Array.from(view.querySelectorAll('[data-testid^="prompt-kit-sheet-action-"]')).map(
+      (button) => button.textContent,
+    );
+    // Pack-authored titles are shown as-is under any UI language.
+    expect(labels).toContain("T");
+    expect(labels).toContain("Plan first");
+    // The chrome around them stays Chinese.
+    expect(view.querySelector('[data-testid="prompt-kit-sheet-note"]')?.textContent).toContain(
+      "选择改写方式",
+    );
+  });
+
+  // 方案 2：设置未变时重开 sheet 复用缓存的动作列表，不再重发 actions.list。
+  it("reuses the cached action list when the pack set is unchanged", async () => {
+    holder.settings = { status: "ready", values: promptKitSettingsSchema.parse({}), revision: "r1" };
+    holder.listActions.mockResolvedValue(actions);
+    const composer = fakeComposer("");
+    const locate: ComposerLocator = () => ({ ok: true, handle: composer.handle });
+    await render(locate);
+    expect(holder.listActions).toHaveBeenCalledTimes(1);
+
+    await act(async () => root?.unmount());
+    container?.remove();
+    holder.listActions.mockClear();
+    const second = await render(locate);
+    expect(holder.listActions).not.toHaveBeenCalled();
+    expect(field(second).placeholder).toBeTruthy();
   });
 
   it("does not rewrite or touch the Composer when it is empty, and X leaves it alone", async () => {
@@ -633,6 +752,11 @@ describe("rewrite sheet run lifecycle", () => {
     // The sheet shows the rewrite; the user's Composer edit is untouched.
     expect(field(view).value).toBe("rewritten");
     expect(composer.state.text).toBe("my own newer draft");
+    // The skip is visible: the note says the rewrite finished but did not
+    // reach the Composer.
+    expect(view.querySelector('[data-testid="prompt-kit-sheet-note"]')?.textContent).toContain(
+      "could not be written",
+    );
   });
 
   // 重开 sheet 附着到同一 agent 在跑的改写上：不重复发 RPC，结果经轮询送达。
@@ -696,12 +820,15 @@ describe("rewrite sheet run lifecycle", () => {
     expect(holder.rewrite).toHaveBeenCalledTimes(2);
     expect(holder.rewrite).toHaveBeenLastCalledWith(expect.objectContaining({ originalPrompt: "a brand new question" }));
 
-    // The old run settling late must not overwrite the user's edit.
+    // The old run settling late must not overwrite the user's edit, the
+    // field, or the recorded pair (a superseded run owns nothing).
     resolveFirst({ status: "ok", rewrittenPrompt: "old result" });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(composer.state.text).toBe("a brand new question");
+    expect(field(second).value).toBe("a brand new question");
+    expect(readLastRewrite("agent-1")).toBeUndefined();
 
     // The new run's result is delivered for the edited text.
     resolveSecond({ status: "ok", rewrittenPrompt: "better" });

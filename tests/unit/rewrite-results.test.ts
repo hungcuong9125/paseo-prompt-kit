@@ -37,14 +37,30 @@ describe("rewrite verdicts", () => {
     });
   });
 
-  it("keeps only the latest verdict per agent", () => {
+  // 多 run 并存：另一 surface 的判定不得挤掉本 run 未读取的判定（可用性），
+  // 每个 run 的判定按 requestId 独立可读。
+  it("keeps the last KEEP_PER_AGENT runs per agent, each readable by its requestId", () => {
     forgetRewriteVerdicts();
-    recordRewriteVerdict("agent-1", "req-aaaa-1111", { ok: true, text: "first" });
-    recordRewriteVerdict("agent-1", "req-bbbb-2222", { ok: true, text: "second" });
-    const verdict = readRewriteVerdict("agent-1", "req-bbbb-2222");
-    if ("pending" in verdict) throw new Error("expected a verdict");
-    expect(verdict.text).toBe("second");
-    // The superseded run reads as pending, not as a replay.
-    expect(readRewriteVerdict("agent-1", "req-aaaa-1111")).toEqual({ pending: true });
+    recordRewriteVerdict("agent-1", "req-1", { ok: true, text: "first" });
+    recordRewriteVerdict("agent-1", "req-2", { ok: true, text: "second" });
+    recordRewriteVerdict("agent-1", "req-3", { ok: true, text: "third" });
+    expect(readRewriteVerdict("agent-1", "req-2")).toEqual({
+      requestId: "req-2",
+      ok: true,
+      text: "second",
+    });
+    expect(readRewriteVerdict("agent-1", "req-3")).toEqual({
+      requestId: "req-3",
+      ok: true,
+      text: "third",
+    });
+    // …until a run ages out of the per-agent window.
+    recordRewriteVerdict("agent-1", "req-4", { ok: true, text: "fourth" });
+    expect(readRewriteVerdict("agent-1", "req-1")).toEqual({ pending: true });
+    expect(readRewriteVerdict("agent-1", "req-4")).toEqual({
+      requestId: "req-4",
+      ok: true,
+      text: "fourth",
+    });
   });
 });

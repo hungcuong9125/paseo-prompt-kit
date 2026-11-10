@@ -188,7 +188,8 @@ const catalog = {
   "sheet.placeholder.multi": "Write the prompt, then pick an action",
   "sheet.note.rewrite": "Rewrite replaces the text here. Send hands it to the agent and clears the Composer.",
   "sheet.note.delivered": "Showing the last rewrite — press Rewrite to run it again.",
-  "pill.swapVersions": "Swap rewrite/original",
+  "sheet.note.undelivered": "The rewrite finished but could not be written into the Composer — the result is shown above; use Send to deliver it.",
+  "sheet.note.restored": "Restored the last undelivered rewrite.",
   "sheet.note.multi": "Pick how to rewrite; the result replaces the text here. Send hands it to the agent and clears the Composer.",
 } as const;
 
