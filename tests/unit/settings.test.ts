@@ -23,6 +23,8 @@ describe("prompt kit settings", () => {
       secretsDir: null,
       timeoutMs: 25_000,
       debugLog: false,
+      sidebarEntry: false,
+      uiLanguage: "auto",
       actionEnabled: {},
       actionOverrides: {},
       outputLanguage: "source",
@@ -82,7 +84,7 @@ describe("provider CLI mapping", () => {
     });
     expect(values.providerCli).toEqual({ "gateway": "opencode", "pi-custom": "pi" });
     await expect(
-      promptKitSettingsSchema.parseAsync({ providerCli: { "unknown": "gemini" } }),
+      promptKitSettingsSchema.parseAsync({ providerCli: { "unknown": "not-a-family" } }),
     ).rejects.toThrow();
   });
 });

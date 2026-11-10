@@ -124,7 +124,7 @@ describe("/rewrite slash command", () => {
     const fake = createFakeClient({ agents: [], rpc });
     const cleanup = contribute(fake.client);
     await flush();
-    await expect(fake.slashCommands[0]!.onSubmit(commandContext(rpc, "fix it"))).rejects.toThrow("timed out");
+    await expect(fake.slashCommands[0]!.onSubmit(commandContext(rpc, "fix it"))).rejects.toThrow("did not answer within");
     expect(field.value).toBe("/rewrite fix it");
     expect(document.querySelector("[data-prompt-kit-effect]")).toBeNull();
     cleanup();

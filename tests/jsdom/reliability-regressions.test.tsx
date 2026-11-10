@@ -48,7 +48,7 @@ it("does not resurrect a removed agent after a delayed settings read", async () 
   let finish!: (value: unknown) => void;
   const pending = new Promise((resolve) => { finish = resolve; });
   const fake = createFakeClient({ agents: [{ id: identity.agentId, workspaceId: identity.workspaceId }] });
-  const stop = registerAgentPills(fake.client, () => async () => {}, {
+  const stop = registerAgentPills(fake.client, () => ({ run: async () => {} }), {
     readSettings: (() => pending) as never, listActions: async () => summarizeActions([]).actions,
     onSettingsSaved: () => () => {}, statuses: createRewriteStatusBus(),
   });
@@ -70,7 +70,7 @@ it("keeps General as a direct button after its instructions change", async () =>
   const { pillButton } = await import("../../client/pills/agent-pills.js");
   const actions = summarizeActions([], { general: { system: "Custom rules", task: "Rewrite" } }).actions;
   let ran = "";
-  const button = pillButton(actions, async (id) => { ran = id; });
+  const button = pillButton(actions, { run: async (id) => { ran = id; } });
   expect(button.behavior.kind).toBe("action");
   if (button.behavior.kind === "action") await button.behavior.onPress();
   expect(ran).toBe("general");

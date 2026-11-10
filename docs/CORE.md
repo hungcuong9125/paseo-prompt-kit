@@ -35,7 +35,7 @@ directory read at runtime.
 
 ```text
 index.client.tsx                 Registers pills, the /rewrite command, panel and Settings screen; no DOM → pill opens a sheet.
-index.server.ts                  Registers settings and the six RPCs; the daemon's composition root.
+index.server.ts                  Registers settings and the seven RPCs; the daemon's composition root.
 
 shared/                          Contract shared by both bundles
   packs/                         ★ ACTION PACKS — plain data, one JSON per action
@@ -53,7 +53,7 @@ shared/                          Contract shared by both bundles
     wrapper.ts                     Core's injection boundary: <task>/<draft> + escaping;
                                    inserts "Output language: …" into <task> when an output language is set.
   settings.ts                    Host-scoped settings schema + the TIMEOUT_MS constants.
-  rpc.ts                         The six RPC contracts: rewrite, actions.list, providers, api.test, secrets.write, secrets.status.
+  rpc.ts                         The seven RPC contracts: rewrite, rewrite.result, actions.list, providers, api.test, secrets.write, secrets.status.
   api-protocol.ts                The list of API protocols and the schema for one endpoint.
   cli-families.ts                The list of CLI families + the rule for inferring a family from a provider id.
   protected-literals.ts          Extracts literals that must survive a rewrite unchanged.
@@ -233,7 +233,7 @@ There are five named extension points, each one directory and one registration s
 | A new action | `shared/packs/<id>.json` + one line in `shared/packs/index.ts` | engine, validator, RPC, settings, UI |
 | A new output language | `shared/languages/<id>.json` + one line in `shared/languages/index.ts` | wrapper, handler, settings, UI |
 | A new API protocol | `server/transports/api/<protocol>.ts` + `PROTOCOLS` + `API_PROTOCOL_IDS` | resolver, engine |
-| A new CLI family | `server/transports/cli/family.ts` + `CLI_FAMILY_IDS` | resolver, engine |
+| A new CLI family | `server/transports/cli/family.ts` + `CLI_FAMILY_IDS` (+ `ACP_FAMILY_IDS` for an ACP family) | resolver, engine |
 | A new settings field | `shared/settings.ts` + a section under `client/settings/sections/` + `readiness/validation` if it affects the run path | other sections |
 
 ---

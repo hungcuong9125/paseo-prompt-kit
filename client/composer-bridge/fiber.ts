@@ -1,3 +1,4 @@
+import { tNow } from "../i18n/core.js";
 /**
  * The host's `MessageInputRef`: its `replaceText` also updates the Composer's
  * own state (live-text presence, draft), which the inner text field's handle
@@ -88,10 +89,10 @@ export function findComposerHandle(start: FiberLike | null, agentId: string): Co
 export function describeLookupFailure(reason: Exclude<ComposerLookup, { ok: true }>["reason"]): string {
   switch (reason) {
     case "no_fiber":
-      return "PromptKit could not reach the app's component tree on this host.";
+      return tNow("sheet.lookup.noFiber");
     case "not_found":
-      return "PromptKit could not find this agent's Composer.";
+      return tNow("sheet.lookup.notFound");
     case "ambiguous":
-      return "PromptKit found more than one Composer for this agent.";
+      return tNow("sheet.lookup.ambiguous");
   }
 }

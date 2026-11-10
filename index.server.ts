@@ -5,18 +5,23 @@ import {
   actionsListRpc,
   apiTestRpc,
   providerCatalogRpc,
+  rewriteResultRpc,
   rewriteRpc,
   secretsStatusRpc,
   secretsWriteRpc,
   type ApiTestOutput,
   type ProviderCatalogOutput,
+  type RewriteResultOutput,
 } from "./shared/rpc.js";
+import { readRewriteVerdict } from "./server/rewrite-results.js";
 import { promptKitSettings } from "./shared/settings.js";
 import { testApiEndpoint } from "./server/transports/api/runner.js";
 import { hasApiKey, writeApiKey } from "./server/transports/api/secrets-store.js";
 import { readProviderCatalog } from "./server/model-resolver/provider-catalog.js";
 import { createRewriteHandler, type RewriteHandlerDependencies } from "./server/rewrite-engine/handler.js";
+import { createAcpSessions, type AcpSessions } from "./server/transports/cli/acp-sessions.js";
 import { createCodexSessions } from "./server/transports/cli/codex-sessions.js";
+import { findFamily } from "./server/transports/cli/family.js";
 import { pluginLog } from "./server/log.js";
 
 /**
@@ -47,7 +52,30 @@ export default function contribute(
 
   // One warm codex server for the plugin's lifetime, started on the first codex rewrite.
   const codex = dependencies.codex ?? createCodexSessions();
-  server.handle(rewriteRpc, createRewriteHandler({ ...dependencies, codex }));
+  // One warm ACP agent per family, created on that family's first rewrite.
+  const acpAgents = new Map<string, AcpSessions>();
+  const acp = (familyId: string): AcpSessions => {
+    const existing = acpAgents.get(familyId);
+    if (existing !== undefined) return existing;
+    const family = findFamily(familyId);
+    if (family === null || family.kind !== "acp") throw new Error(`"${familyId}" is not an ACP family.`);
+    const sessions = createAcpSessions(familyId, { command: family.command, args: family.args, cwd: "" });
+    acpAgents.set(familyId, sessions);
+    return sessions;
+  };
+  server.handle(rewriteRpc, createRewriteHandler({ ...dependencies, codex, acp }));
+  // Fallback read for clients that lost the `rewrite` response on the way back.
+  server.handle(rewriteResultRpc, (input): RewriteResultOutput => {
+    const verdict = readRewriteVerdict(input.agentId, input.requestId);
+    if ("pending" in verdict) return { status: "pending", requestId: input.requestId };
+    return verdict.ok
+      ? { status: "ok", requestId: verdict.requestId, rewrittenPrompt: verdict.text }
+      : {
+          status: "error",
+          requestId: verdict.requestId,
+          error: { code: verdict.code ?? "generation_failed", message: verdict.text },
+        };
+  });
 
   server.handle(actionsListRpc, (input) => summarizeActions(input.customActions, input.actionOverrides));
 
@@ -97,5 +125,8 @@ export default function contribute(
     return result.ok ? { status: "ok" as const, stored: result.stored } : { status: "error" as const, message: result.message };
   });
 
-  return () => codex.close();
+  return () => {
+    codex.close();
+    for (const sessions of acpAgents.values()) sessions.close();
+  };
 }

@@ -23,7 +23,9 @@ import { CustomActionsSection } from "./sections/custom-actions-section.js";
 import { ApiEndpointSection } from "./sections/api-endpoint-section.js";
 import { DedicatedModelSection } from "./sections/dedicated-model-section.js";
 import { EngineSection } from "./sections/engine-section.js";
+import { InterfaceSection } from "./sections/interface-section.js";
 import { StatusBar } from "./ui/status-bar.js";
+import { applyUiLanguage, useI18n } from "../i18n/core.js";
 import { SPACE, textStyles } from "./ui/tokens.js";
 
 type Providers = ProviderCatalogOutput["providers"];
@@ -81,6 +83,7 @@ function useCatalogs(customActions: readonly ActionPack[], actionOverrides: Acti
 
 /** Status bar, then sections in setup order; irrelevant sections are not rendered. */
 function ReadyScreen({ settings, theme, layout }: { settings: ReadySettings } & PluginSurfaceProps) {
+  const { t } = useI18n();
   const settingsDraft = useSettingsDraft(settings);
   const catalogs = useCatalogs(settingsDraft.values.customActions, settingsDraft.values.actionOverrides);
   // The enabled limit needs the registry, which the draft itself cannot read.
@@ -93,7 +96,12 @@ function ReadyScreen({ settings, theme, layout }: { settings: ReadySettings } & 
   const { values } = draft;
   const disabled = draft.saving;
   const [pendingEditor, setPendingEditor] = useState(false);
-  const saveDraft = { ...draft, problem: draft.problem ?? (pendingEditor ? "Apply or cancel the custom action editor before saving." : null) };
+  // The draft leads: picking a language in Interface rewrites this screen at
+  // once; Save then persists it for every other client.
+  useEffect(() => {
+    applyUiLanguage(draft.values.uiLanguage);
+  }, [draft.values.uiLanguage]);
+  const saveDraft = { ...draft, problem: draft.problem ?? (pendingEditor ? t("prompts.applyOrCancel") : null) };
 
   const enabledCount =
     catalogs.actions === null ? null : enabledActions(catalogs.actions, values).length;
@@ -138,6 +146,8 @@ function ReadyScreen({ settings, theme, layout }: { settings: ReadySettings } & 
       </CustomActionsSection>
 
       <EngineSection theme={theme} compact={layout.compact} values={values} disabled={disabled} patch={draft.patch} />
+
+      <InterfaceSection values={values} disabled={disabled} patch={draft.patch} />
 
       {values.transport === "cli" && values.modelMode === "dedicated" ? (
         <DedicatedModelSection

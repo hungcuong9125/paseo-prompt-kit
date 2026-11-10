@@ -3,10 +3,12 @@ import type { ActionPack, ActionOverrides } from "./shared/action-registry/schem
 import { actionsListRpc } from "./shared/rpc.js";
 import { createWebComposerAdapter } from "./client/composer-bridge/web.js";
 import { PLUGIN_ICON } from "./client/icon.js";
+import { applyUiLanguage } from "./client/i18n/core.js";
 import { createSettingsReader } from "./client/settings/read-settings.js";
 import { onSettingsSaved } from "./client/settings/settings-saved.js";
 import { registerRewriteCommand } from "./client/commands/rewrite-command.js";
 import { registerAgentPills } from "./client/pills/agent-pills.js";
+import { registerSidebarEntry } from "./client/sidebar/sidebar-entry.js";
 import { createRewriteRunner } from "./client/pills/rewrite-runner.js";
 import { createRewriteStatusBus } from "./client/pills/rewrite-status.js";
 import { watchPillTint } from "./client/pills/pill-tint.js";
@@ -34,6 +36,17 @@ export default function contribute(client: PluginClientContext): () => void {
 
   const statuses = createRewriteStatusBus();
   const composerSupported = createWebComposerAdapter().isSupported();
+  // The saved interface language must be applied before the first sheet or
+  // settings screen renders, not lazily on the first rewrite: a pill tapped
+  // seconds after startup would otherwise paint the catalog default and
+  // switch later. Applies again whenever a save announcement arrives.
+  const applySavedLanguage = (): void => {
+    void readSettings().then((read) => {
+      if (read.status === "ready") applyUiLanguage(read.values.uiLanguage);
+    });
+  };
+  applySavedLanguage();
+  const stopLanguageFollow = onSettingsSaved(applySavedLanguage);
   const removePills = registerAgentPills(
     client,
     (agent, isActive) => {
@@ -46,7 +59,7 @@ export default function contribute(client: PluginClientContext): () => void {
         isActive,
         onStatus: (status) => statuses.publish(agent, status),
       });
-      return (actionId) => runner.run(actionId);
+      return runner;
     },
     {
       listActions,
@@ -59,6 +72,7 @@ export default function contribute(client: PluginClientContext): () => void {
 
   const stopTint = composerSupported ? watchPillTint(document) : () => {};
   const removeCommand = registerRewriteCommand(client, { listActions, readSettings, statuses });
+  const removeSidebar = registerSidebarEntry(client, { readSettings });
 
   const removeSettingsScreen = client.addSettingsScreen({
     id: "prompt-kit",
@@ -71,6 +85,8 @@ export default function contribute(client: PluginClientContext): () => void {
     removePills();
     removeCommand();
     stopTint();
+    removeSidebar();
+    stopLanguageFollow();
     removeSettingsScreen();
   };
 }

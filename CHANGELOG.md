@@ -1,5 +1,57 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- A **left-sidebar entry** (Settings → Interface → *Show in the left sidebar*, off by default):
+  adds a PromptKit item to the host's sidebar that opens the settings screen. The entry follows
+  Save on that client, the same save pipeline the pills follow, and is removed when the switch
+  is turned off, the settings document is unreadable, or the plugin unloads. The settings screen
+  itself is registered independently, so an open page keeps working when the entry is removed.
+- **Interface language** (Settings → Interface): *follow system*, English or 中文. The settings
+  screens, status line, readiness and validation copy, the mobile sheet and the rewrite error
+  messages follow the choice at once; Save persists it host-wide. Missing translations fall
+  back to English.
+- **The original prompt is kept for review, on every platform.** After a rewrite the
+  Composer carries the rewritten text only — so whatever a send button hands to the agent
+  is the rewritten text, never the original. The original lives in a per-agent record:
+  the mobile sheet shows it as a read-only block with a **Use the original** ⇄ **Back to
+  the rewrite** swap, and the desktop pill menu gains **Swap rewrite/original** once a
+  rewrite has run. The record holds until the next rewrite replaces it (not across a
+  client reload); a rewrite that failed or returned nothing leaves the Composer untouched.
+  Send clears the Composer when it still holds text this sheet wrote into it or found
+  there; an edit the user made is kept, and the record survives the send.
+- **Rewrite resilience on mobile**: the daemon archives each run's verdict under the run's
+  `requestId`, and the sheet races the `rewrite` response against a poll of that archive —
+  a response lost on the phone↔relay path still delivers, and a verdict from any other run
+  of the same agent can never leak into this one. Pre-validation refusals (unknown or
+  disabled action, unloaded language) are archived too, and archived failures carry their
+  code so poll-delivered errors localize like direct ones. Delivery re-locates the Composer
+  while the sheet is mounted, so a host that rebuilt the Composer's fiber mid-rewrite still
+  receives the text.
+- A sheet reopened on text PromptKit itself delivered no longer auto-rewrites that delivery
+  again: every pill press used to rewrite the previous rewrite, drifting the prompt further
+  from the original each round. Editing the text re-arms the auto-rewrite; **Rewrite** always
+  runs on demand.
+- Twelve more CLI families: `gemini`, `qwen`, `codebuddy`, `qoder`, `omp`, `kimi`, `grok`,
+  `kilo`, `mimo` as one-shot processes, and `cline`, `hermes`, `dsh` over a new ACP transport
+  (one warm agent per CLI, a fresh session per rewrite, every tool permission denied). Each
+  process family replaces the CLI's own system prompt with the rewrite contract and turns off
+  tools, ambient context, MCP and saved sessions wherever the CLI offers a flag; the shared
+  `cli-families` id list feeds **Advanced → CLI per provider** automatically.
+- ACP families carry no model selection, so **Dedicated model** refuses them on both the client
+  and the daemon with one reason: the CLI runs the model it has. Use the current agent model or
+  Direct API.
+- `dsh` resolves the `dsh-pi` and `dsh-acp` providers to a real `dsh` agent instead of the
+  `pi` binary the segment rule used to pick. `codebuddy` claims `codebuddy-code`.
+- A declared scratch-file mechanism for families whose instruction reaches the CLI through a
+  file (gemini's `GEMINI_SYSTEM_MD` system prompt and deny-all tool policy, kimi's agent file):
+  the runner writes 0600 files into the per-rewrite scratch directory and passes their paths.
+- Rejected candidates and why, for the record: copilot, cursor and antigravity expose no
+  system-prompt channel; droid only appends; goose, amp and crush have no prompt override;
+  iFlow shut down. Each accepted CLI's parser mirrors its real probed stdout.
+
 ## 0.7.0 - 2026-10-09
 
 ### Added

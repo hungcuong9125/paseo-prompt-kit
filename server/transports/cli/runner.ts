@@ -2,8 +2,10 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { noTrace, type Trace } from "../../log.js";
+import type { AcpSessions } from "./acp-sessions.js";
 import type { CodexSessions } from "./codex-sessions.js";
 import type { CliFamily, ProcessCliFamily } from "./family.js";
+import { TRUNCATED_MESSAGE } from "./family.js";
 import { spawnCli, type CliRunResult, type CliSpawner } from "./process.js";
 
 export interface CliRewriteInput {
@@ -25,6 +27,8 @@ export interface CliRewriteDependencies {
   trace?: Trace;
   /** The warm codex server a `session` family runs on; required when one is resolved. */
   codex?: CodexSessions;
+  /** The warm ACP agent for an `acp` family's id; required when one is resolved. */
+  acp?: (familyId: string) => AcpSessions;
 }
 
 export type CliRewriteResult =
@@ -61,6 +65,19 @@ export async function runCliRewrite(
       dependencies.trace,
     );
   }
+  if (family.kind === "acp") {
+    if (dependencies.acp === undefined) throw new Error(`No ACP agent is wired for "${family.id}".`);
+    // ACP carries no model selection: the agent runs the model its own CLI has.
+    return dependencies.acp(family.id).run(
+      {
+        systemPrompt: input.systemPrompt,
+        taskPrompt: input.taskPrompt,
+        timeoutMs: input.timeoutMs,
+        ...(input.signal ? { signal: input.signal } : {}),
+      },
+      dependencies.trace,
+    );
+  }
   return runProcess({ ...input, family }, dependencies);
 }
 
@@ -88,12 +105,21 @@ async function runProcess(
     }
 
     if (input.signal?.aborted) return { ok: false, code: "timeout", message: "The rewrite budget expired before the CLI could start." };
-    const invocation = input.family.buildInvocation({
+    const scratchFilePaths: Record<string, string> = {};
+    const request = {
       model: input.model,
       thinkingOptionId: input.thinkingOptionId,
       systemPrompt: input.systemPrompt,
       promptFilePath,
-    });
+      scratchFilePaths,
+    };
+    // Written in declaration order, so a file's content can point at an earlier file's path.
+    for (const file of input.family.scratchFiles ?? []) {
+      const filePath = path.join(scratch, file.name);
+      await writeFile(filePath, file.content(request), { encoding: "utf8", mode: 0o600 });
+      scratchFilePaths[file.name] = filePath;
+    }
+    const invocation = input.family.buildInvocation(request);
 
     trace("cli spawn", {
       family: input.family.id,
@@ -146,8 +172,13 @@ async function runProcess(
     }
 
     // A failed run never becomes a rewrite: its stdout can hold an error text
-    // that would otherwise read like an answer.
+    // that would otherwise read like an answer. Only the static truncation
+    // verdict is forwarded verbatim — it names the real cause without echoing
+    // provider or prompt content; every other failure keeps its fixed message.
     const reported = input.family.parseError(result.stdout);
+    if (reported === TRUNCATED_MESSAGE) {
+      return { ok: false, code: "generation_failed", message: TRUNCATED_MESSAGE };
+    }
     if (reported !== null) {
       return {
         ok: false,

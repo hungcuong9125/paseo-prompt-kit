@@ -1,4 +1,4 @@
-export type RewriteStatus = "idle" | "rewriting" | "rewritten";
+export type RewriteStatus = "idle" | "rewriting" | "rewritten" | "failed";
 
 /** A null `agentId` is the slash path: it reaches every pill in the workspace. */
 export interface RewriteStatusTarget {

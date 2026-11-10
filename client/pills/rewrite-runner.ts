@@ -1,10 +1,13 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import type { ComposerAdapter } from "../composer-bridge/adapter.js";
-import { providerCatalogRpc, rewriteRpc, type RewriteInput } from "../../shared/rpc.js";
+import { providerCatalogRpc, rewriteRpc, newRequestId, type RewriteInput } from "../../shared/rpc.js";
 import { promptKitSettingsSchema } from "../../shared/settings.js";
 import type { SettingsRead } from "../settings/read-settings.js";
 import { validateDedicatedSelection } from "../settings/selection.js";
+import { recordLastRewrite, readLastRewrite } from "../rewrite-records.js";
 import type { RewriteStatus } from "./rewrite-status.js";
+import { applyUiLanguage, tNow } from "../i18n/core.js";
+import { localizedRewriteError } from "../i18n/errors.js";
 
 export interface RewriteRunnerInput {
   adapter: ComposerAdapter;
@@ -23,10 +26,17 @@ export interface RewriteRunner {
   run(actionId: string): Promise<void>;
   /** Slash path: restore `/rewrite <text>` in the emptied Composer, then replace it with the rewrite. */
   runText(actionId: string, text: string): Promise<void>;
+  /** Swaps the Composer between the last rewrite and its original (edit-wins;
+   *  a no-op when the Composer holds neither version or no rewrite ran yet). */
+  swapOriginal(): void;
   isBusy(): boolean;
 }
 
 const SLASH_PREFIX = /^\s*\/rewrite(?:\s+|$)/i;
+
+/** Re-entry while a rewrite is already in flight: flow control, not a failure —
+ *  the pill layer must not surface it as one. */
+export class RewriteBusyError extends Error {}
 
 /** What the host removed from the Composer when it ran the slash command. */
 export function slashLine(text: string): string {
@@ -45,6 +55,9 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
   async function rewrite(actionId: string, source: string): Promise<string> {
     const settings = await input.readSettings();
     if (settings.status === "invalid") throw new Error(settings.error);
+    // The user's language rides on every settings read, so thrown messages
+    // below are phrased in the language this client is currently using.
+    applyUiLanguage(settings.values.uiLanguage);
     // API path needs no CLI catalog.
     if (settings.values.transport === "cli" && settings.values.modelMode === "dedicated") {
       const catalog = await input.rpc(providerCatalogRpc, {});
@@ -52,8 +65,9 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
       if (selectionError !== null) throw new Error(selectionError);
     }
     // API routing requires the agent's provider snapshot, which the server resolves.
-    if (!input.isActive()) throw new Error("This agent is no longer available.");
+    if (!input.isActive()) throw new Error(tNow("error.agentGone"));
     const request: RewriteInput = {
+      requestId: newRequestId(),
       actionId,
       agentId: input.agentId,
       workspaceId: input.workspaceId,
@@ -61,8 +75,9 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
       settings: promptKitSettingsSchema.parse(settings.values),
     };
     const output = await input.rpc(rewriteRpc, request);
-    if (output.status === "error") throw new Error(output.error.message);
-    if (!input.isActive()) throw new Error("This agent is no longer available; your text was kept.");
+    if (output.status === "error")
+      throw new Error(localizedRewriteError(output.error.code, output.error.message, settings.values.timeoutMs));
+    if (!input.isActive()) throw new Error(tNow("error.agentGoneKept"));
     return output.rewrittenPrompt;
   }
 
@@ -83,6 +98,9 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
     try {
       const rewritten = await rewrite(actionId, prompt);
       apply(shown, rewritten, "The prompt changed while PromptKit was rewriting; your text was kept.");
+      // The original now lives only in the record: the Composer carries what
+      // gets sent, the pill menu can swap back to the original on demand.
+      if (input.agentId !== null) recordLastRewrite(input.agentId, { rewritten, original: prompt });
       status = "rewritten";
     } finally {
       endEffect();
@@ -91,7 +109,7 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
   }
 
   async function guarded<T>(work: () => Promise<T>): Promise<T> {
-    if (busy) throw new Error("PromptKit is already rewriting this prompt.");
+    if (busy) throw new RewriteBusyError("PromptKit is already rewriting this prompt.");
     busy = true;
     try {
       return await work();
@@ -101,6 +119,17 @@ export function createRewriteRunner(input: RewriteRunnerInput): RewriteRunner {
   }
 
   return {
+    swapOriginal: () => {
+      // Best-effort view swap between the two recorded versions; the user's
+      // own edit wins, so a Composer holding neither version is left alone.
+      if (input.agentId === null) return;
+      const record = readLastRewrite(input.agentId);
+      if (!record) return;
+      const current = input.adapter.readText();
+      if (current !== record.rewritten && current !== record.original) return;
+      const next = current === record.rewritten ? record.original : record.rewritten;
+      if (input.adapter.replaceText(next)) input.adapter.focus();
+    },
     run: (actionId) =>
       guarded(async () => {
         const source = input.adapter.readText();

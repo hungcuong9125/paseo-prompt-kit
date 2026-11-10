@@ -84,6 +84,18 @@ describe("validateDedicatedSelection: cli transport", () => {
     );
   });
 
+  // Same reason the daemon refuses: an ACP agent runs the model its own CLI has.
+  it("refuses a dedicated model for a provider an ACP family serves", async () => {
+    const settings = await values({
+      modelMode: "dedicated",
+      dedicatedProvider: "cline",
+      dedicatedModel: "any-model",
+    });
+    expect(validateDedicatedSelection(settings, CATALOG)).toBe(
+      '"cline" runs on its own agent CLI over ACP, which has no model selection. Use the current agent model or Direct API.',
+    );
+  });
+
   // The API rules are not the CLI rules, so a CLI provider must not be required.
   it("ignores the CLI selection entirely on the api transport", async () => {
     const settings = await values({

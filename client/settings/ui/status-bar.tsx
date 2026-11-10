@@ -1,6 +1,7 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import type { SettingsDraft } from "../draft.js";
 import type { Readiness } from "../readiness.js";
+import { tNow, useI18n } from "../../i18n/core.js";
 import { Button } from "./button.js";
 import { Notice } from "./notice.js";
 import type { Tone } from "./tokens.js";
@@ -22,15 +23,15 @@ function tone(readiness: Readiness, draft: SettingsDraft): Tone {
 }
 
 function title(readiness: Readiness, draft: SettingsDraft): string {
-  if (draft.problem !== null) return "Cannot save yet";
-  if (draft.saveError !== null) return "Save failed";
+  if (draft.problem !== null) return tNow("status.cannotSave");
+  if (draft.saveError !== null) return tNow("status.saveFailed");
   switch (readiness.kind) {
     case "ready":
-      return `Configured · ${readiness.path}`;
+      return tNow("status.ready", { path: readiness.path });
     case "blocked":
-      return `Not ready · ${readiness.path}`;
+      return tNow("status.blocked", { path: readiness.path });
     case "checking":
-      return `Checking · ${readiness.path}`;
+      return tNow("status.checking", { path: readiness.path });
   }
 }
 
@@ -39,22 +40,21 @@ function lines(readiness: Readiness, draft: SettingsDraft, actionsChanged: boole
   if (draft.problem !== null) out.push(draft.problem);
   else if (draft.saveError !== null) out.push(draft.saveError);
   else if (readiness.kind === "blocked") out.push(readiness.reason);
-  else out.push(`${readiness.detail} Configuration only; provider availability and generation are checked when you run.`);
+  else out.push(`${readiness.detail} ${tNow("status.configNote")}`);
 
   if (draft.dirty) {
     out.push(
-      actionsChanged
-        ? "Unsaved changes. Save updates this client's button immediately; other clients refresh within 15 seconds."
-        : "Unsaved changes.",
+      actionsChanged ? tNow("status.unsavedActions") : tNow("status.unsaved"),
     );
   } else if (draft.justSaved) {
-    out.push("Saved.");
+    out.push(tNow("common.saved"));
   }
   return out;
 }
 
 /** Readiness line plus Save/Discard when dirty. */
 export function StatusBar({ theme, readiness, draft, actionsChanged, compact }: StatusBarProps) {
+  useI18n();
   return (
     <Notice
       theme={theme}
@@ -68,14 +68,14 @@ export function StatusBar({ theme, readiness, draft, actionsChanged, compact }: 
           <>
             <Button
               theme={theme}
-              label="Discard"
+              label={tNow("common.discard")}
               onPress={draft.discard}
               disabled={draft.saving}
               testID="prompt-kit-discard"
             />
             <Button
               theme={theme}
-              label={draft.saving ? "Saving…" : "Save"}
+              label={draft.saving ? tNow("common.saving") : tNow("common.save")}
               variant="primary"
               onPress={() => void draft.save()}
               disabled={draft.saving || draft.problem !== null}

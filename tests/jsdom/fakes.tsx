@@ -16,6 +16,9 @@ export interface FakePill {
   agentId: string;
   button: Record<string, unknown>;
   removed: boolean;
+  /** How many times `registration.update` ran — a popover pill must stay at 0
+   *  (the Android host rebuilds the popover on update and dismisses open sheets). */
+  updates: number;
 }
 
 export interface FakeAgentUpdate {
@@ -101,10 +104,12 @@ export function createFakeClient(
         agentId: contribution.agentId,
         button: contribution.button,
         removed: false,
+        updates: 0,
       };
       pills.push(record);
       return {
         update(patch: Partial<Record<string, unknown>>) {
+          record.updates += 1;
           record.button = { ...record.button, ...patch };
         },
         remove() {

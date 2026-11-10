@@ -10,6 +10,7 @@ import contribute from "../../index.client.js";
 import { createFakeClient, unmountComposer, type FakePill } from "./fakes.js";
 import { promptKitSettingsSchema } from "../../shared/settings.js";
 import { createRewriteStatusBus } from "../../client/pills/rewrite-status.js";
+import { forgetLastRewrites, recordLastRewrite } from "../../client/rewrite-records.js";
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -17,6 +18,7 @@ const agentA = { id: "agent-a", workspaceId: "ws-1" };
 const agentB = { id: "agent-b", workspaceId: "ws-2" };
 
 afterEach(unmountComposer);
+afterEach(() => forgetLastRewrites());
 
 function button(pill: FakePill): Record<string, unknown> {
   return pill.button;
@@ -256,7 +258,7 @@ describe("registry read economy", () => {
     const { registerAgentPills } = await import("../../client/pills/agent-pills.js");
     const cleanup = registerAgentPills(
       fake.client,
-      () => async () => {},
+      () => ({ run: async () => {} }),
       {
         listActions,
         onSettingsSaved: () => () => {},
@@ -283,7 +285,7 @@ describe("pill follows rewrite status", () => {
       },
     });
     const { registerAgentPills } = await import("../../client/pills/agent-pills.js");
-    const cleanup = registerAgentPills(fake.client, () => async () => {}, {
+    const cleanup = registerAgentPills(fake.client, () => ({ run: async () => {} }), {
       listActions: async () => [
         { id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I", custom: false, system: "Rules", task: "Rewrite", modified: false },
       ],
@@ -311,6 +313,142 @@ describe("pill follows rewrite status", () => {
       vi.useRealTimers();
       cleanup();
     }
+  });
+
+  // 失败可见性：桌面 pill 没有 toast，失败必须以标签呈现（红染），2 秒后回 idle。
+  it("shows Rewrite failed on a failed status and returns to idle", async () => {
+    const statuses = createRewriteStatusBus();
+    const { cleanup, label } = await mountPills(statuses);
+    vi.useFakeTimers();
+    try {
+      statuses.publish({ workspaceId: "ws-1", agentId: "agent-a" }, "failed");
+      expect(label("agent-a")).toBe("Rewrite failed");
+      vi.advanceTimersByTime(2000);
+      expect(label("agent-a")).toBe("PromptKit");
+    } finally {
+      vi.useRealTimers();
+      cleanup();
+    }
+  });
+
+  // 上游 automated review [high]：菜单/按钮的 onPress 返回的 run promise 若
+  // 拒绝而无人接住 → unhandled rejection。注册表内的 runner 必须捕获失败并
+  // 转成 failed 状态，调用点拿到的 promise 永不拒绝。
+  it("catches a rejected run and surfaces Rewrite failed instead of leaking the rejection", async () => {
+    const fake = createFakeClient({
+      agents: [agentA, { id: "agent-c", workspaceId: "ws-1" }],
+      rpc: async () => {
+        throw new Error("unexpected rpc");
+      },
+    });
+    const { registerAgentPills } = await import("../../client/pills/agent-pills.js");
+    const cleanup = registerAgentPills(fake.client, () => ({ run: async () => { throw new Error("boom"); } }), {
+      listActions: async () => [
+        { id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I", custom: false, system: "Rules", task: "Rewrite", modified: false },
+      ],
+      onSettingsSaved: () => () => {},
+      readSettings: async () => ({ status: "ready", values: promptKitSettingsSchema.parse({}) }),
+      statuses: createRewriteStatusBus(),
+    });
+    await flush();
+    const live = fake.live().find((pill) => pill.agentId === "agent-a")!;
+    const button = live.button as {
+      behavior:
+        | { kind: "action"; onPress(): Promise<void> }
+        | { kind: "menu"; items: { behavior: { onPress(): Promise<void> } }[] };
+    };
+    const press = async (): Promise<void> => {
+      if (button.behavior.kind === "action") await button.behavior.onPress();
+      else await button.behavior.items[0]!.behavior.onPress();
+    };
+    await expect(press()).resolves.toBeUndefined(); // no unhandled rejection
+    expect(live.button.label).toBe("Rewrite failed");
+    await new Promise((resolve) => setTimeout(resolve, 2_100));
+    expect(live.button.label).toBe("PromptKit");
+    cleanup();
+  });
+  // Android 回归：popover pill 的任何 update 都会让宿主拆掉打开中的 sheet。
+  // 移动端跳过按钮更新（状态发布与 settings 保存的 refresh 都算），sheet 保持
+  // 打开直到改写完成。
+  // Desktop parity for the keep-original feature: once a rewrite is recorded,
+  // the pill menu carries a swap entry between the rewrite and the original.
+  it("offers the original swap in the pill menu once a rewrite is recorded", async () => {
+    recordLastRewrite("agent-a", { rewritten: "improved", original: "abcd" });
+    const fake = createFakeClient({
+      agents: [agentA],
+      rpc: async () => {
+        throw new Error("unexpected rpc");
+      },
+    });
+    const swap = vi.fn();
+    const { registerAgentPills } = await import("../../client/pills/agent-pills.js");
+    const cleanup = registerAgentPills(fake.client, () => ({ run: async () => {}, swapOriginal: swap }), {
+      listActions: async () => [
+        { id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I", custom: false, system: "Rules", task: "Rewrite", modified: false },
+      ],
+      onSettingsSaved: () => () => {},
+      readSettings: async () => ({ status: "ready", values: promptKitSettingsSchema.parse({}) }),
+      statuses: createRewriteStatusBus(),
+    });
+    await flush();
+    const button = fake.live()[0]!.button as {
+      title: string;
+      behavior:
+        | { kind: "action" }
+        | {
+            kind: "menu";
+            items: { id: string; behavior: { kind: string; onPress(): unknown } }[];
+          };
+    };
+    // The swap-upgraded menu keeps the action's own title as the menu's.
+    expect(button.title).toBe("T");
+    expect(button.behavior.kind).toBe("menu");
+    if (button.behavior.kind === "menu") {
+      const ids = button.behavior.items.map((item) => item.id);
+      // The action stays first; the swap entry rides behind a separator.
+      expect(ids).toEqual(["general", "prompt-kit-swap-separator", "prompt-kit-swap"]);
+      const swapEntry = button.behavior.items.find((item) => item.id === "prompt-kit-swap");
+      expect(swapEntry).toBeDefined();
+      await swapEntry!.behavior.onPress();
+      expect(swap).toHaveBeenCalledTimes(1);
+    }
+    cleanup();
+  });
+
+  it("never updates a popover pill (the update would dismiss the open sheet)", async () => {
+    const statuses = createRewriteStatusBus();
+    const fake = createFakeClient({
+      agents: [agentA],
+      rpc: async () => {
+        throw new Error("unexpected rpc");
+      },
+    });
+    const { registerAgentPills } = await import("../../client/pills/agent-pills.js");
+    let fireSettingsSaved: (() => void) | undefined;
+    const cleanup = registerAgentPills(fake.client, () => ({ run: async () => {} }), {
+      listActions: async () => [
+        { id: "general", version: 1, enabledByDefault: true, title: "T", description: "D", icon: "I", custom: false, system: "Rules", task: "Rewrite", modified: false },
+      ],
+      onSettingsSaved: (listener: () => void) => {
+        fireSettingsSaved = listener;
+        return () => {};
+      },
+      readSettings: async () => ({ status: "ready", values: promptKitSettingsSchema.parse({}) }),
+      statuses,
+      popover: () => null,
+    });
+    await flush();
+    statuses.publish({ workspaceId: "ws-1", agentId: "agent-a" }, "rewriting");
+    statuses.publish({ workspaceId: "ws-1", agentId: "agent-a" }, "rewritten");
+    // The label must stay frozen: updating the popover pill would dismiss the
+    // open sheet.
+    expect(fake.live()[0]!.button.label).toBe("PromptKit");
+    // The 15 s refresh and a settings save land on the same update path —
+    // neither may touch a popover pill either.
+    fireSettingsSaved?.();
+    await flush();
+    expect(fake.live()[0]!.updates).toBe(0);
+    cleanup();
   });
 
   it("reaches every pill in the workspace from the slash path", async () => {
