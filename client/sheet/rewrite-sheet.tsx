@@ -256,6 +256,7 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
           if (mounted.current) {
             remember(rewritten);
             setLastOriginal(source);
+            setNote(null);
           }
           deliverToComposer(rewritten);
         } catch (error) {
@@ -312,6 +313,10 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
       remember(composerText.trim() !== "" ? composerText : (drafts.get(agentId) ?? ""));
       if (!lookup.ok) setNote(describeLookupFailure(lookup.reason));
       else if (choices.length === 0) setNote(t("error.noActions"));
+      // The drift guard skipped the auto-rewrite on the delivered rewrite —
+      // say so, or the reopen reads as a silent failure.
+      else if (composerText !== "" && composerText === record?.rewritten)
+        setNote(t("sheet.note.delivered"));
       if (
         lookup.ok &&
         composerText.trim() !== "" &&
@@ -368,6 +373,7 @@ export function createRewriteSheet(locate: ComposerLocator): ComponentType<Plugi
       if (value !== record.rewritten && value !== record.original) return;
       const other = value === record.rewritten ? record.original : record.rewritten;
       remember(other);
+      setNote(null);
       let lookup = composerRef.current;
       if (mounted.current) {
         const fresh = locate(probeRef.current, agentId);

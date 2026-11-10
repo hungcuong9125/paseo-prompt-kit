@@ -183,6 +183,7 @@ const zhCN: Record<CatalogKey, string> = {
   "sheet.placeholder.single": "输入提示词，然后按改写",
   "sheet.placeholder.multi": "输入提示词，然后选择一个动作",
   "sheet.note.rewrite": "改写会替换此处文本。发送会把内容交给 agent 并清空 Composer。",
+  "sheet.note.delivered": "已显示上次改写结果——按 Rewrite 可再次改写。",
   "pill.swapVersions": "改写文/原文互换",
   "sheet.note.multi": "选择改写方式；结果会替换此处文本。发送会把内容交给 agent 并清空 Composer。",
 } as const;

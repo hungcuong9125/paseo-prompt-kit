@@ -259,6 +259,10 @@ describe("rewrite sheet with the Composer reachable", () => {
     holder.listActions.mockResolvedValue(actions);
     const second = await render(locate);
     expect(field(second).value).toBe("improved-1");
+    // The silent skip is made visible: the note names the delivered state.
+    expect(second.querySelector('[data-testid="prompt-kit-sheet-note"]')?.textContent).toContain(
+      "Showing the last rewrite",
+    );
     expect(holder.rewrite).toHaveBeenCalledTimes(1);
   });
 
